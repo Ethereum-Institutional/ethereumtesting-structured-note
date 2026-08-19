@@ -155,15 +155,26 @@ export default async function BuildPage() {
         {/* ------------------------------------------------------------ step 3 */}
         <Step
           n={3}
-          title="Prompt in the compliance rule"
+          title="Author the compliance rule"
           who="OpenZeppelin"
           lede="This is the gap in the market. Uniswap ships the permissions adapter, router and position manager for permissioned pools — but no production hook; the only one in their repository is a test mock. The rule deciding who may trade is the integrator's to write."
         >
-          <p className="text-sm leading-relaxed">
-            Three prompts turn the scaffold into working contracts. Each one is written against the
+          <Note title="These are not MCP calls">
+            Steps 1 and 2 were generator output. This step is not. No generator can produce a
+            compliance rule, because the rule <em>is</em> a specific issuer&rsquo;s policy &mdash;
+            who may hold, who may trade, under whose attestation, in which jurisdictions. The
+            prompts below were given to a coding agent, not to an MCP server, and the resulting
+            contracts were written and reviewed as ordinary engineering work.
+            <span className="mt-2 block">
+              Worth being precise about in the room: OpenZeppelin&rsquo;s generators remove the
+              boilerplate around the rule, not the rule itself.
+            </span>
+          </Note>
+          <p className="mt-4 text-sm leading-relaxed">
+            Three prompts turned the scaffold into working contracts. Each is written against the
             ERC-3643 call surface the venue side declares in{" "}
-            <Mono>contracts/interfaces/IERC3643.sol</Mono>, so the generated code never needs to
-            compile the issuer&rsquo;s stack. About 200 lines across two contracts.
+            <Mono>contracts/interfaces/IERC3643.sol</Mono>, so this code never has to compile the
+            issuer&rsquo;s stack. About 200 lines across two contracts.
           </p>
 
           {rule?.prompts?.map((pr: any) => (
