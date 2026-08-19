@@ -107,15 +107,22 @@ leave both terminals up all day between meetings.
 
 ---
 
-## Two pages
+## Four pages
 
 | Page | Job |
 |---|---|
 | `/build` | How it was built, step by step, with proof read live from the chain. Your walkthrough of the *process*. |
 | `/` | The live console. Your demo of the *system*. |
+| `/portal` | What an investor sees of their own KYC application. |
+| `/portal/admin` | The compliance officer's book: edit any file, sign it off, watch on-chain permission follow. |
 
 Open `/build` first if the audience is technical or wants to know they could do it themselves;
-go straight to `/` if they want to see it work.
+go straight to `/` if they want to see it work. Use the portal when the conversation turns to
+*how does an investor actually get onboarded* — which with custodians it always does.
+
+Applications live in a Supabase Postgres database (see [ops/DATABASE.md](ops/DATABASE.md)), so
+edits persist. Personal data stays there; what reaches the chain is a claim carrying the
+application reference and a digest of the record.
 
 ## Everything is in the browser
 
@@ -207,6 +214,17 @@ Office** → settles.
 > stops. Here, only that client stops."
 
 Unfreeze Sakura before moving on.
+
+**b1) The onboarding story, if the room asks how investors get approved.** Open `/portal` —
+Dave Whitcombe's application, awaiting a residential address, and his wallet holds no
+permissions. Supply the address, switch to `/portal/admin`, open his file and press
+**approve & grant on-chain**. His wallet becomes a verified holder; because his file classifies
+him wholesale, he gets both claims and can provide liquidity as well as trade. Then trade as
+Dave on the console, and show the activity feed listing every call the approval made.
+
+> "Nothing on that application went on-chain. The claim carries the file reference and a digest
+> of the record — an auditor can prove which file produced which permission, and nobody reading
+> the chain learns his name or address."
 
 **b2) Optional, and a strong one: onboard Prospect Capital live.** In **Asset servicing**,
 pick Prospect Capital, choose a jurisdiction, set an allocation, press **onboard**. Then trade
