@@ -12,6 +12,8 @@ cd "$ROOT"
 
 APP="${FLY_APP:-apac-rwa-chain}"
 REGION="${FLY_REGION:-sin}"
+# Set FLY_ORG if your Fly account belongs to more than one organisation.
+ORG="${FLY_ORG:-}"
 STATE="ops/anvil-state.json"
 CTX="ops/fly"
 
@@ -29,32 +31,40 @@ cp "$STATE" "$CTX/anvil-state.json"
 echo "   $(du -h "$CTX/anvil-state.json" | cut -f1) snapshot staged"
 
 step "Fly app"
-if flyctl apps list 2>/dev/null | grep -qE "^\s*$APP\s"; then
-  echo "   $APP exists"
+# `status` is a more reliable existence probe than parsing `apps list`, whose column layout
+# shifts between flyctl versions.
+if flyctl status --app "$APP" >/dev/null 2>&1; then
+  echo "   $APP already exists"
 else
-  flyctl apps create "$APP" --org personal
+  if [ -n "$ORG" ]; then
+    flyctl apps create "$APP" --org "$ORG"
+  else
+    flyctl apps create "$APP" \
+      || fail "Could not create $APP. If your account has several organisations, set FLY_ORG (see: flyctl orgs list)."
+  fi
   echo "   $APP created"
 fi
 
 step "deploying anvil (built on Fly's builders -- no local Docker needed)"
 ( cd "$CTX" && flyctl deploy --remote-only --app "$APP" --yes )
 
-HOST="$(flyctl status --app "$APP" --json 2>/dev/null | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-print(d.get('Hostname') or d.get('hostname') or '')
-")"
-[ -n "$HOST" ] || HOST="$APP.fly.dev"
-RPC="https://$HOST"
+# Fly always serves an app at <name>.fly.dev, so derive the host rather than parsing status
+# output whose JSON shape varies between versions.
+RPC="https://$APP.fly.dev"
 
-step "verifying the RPC"
-CHAIN_HEX="$(curl -s --max-time 25 -X POST "$RPC" \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' | python3 -c "
+step "verifying the RPC (first boot can take ~30s)"
+CHAIN_HEX=""
+for _ in $(seq 1 20); do
+  CHAIN_HEX="$(curl -s --max-time 10 -X POST "$RPC" \
+    -H 'Content-Type: application/json' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' 2>/dev/null | python3 -c "
 import json,sys
 try: print(json.load(sys.stdin)['result'])
 except Exception: print('')
 ")"
+  [ -n "$CHAIN_HEX" ] && break
+  sleep 5
+done
 [ -n "$CHAIN_HEX" ] || fail "RPC at $RPC did not answer eth_chainId. Check: flyctl logs --app $APP"
 CHAIN_ID=$((CHAIN_HEX))
 echo "   $RPC is live, chain id $CHAIN_ID"
