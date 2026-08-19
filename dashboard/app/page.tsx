@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { trySnapshot } from "@/lib/data";
+import { recentActivity } from "@/lib/activity";
 import { Panel, Stat, Badge, Mono, short, num } from "@/components/ui";
 import { HoldersTable } from "@/components/HoldersTable";
 import { TradePanel } from "@/components/TradePanel";
 import { Controls } from "@/components/Controls";
 import { Servicing } from "@/components/Servicing";
 import { ResetButton } from "@/components/ResetButton";
+import { Activity } from "@/components/Activity";
+import { ZMark } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -53,6 +56,9 @@ export default async function Page() {
   }
 
   const s = result.data;
+  // Read after the snapshot succeeds: if the chain is unreachable the page has already
+  // returned its setup state above.
+  const activity = await recentActivity();
   const custodied = s.holders.filter((h) => h.custody !== "Self-custody");
   const aum = custodied.reduce((t, h) => t + Number(h.assetBalance), 0);
 
@@ -66,6 +72,13 @@ export default async function Page() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/portal"
+            className="rounded border px-2.5 py-1 text-xs transition-opacity hover:opacity-80"
+            style={{ borderColor: "var(--line)", color: "var(--accent)" }}
+          >
+            Investor onboarding →
+          </Link>
           <Link
             href="/build"
             className="rounded border px-2.5 py-1 text-xs transition-opacity hover:opacity-80"
@@ -167,6 +180,13 @@ export default async function Page() {
       </div>
 
       <Panel
+        title="On-chain activity"
+        subtitle="Every call, decoded from the chain's own transaction log"
+      >
+        <Activity rows={activity} />
+      </Panel>
+
+      <Panel
         title="Asset servicing"
         subtitle="What a transfer agent does day to day — all of it on-chain, all of it attributable"
       >
@@ -178,10 +198,43 @@ export default async function Page() {
         />
       </Panel>
 
-      <footer className="pb-6 pt-2 text-[11px]" style={{ color: "var(--muted)" }}>
-        Local Anvil · chain {s.a.chainId} · ERC-3643 token{" "}
-        <Mono title={s.a.trex.token}>{short(s.a.trex.token)}</Mono> · identity registry{" "}
-        <Mono title={s.a.trex.identityRegistry}>{short(s.a.trex.identityRegistry)}</Mono>
+      {/*
+        The execution layer named on screen. A branded venue console otherwise hides
+        the fact that trades settle through genuine Uniswap v4 contracts, which is
+        the one claim a sceptical reader most wants to check.
+      */}
+      <footer
+        className="mt-2 space-y-2 border-t pb-6 pt-4 text-[11px]"
+        style={{ borderColor: "var(--line)", color: "var(--muted)" }}
+      >
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span style={{ color: "var(--text)" }}>Execution</span>
+          <span>
+            Uniswap v4 · PoolManager{" "}
+            <Mono title={s.a.venue.poolManager}>{short(s.a.venue.poolManager)}</Mono> · compliance
+            hook <Mono title={s.a.venue.hook}>{short(s.a.venue.hook)}</Mono>
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span style={{ color: "var(--text)" }}>Asset</span>
+          <span>
+            ERC-3643 · token <Mono title={s.a.trex.token}>{short(s.a.trex.token)}</Mono> · identity
+            registry{" "}
+            <Mono title={s.a.trex.identityRegistry}>{short(s.a.trex.identityRegistry)}</Mono>
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <span className="inline-flex items-center gap-2">
+            <ZMark size={13} />
+            <span>
+              Compliance layer built on OpenZeppelin ·{" "}
+              <Link href="/build" className="underline decoration-dotted" style={{ color: "var(--text)" }}>
+                how it was built
+              </Link>
+            </span>
+          </span>
+          <span>Local Anvil · chain {s.a.chainId}</span>
+        </div>
       </footer>
     </main>
   );

@@ -1,7 +1,10 @@
 /**
- * The OpenZeppelin Z mark, inlined so it renders without a network fetch and can
- * inherit sizing from its container. Colours are fixed by the brand book:
- * violet top bar, blue diagonal, cyan bottom bar.
+ * OpenZeppelin Z mark, inlined so it renders without a network fetch and inherits sizing
+ * from its container.
+ *
+ * NOTE: the path data and colours here have not been checked against the official brand
+ * assets. Eyeball it before showing this to anyone outside, or drop it -- it is used once,
+ * decoratively, in the console footer.
  */
 export function ZMark({ size = 20 }: { size?: number }) {
   return (
