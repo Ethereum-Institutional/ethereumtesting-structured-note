@@ -1,0 +1,36 @@
+{
+  "note": "The exact MCP tool calls behind the generated files in this directory. Both servers are the hosted OpenZeppelin endpoints; nothing here was edited by hand.",
+  "token": {
+    "server": "https://mcp.openzeppelin.com/contracts/solidity/mcp",
+    "tool": "solidity-rwa",
+    "output": "rwa-token.sol",
+    "params": {
+      "name": "APACPrivateCredit",
+      "symbol": "APCX",
+      "access": "roles",
+      "restrictions": "allowlist",
+      "freezable": true,
+      "mintable": true,
+      "burnable": true,
+      "pausable": true,
+      "permit": true,
+      "premint": "1000000",
+      "info": { "license": "MIT", "securityContact": "security@openzeppelin.com" }
+    }
+  },
+  "hook": {
+    "server": "https://mcp.openzeppelin.com/contracts/uniswap-hooks/mcp",
+    "tool": "uniswap-hooks",
+    "output": "hook-scaffold.sol",
+    "params": {
+      "name": "CompliantSwapHook",
+      "hook": "BaseHook",
+      "permissions": {
+        "beforeInitialize": true,
+        "beforeAddLiquidity": true,
+        "beforeSwap": true,
+        "afterSwap": true
+      }
+    }
+  }
+}

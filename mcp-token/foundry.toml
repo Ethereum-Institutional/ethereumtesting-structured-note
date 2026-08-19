@@ -1,0 +1,21 @@
+# The MCP-generated token compiles on its own terms: OpenZeppelin Contracts 5.7.0,
+# community-contracts, and pragma ^0.8.27 -- none of which the venue build can use, since
+# Uniswap's PermissionsAdapter pins solc 0.8.26 exactly.
+#
+# Keeping this as a third compilation unit means the generated source stays byte-for-byte
+# what the MCP produced. The venue reads the deployed token by ABI, so nothing here has to
+# agree with anything there.
+[profile.default]
+src = 'contracts'
+out = 'out'
+libs = []
+solc_version = '0.8.28'
+evm_version = 'cancun'
+optimizer = true
+optimizer_runs = 200
+bytecode_hash = 'none'
+
+remappings = [
+  "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
+  "@openzeppelin/community-contracts/=node_modules/@openzeppelin/community-contracts/contracts/",
+]

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { trySnapshot } from "@/lib/data";
 import { Panel, Stat, Badge, Mono, short, num } from "@/components/ui";
 import { HoldersTable } from "@/components/HoldersTable";
@@ -62,7 +63,14 @@ export default async function Page() {
             Permissioned RWA console — ERC-3643 asset servicing and Uniswap v4 trading
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/build"
+            className="rounded border px-2.5 py-1 text-xs transition-opacity hover:opacity-80"
+            style={{ borderColor: "var(--line)", color: "var(--accent)" }}
+          >
+            How it was built →
+          </Link>
           {s.asset.paused ? <Badge tone="bad">asset paused</Badge> : <Badge tone="ok">asset live</Badge>}
           {s.venue.swappingEnabled ? <Badge tone="ok">trading on</Badge> : <Badge tone="warn">trading off</Badge>}
           {s.venue.enforceCountry ? <Badge tone="accent">overlay enforcing</Badge> : <Badge>overlay off</Badge>}

@@ -42,3 +42,23 @@ interface IERC3643Token {
 interface IOnchainIdentity {
     function getClaimIdsByTopic(uint256 topic) external view returns (bytes32[] memory);
 }
+
+/**
+ * @dev ERC-7943 (uRWA) permissioned token, as OpenZeppelin's Contracts MCP generates it for
+ *      `solidity-rwa`.
+ *
+ * A different model to ERC-3643: restrictions live on the token itself as a simple
+ * allow/disallow per account, with no separate identity registry and no signed claims. Less
+ * machinery, and correspondingly less to say about *why* an account is permitted -- which is
+ * the trade-off worth drawing out when comparing the two.
+ */
+interface IERC7943Token {
+    /// @dev True if the account is in the ALLOWED restriction state.
+    function isUserAllowed(address account) external view returns (bool);
+    /// @dev Amount of the holder's balance immobilised by a freezer.
+    function frozen(address account) external view returns (uint256);
+    /// @dev Balance minus the frozen portion.
+    function available(address account) external view returns (uint256);
+    function paused() external view returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+}
