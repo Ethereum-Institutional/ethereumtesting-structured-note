@@ -22,3 +22,4 @@ ops/addresses.json
 dashboard/.vercel/
 ops/fly/anvil-state.json
 ops/anvil-state.json
+dashboard/.data/
