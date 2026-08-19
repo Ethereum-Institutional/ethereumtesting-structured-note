@@ -10,6 +10,8 @@ import { Controls } from "@/components/Controls";
 import { Servicing } from "@/components/Servicing";
 import { ResetButton } from "@/components/ResetButton";
 import { Activity } from "@/components/Activity";
+import { PoolAdmin } from "@/components/PoolAdmin";
+import { poolAdminState } from "@/lib/pool";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { ZMark } from "@/components/Logo";
@@ -70,6 +72,7 @@ export default async function Page() {
   // Read after the snapshot succeeds: if the chain is unreachable the page has already
   // returned its setup state above.
   const activity = await recentActivity();
+  const pool = await poolAdminState().catch(() => null);
   const custodied = s.holders.filter((h) => h.custody !== "Self-custody");
   const aum = custodied.reduce((t, h) => t + Number(h.assetBalance), 0);
 
@@ -194,6 +197,15 @@ export default async function Page() {
           />
         </Panel>
       </div>
+
+      {pool && (
+        <Panel
+          title="Pool administration"
+          subtitle="What is fixed, what is controllable, and who is providing liquidity"
+        >
+          <PoolAdmin pool={pool} symbol={s.asset.symbol} />
+        </Panel>
+      )}
 
       <Panel
         title="On-chain activity"

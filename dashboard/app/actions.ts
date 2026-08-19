@@ -500,3 +500,105 @@ export async function resetDemo(): Promise<ActionResult> {
     return "Demo reset. Balances, freezes, pauses and the pool price are back to the baseline.";
   });
 }
+
+// ------------------------------------------------------------------ //
+//                          Pool administration                       //
+// ------------------------------------------------------------------ //
+
+/**
+ * Deploys treasury inventory into the pool as standing liquidity.
+ *
+ * The custodian executes it through the treasury's custody account, so the hook checks the
+ * treasury's own LIQUIDITY_ALLOWED permission — the fund is subject to the same gate as any LP.
+ * Cash is topped up first if the treasury holds less than the plan needs, since the treasury's
+ * inventory is units, not stablecoin.
+ */
+export async function addTreasuryLiquidity(assetUnits: string, cashUsdc: string): Promise<ActionResult> {
+  return run(async () => {
+    const a = addresses();
+    if (!a.treasury?.account) throw new Error("No treasury account is configured.");
+    const { buildMintLiquidityPlan } = await import("@/lib/pool");
+    const { POSM_ABI, DEMO_USDC_ABI, CUSTODY_ACCOUNT_ABI } = await import("@/lib/abis");
+    const { encodeFunctionData, parseUnits: pu, formatUnits: fu } = await import("viem");
+
+    const units = Number(String(assetUnits).replace(/[, _]/g, ""));
+    const cash = Number(String(cashUsdc).replace(/[, _]/g, ""));
+    if (!Number.isFinite(units) || units <= 0 || !Number.isFinite(cash) || cash <= 0) {
+      throw new Error("Enter the units and cash to deploy, both greater than zero.");
+    }
+
+    const treasury = a.treasury.account as `0x${string}`;
+    const held = (await publicClient.readContract({
+      address: a.trex.token, abi: TREX_TOKEN_ABI, functionName: "balanceOf", args: [treasury],
+    })) as bigint;
+    if (held < pu(String(units), a.trex.decimals)) {
+      throw new Error(`Treasury holds ${fu(held, a.trex.decimals)} units — not enough to deploy ${units.toLocaleString()}.`);
+    }
+
+    // The treasury's inventory is the asset; settlement cash for the other leg is issued to it.
+    const cashHeld = (await publicClient.readContract({
+      address: a.venue.usdc, abi: DEMO_USDC_ABI, functionName: "balanceOf", args: [treasury],
+    })) as bigint;
+    const cashNeeded = pu(String(cash), 6);
+    if (cashHeld < cashNeeded) {
+      const h = await sendTx("issuer", {
+        address: a.venue.usdc, abi: DEMO_USDC_ABI, functionName: "mint", args: [treasury, cashNeeded - cashHeld],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: h });
+    }
+
+    const { unlockData, liquidity } = buildMintLiquidityPlan(a, units, cash);
+    const hash = await sendTx("custodian", {
+      address: treasury,
+      abi: CUSTODY_ACCOUNT_ABI,
+      functionName: "executeOne",
+      args: [
+        a.venue.positionManager,
+        0n,
+        encodeFunctionData({
+          abi: POSM_ABI,
+          functionName: "modifyLiquidities",
+          args: [unlockData, BigInt(Math.floor(Date.now() / 1000) + 600)],
+        }),
+      ],
+    });
+    await publicClient.waitForTransactionReceipt({ hash });
+
+    const tokenId = ((await publicClient.readContract({
+      address: a.venue.positionManager, abi: POSM_ABI, functionName: "nextTokenId",
+    })) as bigint) - 1n;
+
+    return `Deployed up to ${units.toLocaleString()} units and ${cash.toLocaleString()} USDC as position #${tokenId} (liquidity ${liquidity}). The position NFT is non-transferable and owned by the treasury.`;
+  });
+}
+
+/**
+ * Force-exits a liquidity provider.
+ *
+ * This is Uniswap's own admin control on permissioned pools: the adapter's owner can unwind any
+ * position, burning the NFT and returning both legs to the LP. It exists for exactly the case a
+ * regulator asks about — an LP whose permission has been revoked cannot be left earning fees in
+ * the pool. Position NFTs being non-transferable closes the other escape route.
+ */
+export async function unwindLpPosition(tokenId: string): Promise<ActionResult> {
+  return run(async () => {
+    const a = addresses();
+    const { POSM_ABI } = await import("@/lib/abis");
+    const id = BigInt(Number(tokenId));
+    if (id <= 0n) throw new Error("Enter a position id.");
+
+    const owner = (await publicClient.readContract({
+      address: a.venue.positionManager, abi: POSM_ABI, functionName: "ownerOf", args: [id],
+    }).catch(() => null)) as `0x${string}` | null;
+    if (!owner) throw new Error(`Position #${tokenId} does not exist (already unwound?).`);
+
+    const hash = await sendTx("issuer", {
+      address: a.venue.positionManager,
+      abi: POSM_ABI,
+      functionName: "unwindPosition",
+      args: [id, 0n, 0n, "0x"],
+    });
+    await publicClient.waitForTransactionReceipt({ hash });
+    return `Position #${tokenId} unwound. Both legs were returned to ${owner.slice(0, 8)}… and the position NFT was burned.`;
+  });
+}
