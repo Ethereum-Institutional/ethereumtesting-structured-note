@@ -20,3 +20,5 @@ ops/addresses.json
 *.log
 *.tsbuildinfo
 dashboard/.vercel/
+ops/fly/anvil-state.json
+ops/anvil-state.json

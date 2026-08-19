@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Publishes the demo chain to Fly.io and points the Vercel console at it.
+#
+# Prerequisite (one time, needs a browser):
+#   flyctl auth login
+#
+# Safe to re-run: creates the app if missing, otherwise redeploys it.
+set -euo pipefail
+export PATH="/opt/homebrew/bin:$HOME/.foundry/bin:$PATH"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+APP="${FLY_APP:-apac-rwa-chain}"
+REGION="${FLY_REGION:-sin}"
+STATE="ops/anvil-state.json"
+CTX="ops/fly"
+
+fail() { printf '\n\033[31m%s\033[0m\n' "$1" >&2; exit 1; }
+step() { printf '\n\033[1m── %s\033[0m\n' "$1"; }
+
+flyctl auth whoami >/dev/null 2>&1 || fail "Not logged in to Fly. Run: flyctl auth login"
+
+step "chain snapshot"
+if [ ! -s "$STATE" ]; then
+  echo "no snapshot found, baking one"
+  ./ops/bake-state.sh
+fi
+cp "$STATE" "$CTX/anvil-state.json"
+echo "   $(du -h "$CTX/anvil-state.json" | cut -f1) snapshot staged"
+
+step "Fly app"
+if flyctl apps list 2>/dev/null | grep -qE "^\s*$APP\s"; then
+  echo "   $APP exists"
+else
+  flyctl apps create "$APP" --org personal
+  echo "   $APP created"
+fi
+
+step "deploying anvil (built on Fly's builders -- no local Docker needed)"
+( cd "$CTX" && flyctl deploy --remote-only --app "$APP" --yes )
+
+HOST="$(flyctl status --app "$APP" --json 2>/dev/null | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print(d.get('Hostname') or d.get('hostname') or '')
+")"
+[ -n "$HOST" ] || HOST="$APP.fly.dev"
+RPC="https://$HOST"
+
+step "verifying the RPC"
+CHAIN_HEX="$(curl -s --max-time 25 -X POST "$RPC" \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' | python3 -c "
+import json,sys
+try: print(json.load(sys.stdin)['result'])
+except Exception: print('')
+")"
+[ -n "$CHAIN_HEX" ] || fail "RPC at $RPC did not answer eth_chainId. Check: flyctl logs --app $APP"
+CHAIN_ID=$((CHAIN_HEX))
+echo "   $RPC is live, chain id $CHAIN_ID"
+
+TOKEN="$(python3 -c "import json;print(json.load(open('ops/addresses.json'))['trex']['token'])")"
+SUPPLY="$(cast call "$TOKEN" 'totalSupply()(uint256)' --rpc-url "$RPC" 2>/dev/null | awk '{print $1}')"
+[ -n "$SUPPLY" ] && [ "$SUPPLY" != "0" ] || fail "State did not load: token supply is empty at $RPC"
+echo "   snapshot restored, token supply $SUPPLY"
+
+step "pointing the Vercel console at it"
+cd dashboard
+for envn in production preview development; do
+  for var in RPC_URL CHAIN_ID; do
+    vercel env rm "$var" "$envn" --yes >/dev/null 2>&1 || true
+  done
+  printf '%s' "$RPC"      | vercel env add RPC_URL  "$envn" >/dev/null 2>&1 || true
+  printf '%s' "$CHAIN_ID" | vercel env add CHAIN_ID "$envn" >/dev/null 2>&1 || true
+done
+echo "   RPC_URL and CHAIN_ID set"
+
+step "redeploying the console so it picks up the new settings"
+vercel deploy --prod --yes >/dev/null
+echo "   deployed"
+
+printf '\n\033[1mDone.\033[0m\n'
+printf '  console: https://apac-rwa-console.vercel.app\n'
+printf '  chain:   %s  (chain id %s)\n' "$RPC" "$CHAIN_ID"
+printf '  logs:    flyctl logs --app %s\n' "$APP"
+printf '  reset:   flyctl apps restart %s   # reverts to the baked snapshot\n\n' "$APP"
