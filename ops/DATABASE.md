@@ -55,6 +55,25 @@ Policy links, for reference before you accept:
 Neon, Prisma Postgres or any other provider works identically — the driver only needs a
 Postgres connection string. Swap `supabase` for `neon` in the command above.
 
+## Where the data actually lives
+
+Not on Vercel. Vercel is the provisioning and billing front end; the database itself is a
+Supabase Postgres instance on **AWS us-east-1**, project ref `snntwlzrhapvhjgmxmob`.
+
+`POSTGRES_URL` points at Supabase's connection pooler on port **6543**, which is pgbouncer in
+*transaction* mode — a connection is handed to another client between statements. Two
+consequences the driver has to respect, and does:
+
+- `prepare: false`. Server-side prepared statements cannot be relied upon to still exist on the
+  next statement.
+- `max: 1`. Serverless means many short-lived instances; each opening its own pool would exhaust
+  the pooler's client limit long before any single instance needed a second connection.
+
+`POSTGRES_URL_NON_POOLING` (port 5432) is the direct session connection, if a migration ever
+needs one.
+
+Reaching it directly: `vercel integration open supabase` opens the Supabase dashboard over SSO.
+
 ## Schema
 
 Two tables. `applications` holds the file; `application_events` records every change, which is
