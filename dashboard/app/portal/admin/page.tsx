@@ -9,11 +9,14 @@ import {
   accreditationPermitsApproval, type ApplicationStatus,
 } from "@/lib/db/types";
 import { applicantStatus } from "@/lib/applications";
-import { addresses } from "@/lib/chain";
+import { addresses, publicClient } from "@/lib/chain";
+import { ERC20_ABI } from "@/lib/abis";
 import { Panel, Badge, Mono, short, num } from "@/components/ui";
 import { StatusBadge, STATUS_TONE } from "@/components/StatusBadge";
 import { AdminReview } from "@/components/AdminReview";
+import { HoldingsAdmin } from "@/components/HoldingsAdmin";
 import { SignOutButton } from "@/components/SignOutButton";
+import { AutoRefresh } from "@/components/AutoRefresh";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -38,17 +41,35 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const events = selected ? await listEvents(selected.id).catch(() => []) : [];
 
   let chain: Awaited<ReturnType<typeof applicantStatus>> | null = null;
+  let cash = 0n;
   let decimals = 18;
   let symbol = "APACDC";
   if (selected?.wallet) {
     try {
-      chain = await applicantStatus(selected.wallet as `0x${string}`);
       const a = addresses();
       decimals = a.trex.decimals;
       symbol = a.trex.tokenSymbol;
+      chain = await applicantStatus(selected.wallet as `0x${string}`);
+      cash = (await publicClient.readContract({
+        address: a.venue.usdc, abi: ERC20_ABI, functionName: "balanceOf", args: [selected.wallet as `0x${string}`],
+      })) as bigint;
     } catch {
       /* chain unreachable */
     }
+  }
+
+  // Treasury inventory, so the operator can see what is left to allocate.
+  let treasuryUnits: string | null = null;
+  try {
+    const a = addresses();
+    if (a.treasury?.account) {
+      const bal = (await publicClient.readContract({
+        address: a.trex.token, abi: ERC20_ABI, functionName: "balanceOf", args: [a.treasury.account],
+      })) as bigint;
+      treasuryUnits = num(formatUnits(bal, a.trex.decimals), 0);
+    }
+  } catch {
+    /* chain unreachable */
   }
 
   const counts = apps.reduce<Record<string, number>>((acc, a) => {
@@ -66,6 +87,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <Link href="/build" className="rounded border px-2.5 py-1 transition-opacity hover:opacity-80"
           style={{ borderColor: "var(--line)", color: "var(--muted)" }}>How it was built</Link>
         <span className="ml-auto flex items-center gap-3" style={{ color: "var(--muted)" }}>
+          <AutoRefresh seconds={5} label="live queue" />
           {user.email} · compliance
           <SignOutButton />
         </span>
@@ -86,6 +108,11 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           {actionable > 0 && (
             <span className="ml-1 text-[11px]" style={{ color: "var(--warn)" }}>
               {actionable} awaiting your decision
+            </span>
+          )}
+          {treasuryUnits && (
+            <span className="ml-auto text-[11px]" style={{ color: "var(--muted)" }}>
+              treasury inventory <Mono>{treasuryUnits} {symbol}</Mono>
             </span>
           )}
         </div>
@@ -221,6 +248,18 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                 }
               >
                 <AdminReview app={selected} missing={missingFields(selected)} complete={isComplete(selected)} />
+              </Panel>
+
+              <Panel title="Holdings" subtitle="Issue units and fund settlement cash">
+                <HoldingsAdmin
+                  id={selected.id}
+                  symbol={symbol}
+                  approved={selected.status === "approved"}
+                  hasWallet={Boolean(selected.wallet)}
+                  holding={chain ? num(formatUnits(chain.assetBalance, decimals), 0) : "—"}
+                  cash={num(formatUnits(cash, 6), 0)}
+                  treasury={treasuryUnits}
+                />
               </Panel>
 
               <Panel title="File history" subtitle="Every change to this record">

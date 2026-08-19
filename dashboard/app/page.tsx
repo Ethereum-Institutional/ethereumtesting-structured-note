@@ -11,6 +11,7 @@ import { Servicing } from "@/components/Servicing";
 import { ResetButton } from "@/components/ResetButton";
 import { Activity } from "@/components/Activity";
 import { SignOutButton } from "@/components/SignOutButton";
+import { AutoRefresh } from "@/components/AutoRefresh";
 import { ZMark } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
@@ -101,6 +102,7 @@ export default async function Page() {
           {s.venue.enforceCountry ? <Badge tone="accent">overlay enforcing</Badge> : <Badge>overlay off</Badge>}
           <ResetButton armed={s.servicing.baselineArmed} />
           <span className="flex items-center gap-2 text-[11px]" style={{ color: "var(--muted)" }}>
+            <AutoRefresh seconds={6} />
             {user.email}
             <SignOutButton />
           </span>

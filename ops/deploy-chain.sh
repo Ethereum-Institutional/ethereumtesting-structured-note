@@ -76,6 +76,14 @@ echo "   snapshot restored, token supply $SUPPLY"
 
 step "pointing the Vercel console at it"
 cd dashboard
+# The manifest travels as an environment variable, so it must be refreshed alongside the RPC URL.
+# Skipping this leaves the console reading addresses from a previous build of the chain — which
+# fails in confusing ways, like a treasury that exists on-chain but not to the app.
+python3 -c "import json;print(json.dumps(json.load(open('../ops/addresses.json')),separators=(',',':')))" > /tmp/addresses.min.json
+for envn in production preview development; do
+  vercel env rm ADDRESSES_JSON "$envn" --yes >/dev/null 2>&1 || true
+  vercel env add ADDRESSES_JSON "$envn" < /tmp/addresses.min.json >/dev/null 2>&1 || true
+done
 for envn in production preview development; do
   for var in RPC_URL CHAIN_ID; do
     vercel env rm "$var" "$envn" --yes >/dev/null 2>&1 || true

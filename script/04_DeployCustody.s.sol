@@ -32,7 +32,10 @@ contract DeployCustody is Script {
         address router = vm.parseJsonAddress(j, ".venue.router");
         address posm = vm.parseJsonAddress(j, ".venue.positionManager");
 
-        string[4] memory refs = ["CLIENT-A", "CLIENT-B", "CLIENT-C", "CLIENT-D"];
+        // TREASURY holds the fund's undistributed units. Allocations to investors are transfers
+        // out of it rather than fresh mints, so the inventory visibly depletes and every
+        // allocation has to pass the asset's own transfer rules on both sides.
+        string[5] memory refs = ["TREASURY", "CLIENT-A", "CLIENT-B", "CLIENT-C", "CLIENT-D"];
 
         vm.startBroadcast(custodianPk);
         CustodyAccountFactory factory = new CustodyAccountFactory(custodian);
@@ -86,10 +89,11 @@ contract DeployCustody is Script {
         vm.serializeAddress(obj, "custodian", custodian);
         vm.serializeAddress(obj, "factory", address(factory));
         vm.serializeString(obj, "custodianName", "Meridian Custody (APAC)");
-        vm.serializeAddress(obj, "CLIENT-A", accts[0]);
-        vm.serializeAddress(obj, "CLIENT-B", accts[1]);
-        vm.serializeAddress(obj, "CLIENT-C", accts[2]);
-        string memory out = vm.serializeAddress(obj, "CLIENT-D", accts[3]);
+        vm.serializeAddress(obj, "TREASURY", accts[0]);
+        vm.serializeAddress(obj, "CLIENT-A", accts[1]);
+        vm.serializeAddress(obj, "CLIENT-B", accts[2]);
+        vm.serializeAddress(obj, "CLIENT-C", accts[3]);
+        string memory out = vm.serializeAddress(obj, "CLIENT-D", accts[4]);
         vm.writeJson(out, "ops/addresses.json", ".custody");
     }
 }

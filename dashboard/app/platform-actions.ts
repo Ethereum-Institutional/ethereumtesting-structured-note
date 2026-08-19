@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { encodeAbiParameters, keccak256, parseUnits, toHex, type Address, type Hex } from "viem";
+import { encodeAbiParameters, formatUnits, keccak256, parseUnits, toHex, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { addresses, publicClient, sendTx, walletFor, KEYS, type RoleName } from "@/lib/chain";
 import {
@@ -681,5 +681,117 @@ export async function tradeForMyAccount(direction: "buy" | "sell", amount: strin
     const inSym = direction === "buy" ? "USDC" : a.trex.tokenSymbol;
     const outSym = direction === "buy" ? a.trex.tokenSymbol : "USDC";
     return `Order filled: ${amount} ${inSym} → ${received} ${outSym}. Settled in your custody account.`;
+  });
+}
+
+// --------------------------------------------------------------------- //
+//                        Holdings administration                        //
+// --------------------------------------------------------------------- //
+
+/**
+ * Issues fund units to an approved holder.
+ *
+ * Separate from editing the file, which is why it still works once a file is approved and locked:
+ * locking protects the *record* of who someone is, not the ongoing administration of what they
+ * hold. Previously an allocation could only be set before approval, so there was no way to give
+ * an approved investor units at all.
+ *
+ * The token's own compliance rules still apply — minting to a wallet the issuer has not verified
+ * reverts on-chain, which is the correct place for that check rather than here.
+ */
+export async function adminAllocateUnits(id: string, amount: string): Promise<Result> {
+  return run(async () => {
+    const admin = await requireAdmin();
+    const a = addresses();
+    const app = await getApplication(id);
+    if (!app) throw new Error(`No application ${id}`);
+    if (!app.wallet) throw new Error("This client has no custody account yet.");
+    if (app.status !== "approved") {
+      throw new Error("Approve the file first — the asset will not transfer to an unverified holder.");
+    }
+
+    const treasury = a.treasury?.account;
+    if (!treasury) throw new Error("No treasury account is configured for this fund.");
+
+    const units = Number(String(amount).replace(/[, _]/g, ""));
+    if (!Number.isFinite(units) || units <= 0) throw new Error("Enter a number of units greater than zero.");
+    const wanted = parseUnits(String(units), a.trex.decimals);
+
+    const available = (await publicClient.readContract({
+      address: a.trex.token, abi: TREX_TOKEN_ABI, functionName: "balanceOf", args: [treasury],
+    })) as bigint;
+    if (available < wanted) {
+      throw new Error(
+        `Treasury holds ${formatUnits(available, a.trex.decimals)} units — not enough to allocate ${units.toLocaleString()}.`,
+      );
+    }
+
+    // A transfer out of treasury, not a mint. It therefore passes the asset's own rules on both
+    // sides: the treasury must be a permitted sender and the client a verified recipient, and the
+    // issuer's compliance modules see it. Minting would bypass all of that, and would also
+    // conjure units that were never subscribed for.
+    const { CUSTODY_ACCOUNT_ABI, ERC20_ABI } = await import("@/lib/abis");
+    const { encodeFunctionData } = await import("viem");
+    const hash = await sendTx("custodian", {
+      address: treasury,
+      abi: CUSTODY_ACCOUNT_ABI,
+      functionName: "executeOne",
+      args: [
+        a.trex.token,
+        0n,
+        encodeFunctionData({ abi: ERC20_ABI, functionName: "transfer", args: [app.wallet as Address, wanted] }),
+      ],
+    });
+    await publicClient.waitForTransactionReceipt({ hash });
+
+    const [held, left] = (await Promise.all([
+      publicClient.readContract({ address: a.trex.token, abi: TREX_TOKEN_ABI, functionName: "balanceOf", args: [app.wallet as Address] }),
+      publicClient.readContract({ address: a.trex.token, abi: TREX_TOKEN_ABI, functionName: "balanceOf", args: [treasury] }),
+    ])) as [bigint, bigint];
+
+    await updateApplication(
+      id,
+      { allocation: String(Number(app.allocation ?? 0) + units) },
+      admin.email,
+      `allocated ${units} units from treasury`,
+    );
+
+    return `Allocated ${units.toLocaleString()} units from treasury to ${app.applicantName}. They hold ${formatUnits(held, a.trex.decimals)}; treasury has ${formatUnits(left, a.trex.decimals)} left.`;
+  });
+}
+
+/**
+ * Tops up a client's settlement cash.
+ *
+ * Unrestricted, unlike the fund itself — the stablecoin leg of the pool is a plain ERC-20, so this
+ * works whatever the client's KYC state. Useful when someone has spent their opening balance and
+ * wants to keep trading.
+ */
+export async function adminFundCash(id: string, amount: string): Promise<Result> {
+  return run(async () => {
+    const admin = await requireAdmin();
+    const a = addresses();
+    const app = await getApplication(id);
+    if (!app) throw new Error(`No application ${id}`);
+    if (!app.wallet) throw new Error("This client has no custody account yet.");
+
+    const cash = Number(String(amount).replace(/[, _]/g, ""));
+    if (!Number.isFinite(cash) || cash <= 0) throw new Error("Enter an amount greater than zero.");
+
+    const { DEMO_USDC_ABI } = await import("@/lib/abis");
+    const hash = await sendTx("issuer", {
+      address: a.venue.usdc,
+      abi: DEMO_USDC_ABI,
+      functionName: "mint",
+      args: [app.wallet as Address, parseUnits(String(cash), 6)],
+    });
+    await publicClient.waitForTransactionReceipt({ hash });
+
+    const balance = (await publicClient.readContract({
+      address: a.venue.usdc, abi: DEMO_USDC_ABI, functionName: "balanceOf", args: [app.wallet as Address],
+    })) as bigint;
+
+    await updateApplication(id, { startingCash: app.startingCash }, admin.email, `funded ${cash} USDC`);
+    return `Funded ${cash.toLocaleString()} USDC. ${app.applicantName} now holds ${formatUnits(balance, 6)} USDC.`;
   });
 }

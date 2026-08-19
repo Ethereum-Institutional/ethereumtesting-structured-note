@@ -17,6 +17,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ProfileForm } from "@/components/ProfileForm";
 import { InvestorTrade } from "@/components/InvestorTrade";
 import { SignOutButton } from "@/components/SignOutButton";
+import { AutoRefresh } from "@/components/AutoRefresh";
 import { ProvisionWatcher } from "@/components/ProvisionWatcher";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +82,7 @@ export default async function AccountPage() {
         <Link href="/build" className="rounded border px-2.5 py-1 transition-opacity hover:opacity-80"
           style={{ borderColor: "var(--line)", color: "var(--muted)" }}>How this works</Link>
         <span className="ml-auto flex items-center gap-3" style={{ color: "var(--muted)" }}>
+          <AutoRefresh seconds={6} />
           {user.email}
           <SignOutButton />
         </span>
@@ -164,7 +166,10 @@ export default async function AccountPage() {
         </div>
 
         {app.status === "approved" && chain?.canSwap ? (
-          <Panel title="Place an order" subtitle="Subscribe to or redeem from the fund">
+          <Panel
+            title="Place an order"
+            subtitle={`You hold ${num(formatUnits(cash, 6), 0)} USDC — buy units from the fund's pool`}
+          >
             <InvestorTrade
               symbol={symbol}
               cash={num(formatUnits(cash, 6), 0)}

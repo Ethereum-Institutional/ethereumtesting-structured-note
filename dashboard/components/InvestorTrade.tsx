@@ -8,7 +8,7 @@ const FIELD = { background: "var(--panel-2)", borderColor: "var(--line)", color:
 
 export function InvestorTrade({ symbol, cash, holding }: { symbol: string; cash: string; holding: string }) {
   const [direction, setDirection] = useState<"buy" | "sell">("buy");
-  const [amount, setAmount] = useState("50000");
+  const [amount, setAmount] = useState("25000");
   const [result, setResult] = useState<Result | null>(null);
   const [pending, startTransition] = useTransition();
 

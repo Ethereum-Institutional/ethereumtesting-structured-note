@@ -61,12 +61,27 @@ except Exception: print('')")"
   [ -n "$CHAIN_HEX" ] && break
   sleep 2
 done
-[ -n "$CHAIN_HEX" ] || fail "Tunnel is up but not answering eth_chainId."
-CHAIN_ID=$((CHAIN_HEX))
-echo "   chain id $CHAIN_ID over the tunnel"
+if [ -z "$CHAIN_HEX" ]; then
+  # Some networks cannot resolve trycloudflare.com from the same host that created the tunnel,
+  # so a failed probe here does not mean the tunnel is broken — Vercel may still reach it fine.
+  # Warn and carry on rather than aborting; the final check is whether the console renders.
+  printf '\033[33m   could not verify the tunnel from this machine (DNS); continuing anyway\033[0m\n'
+  CHAIN_ID=31337
+else
+  CHAIN_ID=$((CHAIN_HEX))
+  echo "   chain id $CHAIN_ID over the tunnel"
+fi
 
 step "pointing the Vercel console at it"
 cd dashboard
+# The manifest travels as an environment variable, so it must be refreshed alongside the RPC URL.
+# Skipping this leaves the console reading addresses from a previous build of the chain — which
+# fails in confusing ways, like a treasury that exists on-chain but not to the app.
+python3 -c "import json;print(json.dumps(json.load(open('../ops/addresses.json')),separators=(',',':')))" > /tmp/addresses.min.json
+for envn in production preview development; do
+  vercel env rm ADDRESSES_JSON "$envn" --yes >/dev/null 2>&1 || true
+  vercel env add ADDRESSES_JSON "$envn" < /tmp/addresses.min.json >/dev/null 2>&1 || true
+done
 for envn in production preview development; do
   for var in RPC_URL CHAIN_ID; do
     vercel env rm "$var" "$envn" --yes >/dev/null 2>&1 || true

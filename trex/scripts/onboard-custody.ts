@@ -29,6 +29,21 @@ const CLIENTS: ClientSpec[] = [
 
 const SKIPPED = { ref: "CLIENT-D", name: "Prospect Capital (KYC pending)" };
 
+/**
+ * The fund's own treasury.
+ *
+ * A verified holder like any other, holding the undistributed units. Allocating to an investor is
+ * a transfer out of here, not a mint — so the inventory depletes visibly and each allocation has
+ * to satisfy the asset's transfer rules on both sides, which a mint would bypass.
+ */
+const TREASURY = {
+  ref: "TREASURY",
+  name: "APAC Diversified Credit Fund — Treasury",
+  country: COUNTRY.SG,
+  professional: true,
+  allocation: "5000000",
+};
+
 async function main() {
   const [issuer, agent, claimSigner] = await ethers.getSigners();
   const a = loadAddresses();
@@ -43,7 +58,7 @@ async function main() {
 
   const onboarded: any[] = [];
 
-  for (const c of CLIENTS) {
+  for (const c of [TREASURY, ...CLIENTS]) {
     const account: string = a.custody[c.ref];
     if (!account) throw new Error(`missing address for ${c.ref}`);
 
@@ -105,8 +120,10 @@ async function main() {
 
   console.log(`  ${SKIPPED.ref}  ${SKIPPED.name.padEnd(26)} ${a.custody["CLIENT-D"]}  — not onboarded (control)`);
 
+  const treasury = onboarded.find((o) => o.ref === "TREASURY");
   saveAddresses({
-    custodyClients: onboarded,
+    treasury,
+    custodyClients: onboarded.filter((o) => o.ref !== "TREASURY"),
     custodyPending: [{ ref: SKIPPED.ref, name: SKIPPED.name, account: a.custody["CLIENT-D"] }],
   });
   console.log("\ncustody clients onboarded; each is an independent verified holder");
