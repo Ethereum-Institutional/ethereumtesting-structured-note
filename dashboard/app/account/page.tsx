@@ -17,6 +17,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ProfileForm } from "@/components/ProfileForm";
 import { InvestorTrade } from "@/components/InvestorTrade";
 import { SignOutButton } from "@/components/SignOutButton";
+import { ProvisionWatcher } from "@/components/ProvisionWatcher";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -104,12 +105,14 @@ export default async function AccountPage() {
       </header>
 
       <div className="mt-6 space-y-4">
+        {!app.wallet && <ProvisionWatcher />}
+
         <div className="grid gap-4 lg:grid-cols-2">
           <Panel title="Your account" subtitle="Held in a segregated custody account">
             <dl className="space-y-1.5 text-xs">
               <div className="flex justify-between gap-3">
                 <dt style={{ color: "var(--muted)" }}>Custody account</dt>
-                <dd>{app.wallet ? <Mono title={app.wallet}>{short(app.wallet)}</Mono> : <Badge tone="warn">provisioning</Badge>}</dd>
+                <dd>{app.wallet ? <Mono title={app.wallet}>{short(app.wallet)}</Mono> : <Badge tone="warn">opening</Badge>}</dd>
               </div>
               <div className="flex justify-between gap-3">
                 <dt style={{ color: "var(--muted)" }}>Settlement cash</dt>

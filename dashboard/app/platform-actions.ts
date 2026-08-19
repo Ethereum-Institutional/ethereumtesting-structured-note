@@ -30,7 +30,7 @@ import {
   isComplete,
   missingFields,
   requiredFields,
-  NUMERIC_FIELDS,
+  validatePatch,
   type Application,
 } from "@/lib/db/types";
 import { generateProfile } from "@/lib/fake";
@@ -99,13 +99,15 @@ export async function signOutAction(): Promise<Result> {
 // --------------------------------------------------------------------- //
 
 /**
- * Creates the investor's file on first sign-in and provisions their custody account.
+ * Creates the investor's file on first sign-in.
  *
- * The account is a `CustodyAccount` contract, which is the right shape for a custodial
- * platform: the investor never holds a key, the custodian operates the account, and the account
- * itself is the holder of record on the asset. Provisioning is best-effort — if the chain is
- * unreachable the file is still created and the wallet is filled in on a later visit, because a
- * client should not be blocked from completing paperwork by an infrastructure problem.
+ * Deliberately does no on-chain work. Provisioning a custody account takes three transactions,
+ * and doing them here meant sign-up held its request open for the better part of ten seconds —
+ * which collapsed as soon as several people signed up at once, because those transactions
+ * serialise behind one signer. Nobody should wait on a spinner after typing their email.
+ *
+ * The chain work moves to {provisionMyAccount}, which the account page drives once it has
+ * rendered. See ProvisionWatcher.
  */
 export async function ensureMyAccount(): Promise<Result> {
   return run(async () => {
@@ -168,27 +170,44 @@ export async function ensureMyAccount(): Promise<Result> {
       draft.accreditationBasis = assessed.basis;
 
       await insertApplications([draft]);
-      app = (await getApplicationByUser(user.id))!;
+      // Use the record we just built rather than reading it back — one fewer round trip on the
+      // slowest path a new user takes.
+      app = draft;
     }
 
-    if (!app.wallet) {
-      const provisioned = await provisionCustodyAccount(app);
-      if (provisioned) {
-        app = await updateApplication(
-          app.id,
-          { wallet: provisioned },
-          "platform",
-          "custody account provisioned",
-        );
-      }
-    } else {
+    return {
+      ok: true,
+      message: "Account ready.",
+      data: { applicationId: app.id, needsProvisioning: !app.wallet },
+    };
+  });
+}
+
+/**
+ * Deploys the client's custody account and funds it, then records the address.
+ *
+ * Idempotent and safe to call repeatedly: it re-checks each step against the chain rather than
+ * assuming, so a retry after a partial failure finishes the job instead of duplicating it.
+ */
+export async function provisionMyAccount(): Promise<Result> {
+  return run(async () => {
+    const user = await requireUser();
+    const app = await getApplicationByUser(user.id);
+    if (!app) throw new Error("No application on file.");
+
+    if (app.wallet) {
       // Repair path: an account provisioned before approvals were part of provisioning would look
-      // funded and permitted yet fail its first order inside Permit2. One cheap allowance read
-      // catches that, here and for any account whose approvals were revoked.
+      // funded and permitted yet fail its first order inside Permit2.
       await ensureAccountApprovals(app.wallet as Address);
+      return "Account already provisioned.";
     }
 
-    return { ok: true, message: "Account ready.", data: { applicationId: app.id } };
+    const provisioned = await provisionCustodyAccount(app);
+    if (!provisioned) {
+      throw new Error("Could not reach the custody network. Your details are saved — try again shortly.");
+    }
+    await updateApplication(app.id, { wallet: provisioned }, "platform", "custody account provisioned");
+    return `Custody account ready: ${provisioned.slice(0, 10)}…`;
   });
 }
 
@@ -315,20 +334,19 @@ async function grantAccountApprovals(account: Address): Promise<void> {
   await publicClient.waitForTransactionReceipt({ hash });
 }
 
-/** Coerces a form patch into typed fields and recomputes accreditation. */
+/**
+ * Validates a form patch, coerces it, and recomputes accreditation from the merged record.
+ *
+ * Rejects the whole patch when any field is invalid rather than writing the good half: a
+ * half-applied edit is harder for an operator to reason about than a refusal that names the
+ * problem.
+ */
 function normalisePatch(app: Application, patch: Record<string, string>): Partial<Application> {
-  const clean: any = {};
-  for (const [k, raw] of Object.entries(patch)) {
-    const v = raw.trim();
-    if (NUMERIC_FIELDS.has(k)) clean[k] = v === "" ? null : Number(v.replace(/[, ]/g, ""));
-    else if (k === "accountType") clean[k] = v === "entity" ? "entity" : "individual";
-    else clean[k] = v === "" ? null : v;
-  }
+  const { clean, errors } = validatePatch(patch);
+  if (errors.length) throw new Error(errors.join(" "));
   const merged = { ...app, ...clean } as Application;
   const assessed = assessAccreditation(merged);
-  clean.accreditationLevel = assessed.level;
-  clean.accreditationBasis = assessed.basis;
-  return clean;
+  return { ...clean, accreditationLevel: assessed.level, accreditationBasis: assessed.basis } as Partial<Application>;
 }
 
 export async function updateMyProfile(patch: Record<string, string>): Promise<Result> {
@@ -344,13 +362,20 @@ export async function updateMyProfile(patch: Record<string, string>): Promise<Re
       ...requiredFields(app.accountType),
       "phone", "annualIncome", "netFinancialAssets", "entityNetAssets", "country", "applicantName",
     ]);
+    const submitted = Object.keys(patch);
+    const ignored = submitted.filter((k) => !allowed.has(k));
     const filtered = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.has(k)));
+    if (Object.keys(filtered).length === 0) {
+      throw new Error("None of those fields are yours to change.");
+    }
 
     const updated = await updateApplication(app.id, normalisePatch(app, filtered), user.email, "details updated by client");
     const gaps = missingFields(updated);
+    // Silently dropping fields invites the suspicion that they were accepted.
+    const note = ignored.length ? ` Ignored (not yours to set): ${ignored.join(", ")}.` : "";
     return gaps.length
-      ? `Saved. Still outstanding: ${gaps.join(", ")}.`
-      : "Saved. Your file is complete — you can submit it for review.";
+      ? `Saved.${note} Still outstanding: ${gaps.join(", ")}.`
+      : `Saved.${note} Your file is complete — you can submit it for review.`;
   });
 }
 
