@@ -105,6 +105,22 @@ fails, and the only possible cause is the compliance gate.
 
 The dashboard is a Next.js app, but the demo's dependency is the **chain**, not the web tier.
 
+**Deployed at https://apac-rwa-console.vercel.app** (Vercel project
+`vladestoup-3112s-projects/apac-rwa-console`). Vercel hosts the console but cannot host a
+chain — serverless functions have no long-running process — so the deployment reads its
+target from environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `RPC_URL` | An RPC endpoint the Vercel server can reach |
+| `CHAIN_ID` | Chain id behind that endpoint |
+| `ADDRESSES_JSON` | Contents of `ops/addresses.json` (already set) |
+| `DEMO_KEYS` | Signing keys as JSON; falls back to Anvil's public test keys |
+
+Until `RPC_URL` points at a reachable chain the page renders setup guidance rather than an
+error. Contract addresses are deterministic, so `ADDRESSES_JSON` stays valid across redeploys
+of the same stack.
+
 **For the live session — run it on the laptop.** `./ops/reset.sh`, then
 `cd dashboard && npm run dev`. No network dependency at all, one-second blocks, and a clean
 reset between meetings. This is the recommended setup: a conference-room wifi failure cannot

@@ -1,4 +1,4 @@
-import { snapshot } from "@/lib/data";
+import { trySnapshot } from "@/lib/data";
 import { Panel, Stat, Badge, Mono, short, num } from "@/components/ui";
 import { HoldersTable } from "@/components/HoldersTable";
 import { TradePanel } from "@/components/TradePanel";
@@ -8,7 +8,48 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function Page() {
-  const s = await snapshot();
+  const result = await trySnapshot();
+
+  if (!result.data) {
+    return (
+      <main className="mx-auto max-w-2xl p-8">
+        <h1 className="text-xl font-semibold tracking-tight">Permissioned RWA console</h1>
+        <div
+          className="mt-5 rounded-lg border p-5"
+          style={{ background: "var(--panel)", borderColor: "var(--line)" }}
+        >
+          <p className="text-sm" style={{ color: "var(--bad)" }}>
+            Not connected to a chain
+          </p>
+          <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
+            {result.reason}
+          </p>
+          <hr className="my-4" style={{ borderColor: "var(--line)" }} />
+          <p className="text-xs font-medium">This deployment needs three settings</p>
+          <dl className="mt-2 space-y-2 text-[11px]" style={{ color: "var(--muted)" }}>
+            <div>
+              <dt className="font-mono" style={{ color: "var(--text)" }}>RPC_URL</dt>
+              <dd>An RPC endpoint this server can reach.</dd>
+            </div>
+            <div>
+              <dt className="font-mono" style={{ color: "var(--text)" }}>CHAIN_ID</dt>
+              <dd>The chain id behind that endpoint.</dd>
+            </div>
+            <div>
+              <dt className="font-mono" style={{ color: "var(--text)" }}>ADDRESSES_JSON</dt>
+              <dd>Contents of ops/addresses.json from the deploy.</dd>
+            </div>
+          </dl>
+          <p className="mt-4 text-[11px] leading-relaxed" style={{ color: "var(--muted)" }}>
+            Running locally? Start the chain with <span className="font-mono">./ops/reset.sh</span> and
+            reload — no settings needed.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  const s = result.data;
   const custodied = s.holders.filter((h) => h.custody !== "Self-custody");
   const aum = custodied.reduce((t, h) => t + Number(h.assetBalance), 0);
 

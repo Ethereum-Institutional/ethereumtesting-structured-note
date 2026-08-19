@@ -19,3 +19,4 @@ ops/addresses.json
 .DS_Store
 *.log
 *.tsbuildinfo
+dashboard/.vercel/
