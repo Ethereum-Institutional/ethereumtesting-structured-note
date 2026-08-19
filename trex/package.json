@@ -1,0 +1,22 @@
+{
+  "name": "trex-issuer",
+  "private": true,
+  "version": "1.0.0",
+  "description": "ERC-3643 (T-REX) issuer stack - deploys to local Anvil",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.ts --network anvil"
+  },
+  "dependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "@onchain-id/solidity": "^2.2.1",
+    "@openzeppelin/contracts": "^4.9.6",
+    "@openzeppelin/contracts-upgradeable": "^4.9.6",
+    "@tokenysolutions/t-rex": "^4.1.6",
+    "@types/node": "^22.10.2",
+    "ethers": "^6.13.5",
+    "hardhat": "^2.26.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  }
+}
