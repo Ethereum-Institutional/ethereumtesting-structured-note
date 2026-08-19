@@ -73,7 +73,7 @@ export function TradePanel({ holders, symbol }: { holders: HolderRow[]; symbol: 
           onClick={submit}
           disabled={pending}
           className="rounded px-4 py-1.5 text-xs font-semibold uppercase tracking-wide transition-opacity hover:opacity-90 disabled:opacity-40"
-          style={{ background: "var(--accent)", color: "#07101f" }}
+          style={{ background: "var(--accent)", color: "#ffffff" }}
         >
           {pending ? "submitting…" : "swap"}
         </button>

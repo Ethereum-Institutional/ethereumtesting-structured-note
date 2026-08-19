@@ -4,6 +4,8 @@ import { Panel, Stat, Badge, Mono, short, num } from "@/components/ui";
 import { HoldersTable } from "@/components/HoldersTable";
 import { TradePanel } from "@/components/TradePanel";
 import { Controls } from "@/components/Controls";
+import { Servicing } from "@/components/Servicing";
+import { ResetButton } from "@/components/ResetButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -74,6 +76,7 @@ export default async function Page() {
           {s.asset.paused ? <Badge tone="bad">asset paused</Badge> : <Badge tone="ok">asset live</Badge>}
           {s.venue.swappingEnabled ? <Badge tone="ok">trading on</Badge> : <Badge tone="warn">trading off</Badge>}
           {s.venue.enforceCountry ? <Badge tone="accent">overlay enforcing</Badge> : <Badge>overlay off</Badge>}
+          <ResetButton armed={s.servicing.baselineArmed} />
         </div>
       </header>
 
@@ -162,6 +165,18 @@ export default async function Page() {
           />
         </Panel>
       </div>
+
+      <Panel
+        title="Asset servicing"
+        subtitle="What a transfer agent does day to day — all of it on-chain, all of it attributable"
+      >
+        <Servicing
+          holders={s.holders}
+          symbol={s.asset.symbol}
+          pending={s.servicing.pending}
+          maxBalanceBound={s.servicing.maxBalanceBound}
+        />
+      </Panel>
 
       <footer className="pb-6 pt-2 text-[11px]" style={{ color: "var(--muted)" }}>
         Local Anvil · chain {s.a.chainId} · ERC-3643 token{" "}

@@ -21,16 +21,16 @@ export function Code({
     <figure className="mt-3">
       <div
         className="overflow-x-auto rounded border"
-        style={{ background: "#0a0d13", borderColor: "var(--line)" }}
+        style={{ background: "var(--code-bg)", borderColor: "var(--line)" }}
       >
         <pre className="p-3 text-[11px] leading-[1.6]">
-          <code style={{ color: "#cbd3e1" }}>{shown.join("\n")}</code>
+          <code style={{ color: "rgba(255,255,255,.84)" }}>{shown.join("\n")}</code>
         </pre>
         {truncated && (
           <button
             onClick={() => setOpen(!open)}
             className="w-full border-t px-3 py-1.5 text-[10px] uppercase tracking-wider transition-opacity hover:opacity-80"
-            style={{ borderColor: "var(--line)", color: "var(--accent)" }}
+            style={{ borderColor: "var(--line)", color: "var(--oz-blue)" }}
           >
             {open ? "collapse" : `show all ${lines.length} lines`}
           </button>

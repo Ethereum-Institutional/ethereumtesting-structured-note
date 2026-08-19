@@ -10,7 +10,23 @@ Two ways to run it:
 
 ## Browser version
 
-**One-time setup** (needs a browser for the Fly.io login):
+Two ways to back the hosted console with a chain.
+
+### Fastest — tunnel from this laptop (no accounts, no logins)
+
+```bash
+cd ~/Desktop/apac-rwa-demo
+./ops/serve-local.sh
+```
+
+About a minute. Starts the chain from the baked snapshot, opens a Cloudflare quick tunnel to
+it, points Vercel at that tunnel and redeploys. <https://apac-rwa-console.vercel.app> then
+shows live data from your machine, viewable on any device.
+
+Caveats: the chain and tunnel both run here, so **this laptop must stay awake**, and the
+tunnel URL changes every time — re-run the script if it drops.
+
+### Laptop-independent — chain on Fly.io
 
 ```bash
 flyctl auth login          # opens a browser
@@ -91,6 +107,40 @@ leave both terminals up all day between meetings.
 
 ---
 
+## Two pages
+
+| Page | Job |
+|---|---|
+| `/build` | How it was built, step by step, with proof read live from the chain. Your walkthrough of the *process*. |
+| `/` | The live console. Your demo of the *system*. |
+
+Open `/build` first if the audience is technical or wants to know they could do it themselves;
+go straight to `/` if they want to see it work.
+
+## Everything is in the browser
+
+Nothing in the demo needs a terminal any more. The console can:
+
+- trade as any holder, direct or custodied
+- freeze and unfreeze a wallet
+- **partially freeze** part of a balance while the rest keeps trading
+- **force-transfer** between holders (the recovery path)
+- **complete KYC for a pending client, live** — mints their identity, has the trusted issuer
+  attest it, registers them, allocates a holding
+- **bind a concentration limit** at runtime via a compliance module
+- pause the asset, disable venue trading, toggle the jurisdiction overlay
+- **reset the whole demo** to a baseline
+
+### About the reset button
+
+First press on a fresh chain reads **Arm baseline** — it captures the current state. After
+that it reads **Reset demo** and returns the chain to that point: balances, freezes, pauses
+and the pool price all restored.
+
+The baseline is an Anvil snapshot, and Anvil consumes a snapshot when it reverts, so the
+console re-arms automatically after every reset. Snapshots do not survive a chain restart, so
+after restarting you will see **Arm baseline** again — press it once at the start of the day.
+
 ## The demo — five acts, about 15 minutes
 
 ### Act 1 · This is a real security token (2 min)
@@ -157,6 +207,18 @@ Office** → settles.
 > stops. Here, only that client stops."
 
 Unfreeze Sakura before moving on.
+
+**b2) Optional, and a strong one: onboard Prospect Capital live.** In **Asset servicing**,
+pick Prospect Capital, choose a jurisdiction, set an allocation, press **onboard**. Then trade
+as them — it settles.
+
+> "That was the full onboarding: an on-chain identity minted for them, KYC attested by the
+> trusted issuer, registered in the issuer's registry, and a holding allocated. They went from
+> unable to touch the asset to trading it, in one transaction sequence, and the venue was never
+> involved."
+
+Note they can now *swap* but still cannot *provide liquidity* — that needs the
+professional-investor claim, which was not attested. Two independent permissions.
 
 **c) Venue-level jurisdiction.** In **Controls**, switch **Venue jurisdiction overlay** to
 enforcing, then click **Japan** off.

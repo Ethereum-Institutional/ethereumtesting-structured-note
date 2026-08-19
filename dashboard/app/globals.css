@@ -2,21 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * OpenZeppelin brand palette.
+ *
+ * Only four brand colours exist: white, violet #4F56FA, grey #15193A, black.
+ * The Z mark contributes two further accents (blue #2E99FF, cyan #09C2FF) which
+ * are used here for state, not decoration. Everything else is white at reduced
+ * opacity over the brand grey, so no non-brand hex enters the palette.
+ *
+ * `--deny` is the one deliberate exception: a compliance demo has to render a
+ * refusal unmistakably, and no brand colour reads as "blocked".
+ */
 :root {
-  --bg: #0b0e14;
-  --panel: #12161f;
-  --panel-2: #171c27;
-  --line: #232a38;
-  --text: #e6e9ef;
-  --muted: #8b95a7;
-  --ok: #35c98a;
+  --oz-violet: #4f56fa;
+  --oz-blue: #2e99ff;
+  --oz-cyan: #09c2ff;
+  --oz-grey: #15193a;
+
+  --bg: #15193a;
+  --panel: rgba(255, 255, 255, 0.04);
+  --panel-2: rgba(255, 255, 255, 0.07);
+  --line: rgba(255, 255, 255, 0.14);
+  --line-strong: rgba(255, 255, 255, 0.26);
+
+  --text: #ffffff;
+  --muted: rgba(255, 255, 255, 0.62);
+  --faint: rgba(255, 255, 255, 0.42);
+
+  --accent: #4f56fa;
+  --accent-2: #2e99ff;
+
+  --ok: #09c2ff;
+  --warn: #2e99ff;
   --bad: #ff6b6b;
-  --warn: #ffb84d;
-  --accent: #5b9cff;
+
+  --code-bg: #000000;
+}
+
+html {
+  background: var(--bg);
 }
 
 body {
   background: var(--bg);
   color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+code,
+pre,
+.font-mono {
+  font-feature-settings: "liga" 0;
+}
+
+::selection {
+  background: rgba(79, 86, 250, 0.4);
 }

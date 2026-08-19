@@ -39,6 +39,10 @@ forge script script/02_ActivateVenue.s.sol:ActivateVenue $FS >/dev/null
 forge script script/03_DeployLens.s.sol:DeployLens $FS >/dev/null
 echo "   pool live with liquidity"
 
+step "console operations pointer"
+forge script script/05_DeployOps.s.sol:DeployOps $FS >/dev/null
+echo "   demo baseline pointer deployed"
+
 step "custodian and segregated client accounts"
 forge script script/04_DeployCustody.s.sol:DeployCustody $FS >/dev/null
 echo "   custody accounts deployed and funded"

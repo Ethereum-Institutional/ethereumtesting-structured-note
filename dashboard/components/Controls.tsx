@@ -44,7 +44,7 @@ function Toggle({
         disabled={pending}
         className="shrink-0 rounded border px-2.5 py-1 text-[10px] uppercase tracking-wide transition-opacity hover:opacity-80 disabled:opacity-40"
         style={{
-          borderColor: on ? "rgba(53,201,138,.4)" : danger ? "rgba(255,107,107,.4)" : "var(--line)",
+          borderColor: on ? "rgba(9,194,255,.4)" : danger ? "rgba(255,107,107,.4)" : "var(--line)",
           color: on ? "var(--ok)" : danger ? "var(--bad)" : "var(--muted)",
         }}
       >
@@ -106,9 +106,9 @@ export function Controls({
               onClick={() => startTransition(async () => setResult(await setCountryAllowed(c.code, !c.allowed)))}
               className="rounded border px-2 py-1 text-[10px] uppercase tracking-wide transition-opacity hover:opacity-80 disabled:opacity-40"
               style={{
-                borderColor: c.allowed ? "rgba(53,201,138,.4)" : "var(--line)",
+                borderColor: c.allowed ? "rgba(9,194,255,.4)" : "var(--line)",
                 color: c.allowed ? "var(--ok)" : "var(--muted)",
-                background: c.allowed ? "rgba(53,201,138,.07)" : "transparent",
+                background: c.allowed ? "rgba(9,194,255,.07)" : "transparent",
               }}
             >
               {c.name}

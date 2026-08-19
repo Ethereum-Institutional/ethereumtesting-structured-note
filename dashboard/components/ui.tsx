@@ -51,11 +51,11 @@ export function Stat({ label, value, tone }: { label: string; value: ReactNode; 
 
 export function Badge({ children, tone = "muted" }: { children: ReactNode; tone?: "ok" | "bad" | "warn" | "muted" | "accent" }) {
   const map = {
-    ok: ["rgba(53,201,138,.13)", "var(--ok)"],
-    bad: ["rgba(255,107,107,.13)", "var(--bad)"],
-    warn: ["rgba(255,184,77,.13)", "var(--warn)"],
-    accent: ["rgba(91,156,255,.13)", "var(--accent)"],
-    muted: ["rgba(139,149,167,.12)", "var(--muted)"],
+    ok: ["rgba(9,194,255,.14)", "var(--ok)"],
+    bad: ["rgba(255,107,107,.14)", "var(--bad)"],
+    warn: ["rgba(46,153,255,.14)", "var(--warn)"],
+    accent: ["rgba(79,86,250,.18)", "#8f93ff"],
+    muted: ["rgba(255,255,255,.09)", "var(--muted)"],
   } as const;
   const [bg, fg] = map[tone];
   return (

@@ -89,7 +89,7 @@ export function HoldersTable({ holders, symbol }: { holders: HolderRow[]; symbol
                     disabled={pending && busy === h.wallet}
                     className="rounded border px-2 py-1 text-[10px] uppercase tracking-wide transition-opacity hover:opacity-80 disabled:opacity-40"
                     style={{
-                      borderColor: h.frozen ? "rgba(53,201,138,.4)" : "rgba(255,107,107,.4)",
+                      borderColor: h.frozen ? "rgba(9,194,255,.4)" : "rgba(255,107,107,.4)",
                       color: h.frozen ? "var(--ok)" : "var(--bad)",
                     }}
                   >
