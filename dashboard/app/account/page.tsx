@@ -218,8 +218,12 @@ export default async function AccountPage() {
         </Panel>
       </div>
 
-      <footer className="mt-6 text-[11px]" style={{ color: "var(--muted)" }}>
-        store: <Mono>{driverName}</Mono>{!isDurable && " — resets on restart"}
+      <footer className="mt-6 space-y-1 text-[11px]" style={{ color: "var(--muted)" }}>
+        <p>
+          Asset: ERC-3643 (T-REX) by Tokeny · Venue: Uniswap v4 permissioned pool · Compliance
+          layer and custody accounts: OpenZeppelin
+        </p>
+        <p>store: <Mono>{driverName}</Mono>{!isDurable && " — resets on restart"}</p>
       </footer>
     </main>
   );

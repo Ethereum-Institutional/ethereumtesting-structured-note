@@ -31,6 +31,10 @@ export default async function LoginPage() {
           holdings are all fictional.
         </p>
         <p>
+          Built on ERC-3643 (T-REX) by Tokeny and Uniswap v4 permissioned pools, joined by
+          OpenZeppelin&apos;s compliance layer.
+        </p>
+        <p>
           <Link href="/build" style={{ color: "var(--accent)" }}>
             How this was built
           </Link>

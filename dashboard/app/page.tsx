@@ -11,6 +11,7 @@ import { Servicing } from "@/components/Servicing";
 import { ResetButton } from "@/components/ResetButton";
 import { Activity } from "@/components/Activity";
 import { PoolAdmin } from "@/components/PoolAdmin";
+import { StackPanel } from "@/components/StackPanel";
 import { poolAdminState } from "@/lib/pool";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AutoRefresh } from "@/components/AutoRefresh";
@@ -113,7 +114,7 @@ export default async function Page() {
       </header>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Panel title="Asset" subtitle={`${s.asset.name} · ERC-3643`}>
+        <Panel title="Asset" subtitle={`${s.asset.name} · ERC-3643 (T-REX) by Tokeny`}>
           <div className="grid grid-cols-2 gap-4">
             <Stat label="Symbol" value={s.asset.symbol} />
             <Stat label="Total supply" value={num(s.asset.totalSupply, 0)} />
@@ -149,7 +150,7 @@ export default async function Page() {
           </p>
         </Panel>
 
-        <Panel title="Market" subtitle={`Uniswap v4 · fee ${(s.pool.lpFee / 10000).toFixed(2)}%`}>
+        <Panel title="Market" subtitle={`Uniswap v4 permissioned pool · fee ${(s.pool.lpFee / 10000).toFixed(2)}%`}>
           <div className="grid grid-cols-2 gap-4">
             <Stat label={`Price (USDC / ${s.asset.symbol})`} value={num(s.pool.priceUsdc)} />
             <Stat label="Tick" value={s.pool.tick} />
@@ -176,6 +177,8 @@ export default async function Page() {
           </dl>
         </Panel>
       </div>
+
+      <StackPanel a={s.a} />
 
       <Panel
         title="Holders of record"
