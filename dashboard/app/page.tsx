@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { currentUser } from "@/lib/auth";
 import { trySnapshot } from "@/lib/data";
 import { recentActivity } from "@/lib/activity";
 import { Panel, Stat, Badge, Mono, short, num } from "@/components/ui";
@@ -8,12 +10,20 @@ import { Controls } from "@/components/Controls";
 import { Servicing } from "@/components/Servicing";
 import { ResetButton } from "@/components/ResetButton";
 import { Activity } from "@/components/Activity";
+import { SignOutButton } from "@/components/SignOutButton";
 import { ZMark } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function Page() {
+  // The console operates on client money: trading on their behalf, freezing wallets,
+  // force-transferring holdings. It is staff-only, and anonymous visitors are sent to sign in
+  // rather than shown controls they cannot use.
+  const user = await currentUser();
+  if (!user) redirect("/login");
+  if (user.role !== "admin") redirect("/account");
+
   const result = await trySnapshot();
 
   if (!result.data) {
@@ -90,6 +100,10 @@ export default async function Page() {
           {s.venue.swappingEnabled ? <Badge tone="ok">trading on</Badge> : <Badge tone="warn">trading off</Badge>}
           {s.venue.enforceCountry ? <Badge tone="accent">overlay enforcing</Badge> : <Badge>overlay off</Badge>}
           <ResetButton armed={s.servicing.baselineArmed} />
+          <span className="flex items-center gap-2 text-[11px]" style={{ color: "var(--muted)" }}>
+            {user.email}
+            <SignOutButton />
+          </span>
         </div>
       </header>
 

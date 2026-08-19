@@ -35,10 +35,26 @@ import {
   DEMO_BASELINE_ABI,
 } from "@/lib/abis";
 import { buildSwap, explainRevert, type Direction } from "@/lib/swap";
+import { requireAdmin } from "@/lib/auth";
 
 export type ActionResult = { ok: boolean; message: string };
 
+/**
+ * Every action in this file is a privileged custody or issuer operation — trading on a client's
+ * behalf, freezing a wallet, force-transferring a holding, pausing the asset, resetting the
+ * chain. So the authorisation check lives in the wrapper they all share rather than in each one:
+ * a check that has to be remembered eleven times is a check that will eventually be forgotten,
+ * and the consequence here is an anonymous caller moving somebody else's money.
+ *
+ * This is the real control. Hiding the page is not one: server actions are reachable endpoints
+ * whether or not a UI renders a button for them.
+ */
 async function run(fn: () => Promise<string>): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { ok: false, message: "Sign in as compliance staff to do that." };
+  }
   try {
     const message = await fn();
     revalidatePath("/");
