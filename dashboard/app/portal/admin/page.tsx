@@ -1,31 +1,37 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { formatUnits } from "viem";
+import { currentUser } from "@/lib/auth";
 import { seedIfEmpty } from "@/lib/db/seed";
 import { listApplications, getApplication, listEvents, driverName, isDurable } from "@/lib/db";
-import { isComplete, missingFields, FIELD_LABELS, STATUS_LABEL, type ApplicationStatus } from "@/lib/db/types";
+import {
+  isComplete, missingFields, FIELD_LABELS, STATUS_LABEL, ACCREDITATION_LABEL,
+  accreditationPermitsApproval, type ApplicationStatus,
+} from "@/lib/db/types";
 import { applicantStatus } from "@/lib/applications";
 import { addresses } from "@/lib/chain";
 import { Panel, Badge, Mono, short, num } from "@/components/ui";
 import { StatusBadge, STATUS_TONE } from "@/components/StatusBadge";
-import { AdminEditor } from "@/components/AdminEditor";
+import { AdminReview } from "@/components/AdminReview";
+import { SignOutButton } from "@/components/SignOutButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function AdminPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ id?: string }>;
-}) {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+  const user = await currentUser();
+  if (!user) redirect("/login");
+  if (user.role !== "admin") redirect("/account");
+
   const { id } = await searchParams;
 
   let apps: Awaited<ReturnType<typeof listApplications>> = [];
-  let seedError: string | null = null;
+  let storeError: string | null = null;
   try {
     await seedIfEmpty();
     apps = await listApplications();
   } catch (e: any) {
-    seedError = String(e?.message ?? e).slice(0, 200);
+    storeError = String(e?.message ?? e).slice(0, 200);
   }
 
   const selected = id ? await getApplication(id).catch(() => null) : null;
@@ -34,7 +40,7 @@ export default async function AdminPage({
   let chain: Awaited<ReturnType<typeof applicantStatus>> | null = null;
   let decimals = 18;
   let symbol = "APACDC";
-  if (selected) {
+  if (selected?.wallet) {
     try {
       chain = await applicantStatus(selected.wallet as `0x${string}`);
       const a = addresses();
@@ -49,66 +55,69 @@ export default async function AdminPage({
     acc[a.status] = (acc[a.status] ?? 0) + 1;
     return acc;
   }, {});
+  const actionable = apps.filter((a) => a.status === "in_review" || a.status === "submitted").length;
 
   return (
     <main className="mx-auto max-w-[1400px] p-5 pb-16">
-      <nav className="mb-6 flex flex-wrap items-center gap-3 text-xs">
+      <nav className="mb-5 flex flex-wrap items-center gap-3 text-xs">
+        <span className="font-semibold">Meridian Custody</span>
         <Link href="/" className="rounded border px-2.5 py-1 transition-opacity hover:opacity-80"
-          style={{ borderColor: "var(--line)", color: "var(--muted)" }}>
-          &larr; Live console
-        </Link>
-        <Link href="/portal" className="rounded border px-2.5 py-1 transition-opacity hover:opacity-80"
-          style={{ borderColor: "var(--line)", color: "var(--muted)" }}>
-          Investor view
-        </Link>
-        <span style={{ color: "var(--muted)" }}>You are on: compliance admin</span>
-        <span className="ml-auto" style={{ color: "var(--muted)" }}>
-          store: <Mono>{driverName}</Mono>{!isDurable && " — resets on restart"}
+          style={{ borderColor: "var(--line)", color: "var(--muted)" }}>Custody console</Link>
+        <Link href="/build" className="rounded border px-2.5 py-1 transition-opacity hover:opacity-80"
+          style={{ borderColor: "var(--line)", color: "var(--muted)" }}>How it was built</Link>
+        <span className="ml-auto flex items-center gap-3" style={{ color: "var(--muted)" }}>
+          {user.email} · compliance
+          <SignOutButton />
         </span>
       </nav>
 
       <header className="mb-5">
         <h1 className="text-xl font-semibold tracking-tight">Onboarding administration</h1>
         <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
-          The KYC provider&apos;s book. Edit any field, sign a file off, and the investor&apos;s
-          on-chain permission changes on the next block. All applicant details are fictional.
+          Edit any field, sign a file off, and the investor&apos;s on-chain permission changes on the
+          next block. Applicant details are fictional.
         </p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {Object.entries(counts).map(([k, v]) => (
             <Badge key={k} tone={STATUS_TONE[k as ApplicationStatus] ?? "muted"}>
               {v} {STATUS_LABEL[k as ApplicationStatus] ?? k}
             </Badge>
           ))}
+          {actionable > 0 && (
+            <span className="ml-1 text-[11px]" style={{ color: "var(--warn)" }}>
+              {actionable} awaiting your decision
+            </span>
+          )}
         </div>
-        {seedError && (
+        {storeError && (
           <p className="mt-2 rounded border px-3 py-2 text-xs"
             style={{ borderColor: "rgba(255,107,107,.35)", color: "var(--bad)" }}>
-            Store unavailable: {seedError}
+            Store unavailable: {storeError}
           </p>
         )}
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,340px)_1fr]">
-        <Panel title="Queue" subtitle={`${apps.length} applications`}>
-          <ul className="-mx-4 divide-y" style={{ borderColor: "var(--line)" }}>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,360px)_1fr]">
+        <Panel title="Queue" subtitle={`${apps.length} accounts`}>
+          <ul className="-mx-4">
             {apps.map((a) => {
               const isSel = selected?.id === a.id;
               const gaps = missingFields(a).length;
+              const accOk = accreditationPermitsApproval(a.accreditationLevel);
               return (
-                <li key={a.id} style={{ borderColor: "var(--line)" }} className="border-t first:border-0">
-                  <Link
-                    href={`/portal/admin?id=${a.id}`}
-                    className="block px-4 py-2.5 transition-colors"
-                    style={{ background: isSel ? "var(--panel-2)" : "transparent" }}
-                  >
+                <li key={a.id} className="border-t first:border-0" style={{ borderColor: "var(--line)" }}>
+                  <Link href={`/portal/admin?id=${a.id}`} className="block px-4 py-2.5"
+                    style={{ background: isSel ? "var(--panel-2)" : "transparent" }}>
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-xs font-medium">{a.applicantName}</span>
                       <StatusBadge status={a.status} />
                     </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px]" style={{ color: "var(--muted)" }}>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]" style={{ color: "var(--muted)" }}>
                       <Mono>{a.reference}</Mono>
-                      <span>{a.classification}</span>
+                      <Badge tone={a.accountType === "entity" ? "accent" : "muted"}>{a.accountType}</Badge>
+                      <Badge tone={accOk ? "ok" : "bad"}>{ACCREDITATION_LABEL[a.accreditationLevel]}</Badge>
                       {gaps > 0 && <span style={{ color: "var(--bad)" }}>{gaps} outstanding</span>}
+                      {!a.wallet && <span style={{ color: "var(--warn)" }}>no account yet</span>}
                     </div>
                   </Link>
                 </li>
@@ -119,16 +128,19 @@ export default async function AdminPage({
 
         <div className="space-y-4">
           {!selected ? (
-            <Panel title="No file selected" subtitle="Pick an application from the queue">
+            <Panel title="No file selected" subtitle="Pick an account from the queue">
               <p className="text-xs" style={{ color: "var(--muted)" }}>
-                Dave Whitcombe&apos;s file is the one with an outstanding item.
+                Files marked <em>in review</em> are waiting on you. Live sign-ups from the event appear
+                here automatically.
               </p>
             </Panel>
           ) : (
             <>
               <Panel
                 title={`${selected.reference} — ${selected.applicantName}`}
-                subtitle={`submitted ${selected.submittedAt ?? "—"} · wallet ${short(selected.wallet)}`}
+                subtitle={`${selected.accountType} · submitted ${selected.submittedAt?.slice(0, 10) ?? "—"} · ${
+                  selected.wallet ? `custody account ${short(selected.wallet)}` : "no custody account yet"
+                }`}
                 right={<StatusBadge status={selected.status} />}
               >
                 <div className="grid gap-4 lg:grid-cols-2">
@@ -163,7 +175,9 @@ export default async function AdminPage({
                         </div>
                       </dl>
                     ) : (
-                      <p className="mt-1.5 text-xs" style={{ color: "var(--muted)" }}>Chain unreachable.</p>
+                      <p className="mt-1.5 text-xs" style={{ color: "var(--muted)" }}>
+                        {selected.wallet ? "Chain unreachable." : "No custody account provisioned yet."}
+                      </p>
                     )}
                   </div>
 
@@ -179,17 +193,19 @@ export default async function AdminPage({
                         </div>
                         <div className="flex justify-between gap-2">
                           <dt style={{ color: "var(--muted)" }}>Record digest</dt>
-                          <dd><Mono title={selected.claimDigest ?? ""}>{selected.claimDigest ? `${selected.claimDigest.slice(0, 12)}…` : "—"}</Mono></dd>
+                          <dd><Mono title={selected.claimDigest ?? ""}>
+                            {selected.claimDigest ? `${selected.claimDigest.slice(0, 12)}…` : "—"}
+                          </Mono></dd>
                         </div>
                         <div className="flex justify-between gap-2">
-                          <dt style={{ color: "var(--muted)" }}>Approved</dt>
-                          <dd><Mono>{selected.approvedAt?.slice(0, 10) ?? "—"}</Mono></dd>
+                          <dt style={{ color: "var(--muted)" }}>Approved by</dt>
+                          <dd className="truncate"><Mono>{selected.approvedBy ?? "—"}</Mono></dd>
                         </div>
                       </dl>
                     ) : (
-                      <p className="mt-1.5 text-xs" style={{ color: "var(--muted)" }}>
-                        Nothing yet. Approving writes a claim carrying only this file&apos;s reference
-                        and a digest of its contents.
+                      <p className="mt-1.5 text-xs leading-relaxed" style={{ color: "var(--muted)" }}>
+                        Nothing yet. Approving writes claims carrying only this file&apos;s reference and
+                        a digest of its contents — no personal data.
                       </p>
                     )}
                   </div>
@@ -200,15 +216,11 @@ export default async function AdminPage({
                 title="File"
                 subtitle={
                   isComplete(selected)
-                    ? "Complete — ready for sign-off"
-                    : `Outstanding: ${missingFields(selected).map((f) => FIELD_LABELS[f]).join(", ")}`
+                    ? "Complete"
+                    : `Outstanding: ${missingFields(selected).map((f) => FIELD_LABELS[f] ?? f).join(", ")}`
                 }
               >
-                <AdminEditor
-                  app={selected}
-                  missing={missingFields(selected)}
-                  complete={isComplete(selected)}
-                />
+                <AdminReview app={selected} missing={missingFields(selected)} complete={isComplete(selected)} />
               </Panel>
 
               <Panel title="File history" subtitle="Every change to this record">
@@ -231,6 +243,10 @@ export default async function AdminPage({
           )}
         </div>
       </div>
+
+      <footer className="mt-6 text-[11px]" style={{ color: "var(--muted)" }}>
+        store: <Mono>{driverName}</Mono>{!isDurable && " — resets on restart"}
+      </footer>
     </main>
   );
 }

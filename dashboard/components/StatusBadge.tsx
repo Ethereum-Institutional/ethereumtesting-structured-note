@@ -2,7 +2,7 @@ import { Badge } from "./ui";
 import { STATUS_LABEL, type ApplicationStatus } from "@/lib/db/types";
 
 export const STATUS_TONE: Record<ApplicationStatus, "ok" | "bad" | "warn" | "accent"> = {
-  incomplete: "warn",
+  draft: "warn",
   submitted: "warn",
   in_review: "accent",
   approved: "ok",
