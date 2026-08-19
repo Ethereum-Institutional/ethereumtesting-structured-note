@@ -1,6 +1,53 @@
 # Demo runbook
 
-Everything runs on your laptop. No internet needed once dependencies are installed.
+Two ways to run it:
+
+- **Laptop** — most reliable, no internet needed. Use this for the live session.
+- **Browser** — <https://apac-rwa-console.vercel.app>, backed by a hosted chain. Use this to
+  share a link.
+
+---
+
+## Browser version
+
+**One-time setup** (needs a browser for the Fly.io login):
+
+```bash
+flyctl auth login          # opens a browser
+cd ~/Desktop/apac-rwa-demo
+./ops/deploy-chain.sh      # ~5 min: publishes the chain, points Vercel at it
+```
+
+That script bakes a snapshot of the fully-deployed chain, ships it to Fly.io in Singapore,
+verifies the RPC answers and the state restored, then sets `RPC_URL`/`CHAIN_ID` on Vercel and
+redeploys the console. Safe to re-run.
+
+**Reset the hosted demo** between meetings:
+
+```bash
+flyctl apps restart apac-rwa-chain
+```
+
+A restart reloads the baked snapshot, so everything returns to its opening state in about ten
+seconds.
+
+**Re-bake the snapshot** after changing any contract:
+
+```bash
+./ops/bake-state.sh && ./ops/deploy-chain.sh
+```
+
+**Caveats for the hosted version.** The chain is in-memory, so a Fly machine restart discards
+anything done since the last deploy — usually a feature, occasionally a surprise. The RPC is
+public and unauthenticated; it is a throwaway chain holding valueless test assets, and it must
+never point at anything real. And the console URL lets anyone who has it freeze, pause and
+trade, so treat the link as semi-private.
+
+---
+
+## Laptop version
+
+Everything runs locally. No internet needed once dependencies are installed.
 
 ---
 
