@@ -11,15 +11,15 @@ import {ERC20Pausable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC2
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
 /// @custom:security-contact security@openzeppelin.com
-contract APACPrivateCredit is ERC20, ERC20Burnable, ERC20Pausable, AccessControl, ERC20Permit, ERC20Freezable, ERC20Restricted {
+contract APACMoneyMarket is ERC20, ERC20Burnable, ERC20Pausable, AccessControl, ERC20Permit, ERC20Freezable, ERC20Restricted {
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant FREEZER_ROLE = keccak256("FREEZER_ROLE");
     bytes32 public constant LIMITER_ROLE = keccak256("LIMITER_ROLE");
 
     constructor(address recipient, address defaultAdmin, address pauser, address minter, address freezer, address limiter)
-        ERC20("APACPrivateCredit", "APCX")
-        ERC20Permit("APACPrivateCredit")
+        ERC20("APACMoneyMarket", "APMM")
+        ERC20Permit("APACMoneyMarket")
     {
         _mint(recipient, 1000000 * 10 ** decimals());
         _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);

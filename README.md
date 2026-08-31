@@ -10,7 +10,7 @@ Everything runs on a local Anvil node. No testnet, no faucets, no network depend
 
 | Layer | What it is | Source |
 |---|---|---|
-| Asset | `APACDC` — ERC-3643 permissioned token, ONCHAINID identity registry, modular compliance | Tokeny T-REX v4.1.6 |
+| Asset | `APMMF` — ERC-3643 permissioned token (a tokenized money market fund), ONCHAINID identity registry, modular compliance | Tokeny T-REX v4.1.6 |
 | Compliance seam | `ERC3643AllowlistChecker` — translates ERC-3643 identity into Uniswap `PermissionFlag`s | **written here**, on OZ v5 |
 | Hook | `PermissionedComplianceHook` — gates swaps and liquidity at the pool | **written here**, on OZ `uniswap-hooks` |
 | Venue | Permissions adapter, router, position manager | Uniswap `v4-periphery` |
@@ -49,7 +49,7 @@ cd dashboard && npm run dev                       # custody console on :3010
 13 passing tests across [`test/PermissionedTrading.t.sol`](test/PermissionedTrading.t.sol) and
 [`test/CustodyTrading.t.sol`](test/CustodyTrading.t.sol):
 
-1. **Alice trades.** 10,000 USDC → ~99.67 APACDC. Ordinary AMM execution.
+1. **Alice trades.** 10,000 USDC → ~99.67 APMMF. Ordinary AMM execution.
 2. **Bob trades but cannot LP.** Same pool, same asset — the venue requires a
    professional-investor claim (topic 42) to provide liquidity. `SWAP_ALLOWED` yes,
    `LIQUIDITY_ALLOWED` no.

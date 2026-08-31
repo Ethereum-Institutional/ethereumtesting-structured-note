@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { tradeForMyAccount, type Result } from "@/app/platform-actions";
 import { Result as ResultBox } from "./Result";
+import { CompliancePath } from "./CompliancePath";
 
 const FIELD = { background: "var(--panel-2)", borderColor: "var(--line)", color: "var(--text)" } as const;
 
@@ -14,6 +15,7 @@ export function InvestorTrade({ symbol, cash, holding }: { symbol: string; cash:
 
   const inSymbol = direction === "buy" ? "USDC" : symbol;
   const available = direction === "buy" ? cash : holding;
+  const outcome = (result?.data?.outcome ?? null) as "settled" | "rejected" | null;
 
   return (
     <div className="space-y-3">
@@ -47,15 +49,12 @@ export function InvestorTrade({ symbol, cash, holding }: { symbol: string; cash:
           onClick={() => startTransition(async () => setResult(await tradeForMyAccount(direction, amount)))}
           disabled={pending}
           className="rounded px-4 py-1.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-30"
-          style={{ background: "var(--accent)", color: "#07101f" }}
+          style={{ background: "var(--accent)", color: "#fff" }}
         >
           {pending ? "placing…" : "place order"}
         </button>
       </div>
-      <p className="text-[11px] leading-relaxed" style={{ color: "var(--muted)" }}>
-        Your custodian signs and settles this; you never hold a key. The fund&apos;s compliance hook
-        still checks <em>your</em> account&apos;s identity before the trade is allowed.
-      </p>
+      <CompliancePath outcome={pending ? null : outcome} reason={result?.data?.reason ?? null} />
       <ResultBox result={result} />
     </div>
   );

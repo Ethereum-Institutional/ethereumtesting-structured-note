@@ -13,8 +13,8 @@
 import { ethers } from "hardhat";
 import { COUNTRY, TOPIC, saveAddresses, signClaim, keyOf, utf8 } from "./lib";
 
-const TOKEN_NAME = "APAC Diversified Credit Fund";
-const TOKEN_SYMBOL = "APACDC";
+const TOKEN_NAME = "APAC Money Market Fund";
+const TOKEN_SYMBOL = "APMMF";
 const DECIMALS = 18;
 
 async function main() {

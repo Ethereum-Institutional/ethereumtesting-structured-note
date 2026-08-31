@@ -31,7 +31,7 @@ export function Activity({ rows }: { rows: ActivityRow[] }) {
                 <span className="text-xs">{r.meaning}</span>
               </div>
               <div className="mt-1 overflow-x-auto">
-                <code className="whitespace-nowrap text-[11px]" style={{ color: "#cbd3e1" }}>
+                <code className="whitespace-nowrap text-[11px]" style={{ color: "var(--text)" }}>
                   <span style={{ color: "var(--muted)" }}>{r.target}</span>
                   <span style={{ color: "var(--muted)" }}>.</span>
                   <span style={{ color: "var(--accent)" }}>{r.fn}</span>

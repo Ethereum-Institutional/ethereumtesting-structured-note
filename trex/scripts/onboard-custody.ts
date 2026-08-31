@@ -18,7 +18,7 @@ type ClientSpec = {
   name: string;
   country: number;
   professional: boolean;
-  allocation: string; // APACDC units minted by the agent
+  allocation: string; // APMMF units minted by the agent
 };
 
 const CLIENTS: ClientSpec[] = [
@@ -38,7 +38,7 @@ const SKIPPED = { ref: "CLIENT-D", name: "Prospect Capital (KYC pending)" };
  */
 const TREASURY = {
   ref: "TREASURY",
-  name: "APAC Diversified Credit Fund — Treasury",
+  name: "APAC Money Market Fund — Treasury",
   country: COUNTRY.SG,
   professional: true,
   allocation: "5000000",

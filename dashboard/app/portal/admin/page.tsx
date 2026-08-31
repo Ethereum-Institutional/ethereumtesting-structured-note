@@ -43,7 +43,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   let chain: Awaited<ReturnType<typeof applicantStatus>> | null = null;
   let cash = 0n;
   let decimals = 18;
-  let symbol = "APACDC";
+  let symbol = "APMMF";
   if (selected?.wallet) {
     try {
       const a = addresses();

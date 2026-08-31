@@ -34,8 +34,8 @@ export function AdminReview({ app, missing, complete }: { app: Application; miss
       <div
         className="rounded border p-3"
         style={{
-          borderColor: accOk ? "rgba(53,201,138,.28)" : "rgba(255,107,107,.3)",
-          background: accOk ? "rgba(53,201,138,.05)" : "rgba(255,107,107,.05)",
+          borderColor: accOk ? "rgba(13,138,95,.3)" : "rgba(255,107,107,.3)",
+          background: accOk ? "rgba(13,138,95,.04)" : "rgba(255,107,107,.05)",
         }}
       >
         <div className="flex flex-wrap items-center gap-2">
@@ -82,7 +82,7 @@ export function AdminReview({ app, missing, complete }: { app: Application; miss
         {!locked && (
           <button onClick={() => act(() => adminSaveFields(app.id, values))} disabled={pending || !dirty}
             className="rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-30"
-            style={{ background: "var(--accent)", color: "#07101f" }}>
+            style={{ background: "var(--accent)", color: "#fff" }}>
             {pending ? "saving…" : dirty ? "save changes" : "no changes"}
           </button>
         )}
@@ -96,7 +96,7 @@ export function AdminReview({ app, missing, complete }: { app: Application; miss
                 : "Sign off and grant on-chain permission"
             }
             className="rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-30"
-            style={{ background: "var(--ok)", color: "#04140d" }}>
+            style={{ background: "var(--ok)", color: "#fff" }}>
             approve &amp; grant on-chain
           </button>
         )}

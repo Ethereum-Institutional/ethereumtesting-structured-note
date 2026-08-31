@@ -17,8 +17,15 @@ import {
   simulateAs,
   addressOf,
   walletFor,
+  poolId,
+  priceFromSqrt,
+  resetSigners,
+  COUNTRY_NAMES,
   type RoleName,
 } from "@/lib/chain";
+import { recordOrder, clearOrders } from "@/lib/orders";
+import { plainGate } from "@/lib/gates";
+import { applicantStatus } from "@/lib/applications";
 import {
   TREX_TOKEN_ABI,
   CHECKER_ABI,
@@ -33,11 +40,27 @@ import {
   MODULAR_COMPLIANCE_ABI,
   MAX_BALANCE_MODULE_ABI,
   DEMO_BASELINE_ABI,
+  STATE_VIEW_ABI,
 } from "@/lib/abis";
 import { buildSwap, explainRevert, type Direction } from "@/lib/swap";
 import { requireAdmin } from "@/lib/auth";
 
-export type ActionResult = { ok: boolean; message: string };
+/**
+ * The on-chain half of an action's outcome: which contract was called, the exact Solidity call,
+ * the mined transaction, and — where it makes the point — the changed state read back from the
+ * chain afterwards. Rendered by the Result component so every control shows what it really did.
+ */
+export type ChainReceipt = {
+  contract: string;
+  address: string;
+  fn: string;
+  args: string[];
+  txHash?: string;
+  block?: number;
+  readback?: string;
+};
+
+export type ActionResult = { ok: boolean; message: string; chain?: ChainReceipt };
 
 /**
  * Every action in this file is a privileged custody or issuer operation — trading on a client's
@@ -49,21 +72,49 @@ export type ActionResult = { ok: boolean; message: string };
  * This is the real control. Hiding the page is not one: server actions are reachable endpoints
  * whether or not a UI renders a button for them.
  */
-async function run(fn: () => Promise<string>): Promise<ActionResult> {
+async function run(
+  fn: () => Promise<string | { message: string; chain?: ChainReceipt }>,
+): Promise<ActionResult> {
   try {
     await requireAdmin();
   } catch {
     return { ok: false, message: "Sign in as compliance staff to do that." };
   }
   try {
-    const message = await fn();
-    revalidatePath("/");
-    return { ok: true, message };
+    const r = await fn();
+    // "layout" scope: the console is several pages now, and an action taken on one (a freeze on
+    // /investors) must refresh the others' data (the tape on /, the badges in the shell).
+    revalidatePath("/", "layout");
+    return typeof r === "string" ? { ok: true, message: r } : { ok: true, ...r };
   } catch (err) {
     console.error(err);
-    revalidatePath("/");
-    return { ok: false, message: explainRevert(err) };
+    revalidatePath("/", "layout");
+    // Errors thrown with `plain` set already carry a human sentence; running those through the
+    // revert decoder would degrade them back into "Reverted (see server log)".
+    const message = (err as any)?.plain ? String((err as any).message) : explainRevert(err);
+    return { ok: false, message };
   }
+}
+
+/** Builds the on-chain receipt for a mined transaction, with an optional state read-back. */
+async function receipt(
+  hash: `0x${string}`,
+  contract: string,
+  address: Address,
+  fn: string,
+  args: string[],
+  readback?: () => Promise<string>,
+): Promise<ChainReceipt> {
+  const r = await publicClient.waitForTransactionReceipt({ hash });
+  return {
+    contract,
+    address,
+    fn,
+    args,
+    txHash: hash,
+    block: Number(r.blockNumber),
+    readback: readback ? await readback().catch(() => undefined) : undefined,
+  };
 }
 
 // ------------------------------------------------------------------ //
@@ -79,8 +130,20 @@ export async function freezeWallet(wallet: Address, freeze: boolean): Promise<Ac
       functionName: "setAddressFrozen",
       args: [wallet, freeze],
     });
-    await publicClient.waitForTransactionReceipt({ hash });
-    return `${freeze ? "Froze" : "Unfroze"} ${wallet.slice(0, 8)}… in the identity registry.`;
+    const chain = await receipt(
+      hash,
+      `${a.trex.tokenSymbol} token (ERC-3643)`,
+      a.trex.token,
+      "setAddressFrozen",
+      [`${wallet.slice(0, 8)}…`, String(freeze)],
+      async () => {
+        const v = await publicClient.readContract({
+          address: a.trex.token, abi: TREX_TOKEN_ABI, functionName: "isFrozen", args: [wallet],
+        });
+        return `isFrozen(${wallet.slice(0, 8)}…) → ${v}`;
+      },
+    );
+    return { message: `${freeze ? "Froze" : "Unfroze"} ${wallet.slice(0, 8)}… on the token itself.`, chain };
   });
 }
 
@@ -92,8 +155,23 @@ export async function setAssetPaused(paused: boolean): Promise<ActionResult> {
       abi: TREX_TOKEN_ABI,
       functionName: paused ? "pause" : "unpause",
     });
-    await publicClient.waitForTransactionReceipt({ hash });
-    return paused ? "Asset paused. All transfers and trading halted." : "Asset unpaused.";
+    const chain = await receipt(
+      hash,
+      `${a.trex.tokenSymbol} token (ERC-3643)`,
+      a.trex.token,
+      paused ? "pause" : "unpause",
+      [],
+      async () => {
+        const v = await publicClient.readContract({
+          address: a.trex.token, abi: TREX_TOKEN_ABI, functionName: "paused",
+        });
+        return `paused() → ${v}`;
+      },
+    );
+    return {
+      message: paused ? "Asset paused. All transfers and trading halted." : "Asset unpaused.",
+      chain,
+    };
   });
 }
 
@@ -125,24 +203,77 @@ export async function setCountryEnforcement(enforce: boolean): Promise<ActionRes
       functionName: "setCountryEnforcement",
       args: [a.trex.token, enforce],
     });
-    await publicClient.waitForTransactionReceipt({ hash });
-    return enforce
-      ? "Venue jurisdiction overlay ON — layered on top of the issuer's own country module."
-      : "Venue jurisdiction overlay OFF.";
+    const chain = await receipt(
+      hash,
+      "Compliance bridge (ERC3643AllowlistChecker)",
+      a.venue.allowlistChecker,
+      "setCountryEnforcement",
+      [a.trex.tokenSymbol, String(enforce)],
+      async () => {
+        const policy = (await publicClient.readContract({
+          address: a.venue.allowlistChecker, abi: CHECKER_ABI, functionName: "policyOf", args: [a.trex.token],
+        })) as any;
+        return `policyOf(${a.trex.tokenSymbol}).enforceCountries → ${policy[3]}`;
+      },
+    );
+    return {
+      message: enforce
+        ? "Venue jurisdiction overlay ON — layered on top of the issuer's own country module."
+        : "Venue jurisdiction overlay OFF.",
+      chain,
+    };
   });
 }
 
 export async function setCountryAllowed(country: number, allowed: boolean): Promise<ActionResult> {
   return run(async () => {
     const a = addresses();
+    const countryName = COUNTRY_NAMES[country] ?? String(country);
+
+    // Blocking a country while the overlay is off would change a flag the contract ignores —
+    // the investor keeps trading and the demo looks broken. Nobody blocks a jurisdiction
+    // without meaning it, so switch enforcement on as part of the same action.
+    let enforcementNote = "";
+    if (!allowed) {
+      const policy = (await publicClient.readContract({
+        address: a.venue.allowlistChecker, abi: CHECKER_ABI, functionName: "policyOf", args: [a.trex.token],
+      })) as any;
+      if (!policy[3]) {
+        const eh = await sendTx("issuer", {
+          address: a.venue.allowlistChecker,
+          abi: CHECKER_ABI,
+          functionName: "setCountryEnforcement",
+          args: [a.trex.token, true],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: eh });
+        enforcementNote = " The jurisdiction overlay was off, so it was switched ON in the same action (setCountryEnforcement).";
+      }
+    }
+
     const hash = await sendTx("issuer", {
       address: a.venue.allowlistChecker,
       abi: CHECKER_ABI,
       functionName: "setCountryAllowed",
       args: [a.trex.token, country, allowed],
     });
-    await publicClient.waitForTransactionReceipt({ hash });
-    return `${allowed ? "Allowed" : "Blocked"} country ${country} at the venue.`;
+    const chain = await receipt(
+      hash,
+      "Compliance bridge (ERC3643AllowlistChecker)",
+      a.venue.allowlistChecker,
+      "setCountryAllowed",
+      [a.trex.tokenSymbol, `${country} /* ${countryName} */`, String(allowed)],
+      async () => {
+        const v = await publicClient.readContract({
+          address: a.venue.allowlistChecker, abi: CHECKER_ABI, functionName: "isCountryAllowed",
+          args: [a.trex.token, country],
+        });
+        return `isCountryAllowed(${a.trex.tokenSymbol}, ${country}) → ${v}`;
+      },
+    );
+    return {
+      message: `${allowed ? "Allowed" : "Blocked"} ${countryName} at the venue.${enforcementNote} Every trade from a ${countryName}-registered passport now ${allowed ? "passes" : "fails"} this gate.`,
+      chain,
+    };
   });
 }
 
@@ -155,8 +286,23 @@ export async function setSwappingEnabled(enabled: boolean): Promise<ActionResult
       functionName: "updateSwappingEnabled",
       args: [enabled],
     });
-    await publicClient.waitForTransactionReceipt({ hash });
-    return enabled ? "Trading enabled on the adapter." : "Trading disabled on the adapter.";
+    const chain = await receipt(
+      hash,
+      "Permissions adapter (Uniswap v4)",
+      a.venue.permissionsAdapter,
+      "updateSwappingEnabled",
+      [String(enabled)],
+      async () => {
+        const v = await publicClient.readContract({
+          address: a.venue.permissionsAdapter, abi: ADAPTER_ABI, functionName: "swappingEnabled",
+        });
+        return `swappingEnabled() → ${v}`;
+      },
+    );
+    return {
+      message: enabled ? "Trading enabled on the adapter." : "Trading disabled on the adapter.",
+      chain,
+    };
   });
 }
 
@@ -187,6 +333,12 @@ export async function trade(actor: string, direction: Direction, amount: string)
     const direct = isDirect(actor);
     const holder: Address = direct ? addressOf(actor as RoleName) : (a.custody as any)[actor];
     if (!holder) throw new Error(`unknown actor ${actor}`);
+
+    // Display name for the trade tape: custody clients trade under a ref like "CLIENT-A".
+    const who =
+      [...(a.custodyClients ?? []), ...(a.custodyPending ?? [])].find((c) => c.ref === actor)?.name ?? actor;
+    const inSymbol = direction === "buy" ? "USDC" : a.trex.tokenSymbol;
+    const outSymbol = direction === "buy" ? a.trex.tokenSymbol : "USDC";
 
     const outToken = direction === "buy" ? a.trex.token : a.venue.usdc;
     const outDecimals = direction === "buy" ? a.trex.decimals : 6;
@@ -223,22 +375,103 @@ export async function trade(actor: string, direction: Direction, amount: string)
         };
 
     const signer: RoleName = direct ? (actor as RoleName) : "custodian";
-    await simulateAs(signer, call);
-    const hash = await sendTx(signer, call);
+    let hash: `0x${string}`;
+    try {
+      await simulateAs(signer, call);
+      hash = await sendTx(signer, call);
+    } catch (err) {
+      // The hook refused it in simulation \u2014 nothing was mined. Name the gate, in plain English,
+      // and put the rejection on the trade tape where the audience can see it.
+      let reason = explainRevert(err);
+      try {
+        const st = await applicantStatus(holder);
+        if (st.gate !== "clear") reason = plainGate(st.gate);
+      } catch {
+        /* keep the decoded revert */
+      }
+      await recordOrder({ who, direction, amountIn: amount, inSymbol, outSymbol, ok: false, reason });
+      throw Object.assign(new Error(`Rejected by the compliance hook: ${reason}.`), { plain: true });
+    }
 
     await publicClient.waitForTransactionReceipt({ hash });
 
     const received = formatUnits((await balanceOf()) - before, outDecimals);
-    const inSymbol = direction === "buy" ? "USDC" : a.trex.tokenSymbol;
-    const outSymbol = direction === "buy" ? a.trex.tokenSymbol : "USDC";
+    await recordOrder({ who, direction, amountIn: amount, inSymbol, outSymbol, ok: true, received, txHash: hash });
+
+    const chain = await receipt(
+      hash,
+      "Permissioned router (Uniswap v4)",
+      a.venue.router,
+      "execute",
+      ["\u00abencoded swap plan\u00bb", "deadline"],
+      async () => {
+        const slot0 = (await publicClient.readContract({
+          address: a.lens.stateView, abi: STATE_VIEW_ABI, functionName: "getSlot0", args: [poolId(a)],
+        })) as any;
+        const assetIs0 = a.pool.currency0.toLowerCase() === a.venue.permissionsAdapter.toLowerCase();
+        return `pool price after settlement \u2192 ${priceFromSqrt(slot0[0], assetIs0).toFixed(4)} USDC/${a.trex.tokenSymbol}`;
+      },
+    );
+
     const via = direct ? "" : ` (via ${a.custody.custodianName})`;
-    return `${actor}${via} swapped ${amount} ${inSymbol} \u2192 ${received} ${outSymbol}.`;
+    return { message: `${who}${via} swapped ${amount} ${inSymbol} \u2192 ${received} ${outSymbol}.`, chain };
   });
 }
 
 // ------------------------------------------------------------------ //
 //                       Asset servicing operations                   //
 // ------------------------------------------------------------------ //
+
+/**
+ * Issues new units to a verified holder — a subscription, in fund terms.
+ *
+ * The token's own compliance decides whether the mint is allowed: minting to an unverified
+ * wallet reverts on-chain, which is the right place for that check to live.
+ */
+export async function mintUnits(wallet: Address, amount: string): Promise<ActionResult> {
+  return run(async () => {
+    const a = addresses();
+    const units = parseUnits(amount || "0", a.trex.decimals);
+    if (units === 0n) throw new Error("Enter an amount greater than zero.");
+    const hash = await sendTx("agent", {
+      address: a.trex.token, abi: TREX_MINT_ABI, functionName: "mint", args: [wallet, units],
+    });
+    const chain = await receipt(
+      hash, `${a.trex.tokenSymbol} token (ERC-3643)`, a.trex.token, "mint",
+      [`${wallet.slice(0, 8)}…`, amount],
+      async () => {
+        const supply = await publicClient.readContract({
+          address: a.trex.token, abi: TREX_TOKEN_ABI, functionName: "totalSupply",
+        });
+        return `totalSupply() → ${formatUnits(supply as bigint, a.trex.decimals)}`;
+      },
+    );
+    return { message: `Issued ${amount} ${a.trex.tokenSymbol} to ${wallet.slice(0, 8)}….`, chain };
+  });
+}
+
+/** Burns units from a holder — a redemption. Agent-only on the token itself. */
+export async function burnUnits(wallet: Address, amount: string): Promise<ActionResult> {
+  return run(async () => {
+    const a = addresses();
+    const units = parseUnits(amount || "0", a.trex.decimals);
+    if (units === 0n) throw new Error("Enter an amount greater than zero.");
+    const hash = await sendTx("agent", {
+      address: a.trex.token, abi: TREX_MINT_ABI, functionName: "burn", args: [wallet, units],
+    });
+    const chain = await receipt(
+      hash, `${a.trex.tokenSymbol} token (ERC-3643)`, a.trex.token, "burn",
+      [`${wallet.slice(0, 8)}…`, amount],
+      async () => {
+        const supply = await publicClient.readContract({
+          address: a.trex.token, abi: TREX_TOKEN_ABI, functionName: "totalSupply",
+        });
+        return `totalSupply() → ${formatUnits(supply as bigint, a.trex.decimals)}`;
+      },
+    );
+    return { message: `Redeemed ${amount} ${a.trex.tokenSymbol} from ${wallet.slice(0, 8)}….`, chain };
+  });
+}
 
 /**
  * Partially freezes a holder's balance.
@@ -491,12 +724,18 @@ export async function resetDemo(): Promise<ActionResult> {
       params: [`0x${stored.toString(16)}`] as any,
     })) as boolean;
 
+    // The revert rolled every account's nonce back; cached nonce state is now poison. Discard
+    // it before the very next transaction (the re-arm below), or that transaction sits above
+    // a nonce gap forever and the reset appears to hang.
+    resetSigners();
+
     if (!reverted) {
       const id = await arm();
       return `The previous baseline had expired, so a new one was captured at the current state (snapshot ${id}).`;
     }
 
     await arm();
+    await clearOrders(); // the rewind orphans every recorded order
     return "Demo reset. Balances, freezes, pauses and the pool price are back to the baseline.";
   });
 }

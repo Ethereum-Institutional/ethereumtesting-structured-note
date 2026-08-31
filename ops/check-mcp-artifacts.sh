@@ -3,7 +3,7 @@
 # checking the copy the page renders is byte-identical to the one that actually compiles.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-A="$ROOT/mcp-token/contracts/APACPrivateCredit.sol"
+A="$ROOT/mcp-token/contracts/APACMoneyMarket.sol"
 B="$ROOT/dashboard/content/mcp/rwa-token.sol"
 if diff -q "$A" "$B" >/dev/null; then
   echo "ok: rendered MCP token matches the compiled one"

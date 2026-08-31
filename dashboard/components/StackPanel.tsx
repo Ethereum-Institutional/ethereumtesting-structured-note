@@ -39,7 +39,7 @@ export function StackPanel({ a }: { a: Addresses }) {
     >
       <div className="grid gap-5 sm:grid-cols-3">
         {col("Tokeny — the asset", "ERC-3643 (T-REX), the standard behind ~$28bn of tokenized assets", [
-          [`${"APACDC"} token`, a.trex.token, "The regulated fund unit; transfers obey its compliance"],
+          [`${"APMMF"} token`, a.trex.token, "The regulated fund unit; transfers obey its compliance"],
           ["Identity registry", a.trex.identityRegistry, "Who is verified, and under which jurisdiction"],
           ["Modular compliance", a.trex.modularCompliance, "Issuer rules: jurisdictions, supply, limits"],
           ["Trusted claim issuer", a.trex.claimIssuer, "The KYC provider whose signed claims count"],

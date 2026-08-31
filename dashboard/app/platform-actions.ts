@@ -15,6 +15,9 @@ import {
 } from "@/lib/abis";
 import { explainRevert } from "@/lib/swap";
 import { requireUser, requireAdmin, requestMagicLink, signOut } from "@/lib/auth";
+import { applicantStatus } from "@/lib/applications";
+import { recordOrder } from "@/lib/orders";
+import { plainGate } from "@/lib/gates";
 import {
   getApplication,
   getApplicationByUser,
@@ -40,7 +43,7 @@ export type Result = { ok: boolean; message: string; data?: any };
 async function run(fn: () => Promise<Result | string>): Promise<Result> {
   try {
     const r = await fn();
-    for (const p of ["/portal", "/portal/admin", "/account", "/"]) revalidatePath(p);
+    revalidatePath("/", "layout"); // every page: console tabs, portal, account
     return typeof r === "string" ? { ok: true, message: r } : r;
   } catch (err) {
     console.error(err);
@@ -196,10 +199,29 @@ export async function provisionMyAccount(): Promise<Result> {
     if (!app) throw new Error("No application on file.");
 
     if (app.wallet) {
-      // Repair path: an account provisioned before approvals were part of provisioning would look
-      // funded and permitted yet fail its first order inside Permit2.
-      await ensureAccountApprovals(app.wallet as Address);
-      return "Account already provisioned.";
+      const code = await publicClient.getCode({ address: app.wallet as Address }).catch(() => undefined);
+      if (code && code !== "0x") {
+        // Repair path: an account provisioned before approvals were part of provisioning would
+        // look funded and permitted yet fail its first order inside Permit2.
+        await ensureAccountApprovals(app.wallet as Address);
+        return "Account already provisioned.";
+      }
+
+      // The chain was reset from under this account: the record survives in the database but the
+      // contract behind it was reverted away. Recreate it — CREATE2 puts it back at the same
+      // address — and, if the file was already approved, re-apply the on-chain permissions that
+      // approval had granted. Without this, every investor page dies quietly after a demo reset.
+      const revived = await provisionCustodyAccount(app);
+      if (!revived) {
+        throw new Error("Could not reach the custody network. Your details are saved — try again shortly.");
+      }
+      if (revived.toLowerCase() !== app.wallet.toLowerCase()) {
+        await updateApplication(app.id, { wallet: revived }, "platform", "custody account re-provisioned");
+      }
+      if (app.status === "approved") {
+        await grantOnChain({ ...app, wallet: revived });
+      }
+      return "Your custody account was restored after a chain reset.";
     }
 
     const provisioned = await provisionCustodyAccount(app);
@@ -451,28 +473,20 @@ export async function adminReopen(id: string): Promise<Result> {
  *
  * Claims carry the application reference and a digest of the record, never its contents.
  */
-export async function adminApprove(id: string): Promise<Result> {
-  return run(async () => {
-    const admin = await requireAdmin();
-    const a = addresses();
-    const app = await getApplication(id);
-    if (!app) throw new Error(`No application ${id}`);
-    if (app.status === "approved") throw new Error("Already approved.");
-    if (!app.wallet) throw new Error("No custody account provisioned for this client yet.");
-    if (!isComplete(app)) throw new Error(`File incomplete. Outstanding: ${missingFields(app).join(", ")}.`);
+/**
+ * Applies an approved file's permissions on-chain — identity, signed claims, registration,
+ * unfreeze, allocation — and verifies the registry agrees. Idempotent throughout: every step
+ * re-checks the chain before acting, which is what lets the post-reset repair path re-run it
+ * safely on an account whose contracts were reverted away.
+ */
+async function grantOnChain(app: Application): Promise<{ identity: Address; digest: Hex }> {
+  const a = addresses();
+  const assessed = assessAccreditation(app);
+  const account = app.wallet as Address;
+  const digest = recordDigest(app);
+  const claimText = `KYC:${app.reference}:${digest}`;
 
-    const assessed = assessAccreditation(app);
-    if (!accreditationPermitsApproval(assessed.level)) {
-      throw new Error(
-        `Cannot approve: ${assessed.basis}. This fund is restricted to accredited and institutional investors.`,
-      );
-    }
-
-    const account = app.wallet as Address;
-    const digest = recordDigest(app);
-    const claimText = `KYC:${app.reference}:${digest}`;
-
-    const code = await publicClient.getCode({ address: account });
+  const code = await publicClient.getCode({ address: account });
     const isContract = Boolean(code && code !== "0x");
     const walletRole = roleForWallet(account);
     if (!isContract && !walletRole) throw new Error("No key held for that wallet, so it cannot sign its own claim.");
@@ -569,6 +583,27 @@ export async function adminApprove(id: string): Promise<Result> {
     })) as boolean;
     if (!verified) throw new Error("Registered, but isVerified() is still false — check the claim topics.");
 
+  return { identity, digest };
+}
+
+export async function adminApprove(id: string): Promise<Result> {
+  return run(async () => {
+    const admin = await requireAdmin();
+    const app = await getApplication(id);
+    if (!app) throw new Error(`No application ${id}`);
+    if (app.status === "approved") throw new Error("Already approved.");
+    if (!app.wallet) throw new Error("No custody account provisioned for this client yet.");
+    if (!isComplete(app)) throw new Error(`File incomplete. Outstanding: ${missingFields(app).join(", ")}.`);
+
+    const assessed = assessAccreditation(app);
+    if (!accreditationPermitsApproval(assessed.level)) {
+      throw new Error(
+        `Cannot approve: ${assessed.basis}. This fund is restricted to accredited and institutional investors.`,
+      );
+    }
+
+    const { identity, digest } = await grantOnChain(app);
+
     await updateApplication(
       id,
       {
@@ -654,6 +689,9 @@ export async function tradeForMyAccount(direction: "buy" | "sell", amount: strin
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
     const outToken = direction === "buy" ? a.trex.token : a.venue.usdc;
     const outDecimals = direction === "buy" ? a.trex.decimals : 6;
+    const inSym = direction === "buy" ? "USDC" : a.trex.tokenSymbol;
+    const outSym = direction === "buy" ? a.trex.tokenSymbol : "USDC";
+    const who = app.accountType === "entity" ? app.entityName ?? app.applicantName : app.applicantName;
 
     const balanceOf = async () =>
       (await publicClient.readContract({
@@ -673,14 +711,38 @@ export async function tradeForMyAccount(direction: "buy" | "sell", amount: strin
     };
 
     const { simulateAs } = await import("@/lib/chain");
-    await simulateAs("custodian", call);
+    try {
+      await simulateAs("custodian", call);
+    } catch (err) {
+      // The pool's hook refused the order in simulation — nothing was mined. Say why in plain
+      // English (the live gate beats the decoded revert) and print it on the trade tape.
+      let reason = explainRevert(err);
+      try {
+        const st = await applicantStatus(app.wallet as Address);
+        if (st.gate !== "clear") reason = plainGate(st.gate);
+      } catch {
+        /* keep the decoded revert */
+      }
+      await recordOrder({ who, direction, amountIn: amount, inSymbol: inSym, outSymbol: outSym, ok: false, reason });
+      return {
+        ok: false,
+        message: `Order rejected by the pool's compliance hook: ${reason}. Nothing settled — the market itself refused the trade.`,
+        data: { outcome: "rejected", reason },
+      };
+    }
+
     const hash = await sendTx("custodian", call);
     await publicClient.waitForTransactionReceipt({ hash });
 
     const received = formatUnits((await balanceOf()) - before, outDecimals);
-    const inSym = direction === "buy" ? "USDC" : a.trex.tokenSymbol;
-    const outSym = direction === "buy" ? a.trex.tokenSymbol : "USDC";
-    return `Order filled: ${amount} ${inSym} → ${received} ${outSym}. Settled in your custody account.`;
+    await recordOrder({
+      who, direction, amountIn: amount, inSymbol: inSym, outSymbol: outSym, ok: true, received, txHash: hash,
+    });
+    return {
+      ok: true,
+      message: `Order filled: ${amount} ${inSym} → ${received} ${outSym}. Settled on the public ledger — tx ${hash.slice(0, 14)}…`,
+      data: { outcome: "settled", txHash: hash },
+    };
   });
 }
 

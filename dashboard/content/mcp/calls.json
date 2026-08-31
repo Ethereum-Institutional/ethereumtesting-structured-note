@@ -4,10 +4,10 @@
     "server": "mcp.openzeppelin.com/contracts/solidity/mcp",
     "tool": "solidity-rwa",
     "output": "rwa-token.sol",
-    "prompt": "Generate a permissioned RWA token called APACPrivateCredit, symbol APCX. Transfers have to be restricted to an allowlist. I need to freeze an individual holder's balance, mint, burn, and pause the whole asset. Use role-based access control rather than a single owner, include ERC-2612 permit, and pre-mint 1,000,000 to the deployer. MIT licence, security contact security@openzeppelin.com.",
+    "prompt": "Generate a permissioned RWA token called APACMoneyMarket, symbol APMM. Transfers have to be restricted to an allowlist. I need to freeze an individual holder's balance, mint, burn, and pause the whole asset. Use role-based access control rather than a single owner, include ERC-2612 permit, and pre-mint 1,000,000 to the deployer. MIT licence, security contact security@openzeppelin.com.",
     "params": {
-      "name": "APACPrivateCredit",
-      "symbol": "APCX",
+      "name": "APACMoneyMarket",
+      "symbol": "APMM",
       "access": "roles",
       "restrictions": "allowlist",
       "freezable": true,

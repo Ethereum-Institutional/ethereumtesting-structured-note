@@ -3,40 +3,41 @@
 @tailwind utilities;
 
 /*
- * OpenZeppelin brand palette.
+ * openzeppelin.com palette, light theme.
  *
- * Only four brand colours exist: white, violet #4F56FA, grey #15193A, black.
- * The Z mark contributes two further accents (blue #2E99FF, cyan #09C2FF) which
- * are used here for state, not decoration. Everything else is white at reduced
- * opacity over the brand grey, so no non-brand hex enters the palette.
+ * Values are lifted from the live site's CSS (2026-08): white page, ink #282846,
+ * secondary #50506e, borders #e7e8ee, section grey #f6f6f9, and #4E5EE4 as the
+ * primary button blue. The Z-mark accents (blue, cyan) are kept for attribution
+ * colour but darkened where they must read as text on white.
  *
- * `--deny` is the one deliberate exception: a compliance demo has to render a
- * refusal unmistakably, and no brand colour reads as "blocked".
+ * State colours (--ok/--warn/--bad) sit outside the brand palette on purpose:
+ * a compliance demo has to render allowed vs blocked unmistakably, and on a
+ * white page green/red does that where brand cyan cannot.
  */
 :root {
-  --oz-violet: #4f56fa;
-  --oz-blue: #2e99ff;
-  --oz-cyan: #09c2ff;
-  --oz-grey: #15193a;
+  --oz-violet: #4e5ee4;
+  --oz-blue: #0a74f2;
+  --oz-cyan: #0797c9;
+  --oz-ink: #282846;
 
-  --bg: #15193a;
-  --panel: rgba(255, 255, 255, 0.04);
-  --panel-2: rgba(255, 255, 255, 0.07);
-  --line: rgba(255, 255, 255, 0.14);
-  --line-strong: rgba(255, 255, 255, 0.26);
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #f6f6f9;
+  --line: #e7e8ee;
+  --line-strong: #c3c6d5;
 
-  --text: #ffffff;
-  --muted: rgba(255, 255, 255, 0.62);
-  --faint: rgba(255, 255, 255, 0.42);
+  --text: #282846;
+  --muted: #50506e;
+  --faint: #878bab;
 
-  --accent: #4f56fa;
-  --accent-2: #2e99ff;
+  --accent: #4e5ee4;
+  --accent-2: #0a74f2;
 
-  --ok: #09c2ff;
-  --warn: #2e99ff;
-  --bad: #ff6b6b;
+  --ok: #0d8a5f;
+  --warn: #0a74f2;
+  --bad: #cf3f33;
 
-  --code-bg: #000000;
+  --code-bg: #00001e;
 }
 
 html {
@@ -57,5 +58,20 @@ pre,
 }
 
 ::selection {
-  background: rgba(79, 86, 250, 0.4);
+  background: rgba(78, 94, 228, 0.18);
+}
+
+/* Presenter demo mode: the guide bar spotlights one section per step. */
+body[data-demo="on"] [data-tour] {
+  opacity: 0.35;
+  transition: opacity 0.25s ease;
+}
+body[data-demo="on"] [data-tour][data-demo-focus="true"] {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--accent), 0 0 32px rgba(78, 94, 228, 0.18);
+  border-radius: 10px;
+}
+/* Keep the last panels reachable above the fixed guide bar. */
+body[data-demo="on"] main {
+  padding-bottom: 15rem;
 }

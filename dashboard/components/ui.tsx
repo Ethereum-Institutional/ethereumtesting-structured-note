@@ -14,7 +14,11 @@ export function Panel({
   return (
     <section
       className="rounded-lg border"
-      style={{ background: "var(--panel)", borderColor: "var(--line)" }}
+      style={{
+        background: "var(--panel)",
+        borderColor: "var(--line)",
+        boxShadow: "0 1px 2px rgba(40,40,70,.04), 0 4px 16px rgba(40,40,70,.04)",
+      }}
     >
       <header
         className="flex items-baseline justify-between gap-4 border-b px-4 py-3"
@@ -51,11 +55,11 @@ export function Stat({ label, value, tone }: { label: string; value: ReactNode; 
 
 export function Badge({ children, tone = "muted" }: { children: ReactNode; tone?: "ok" | "bad" | "warn" | "muted" | "accent" }) {
   const map = {
-    ok: ["rgba(9,194,255,.14)", "var(--ok)"],
-    bad: ["rgba(255,107,107,.14)", "var(--bad)"],
-    warn: ["rgba(46,153,255,.14)", "var(--warn)"],
-    accent: ["rgba(79,86,250,.18)", "#8f93ff"],
-    muted: ["rgba(255,255,255,.09)", "var(--muted)"],
+    ok: ["rgba(13,138,95,.1)", "var(--ok)"],
+    bad: ["rgba(207,63,51,.1)", "var(--bad)"],
+    warn: ["rgba(10,116,242,.1)", "var(--warn)"],
+    accent: ["rgba(78,94,228,.1)", "var(--accent)"],
+    muted: ["rgba(40,40,70,.07)", "var(--muted)"],
   } as const;
   const [bg, fg] = map[tone];
   return (

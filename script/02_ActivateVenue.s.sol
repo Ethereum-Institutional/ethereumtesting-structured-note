@@ -24,7 +24,7 @@ import {DemoUSDC} from "../contracts/DemoUSDC.sol";
 /**
  * Activates the venue once the issuer has allow-listed the adapter, then opens the pool.
  *
- * Price: 1 APACDC = 100 USDC. Because the asset carries 18 decimals and the stablecoin 6,
+ * Price: 1 APMMF = 100 USDC. Because the asset carries 18 decimals and the stablecoin 6,
  * the raw token1/token0 ratio is 1e-10, so sqrtPriceX96 = 1e-5 * 2**96.
  */
 contract ActivateVenue is Script {
@@ -89,7 +89,7 @@ contract ActivateVenue is Script {
         int24 upper = _align(current + RANGE_TICKS);
         console2.log("current tick:", current);
 
-        uint256 amountAsset = 100_000e18; // APACDC
+        uint256 amountAsset = 100_000e18; // APMMF
         uint256 amountCash = 10_000_000e6; // USDC at 100/unit
         (uint256 amount0Max, uint256 amount1Max) =
             adapter < usdc ? (amountAsset, amountCash) : (amountCash, amountAsset);

@@ -43,8 +43,8 @@ export function ProvisionWatcher() {
     <div
       className="rounded border px-3 py-2.5"
       style={{
-        borderColor: state === "failed" ? "rgba(255,107,107,.35)" : "rgba(91,156,255,.3)",
-        background: state === "failed" ? "rgba(255,107,107,.06)" : "rgba(91,156,255,.06)",
+        borderColor: state === "failed" ? "rgba(255,107,107,.35)" : "rgba(78,94,228,.3)",
+        background: state === "failed" ? "rgba(255,107,107,.06)" : "rgba(78,94,228,.04)",
       }}
     >
       <div className="flex flex-wrap items-center gap-2">

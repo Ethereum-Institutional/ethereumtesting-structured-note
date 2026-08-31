@@ -59,7 +59,7 @@ export function LoginForm() {
         onClick={submit}
         disabled={pending || !email.trim()}
         className="w-full rounded px-4 py-2.5 text-sm font-semibold uppercase tracking-wide transition-opacity hover:opacity-90 disabled:opacity-30"
-        style={{ background: "var(--accent)", color: "#07101f" }}
+        style={{ background: "var(--accent)", color: "#fff" }}
       >
         {pending ? "preparing…" : "Send me a sign-in link"}
       </button>
@@ -73,12 +73,12 @@ export function LoginForm() {
 
       {link && (
         <div className="rounded border px-3 py-3"
-          style={{ borderColor: "rgba(53,201,138,.35)", background: "rgba(53,201,138,.07)" }}>
+          style={{ borderColor: "rgba(13,138,95,.35)", background: "rgba(13,138,95,.05)" }}>
           <p className="text-xs" style={{ color: "var(--ok)" }}>{result?.message}</p>
           <a
             href={link}
             className="mt-2 inline-block rounded px-4 py-2 text-xs font-semibold uppercase tracking-wide"
-            style={{ background: "var(--ok)", color: "#04140d" }}
+            style={{ background: "var(--ok)", color: "#fff" }}
           >
             Sign in now →
           </a>

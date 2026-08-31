@@ -88,7 +88,7 @@ export function ProfileForm({
             onClick={() => startTransition(async () => setResult(await updateMyProfile(values)))}
             disabled={pending || !dirty}
             className="rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-30"
-            style={{ background: "var(--accent)", color: "#07101f" }}
+            style={{ background: "var(--accent)", color: "#fff" }}
           >
             {pending ? "saving…" : dirty ? "save details" : "saved"}
           </button>
@@ -99,7 +99,7 @@ export function ProfileForm({
               dirty ? "Save your changes first" : complete ? "Send for KYC review" : "Some details are still outstanding"
             }
             className="rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-30"
-            style={{ background: "var(--ok)", color: "#04140d" }}
+            style={{ background: "var(--ok)", color: "#fff" }}
           >
             submit for KYC review
           </button>

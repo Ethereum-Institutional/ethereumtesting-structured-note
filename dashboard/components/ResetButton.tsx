@@ -22,7 +22,7 @@ export function ResetButton({ armed }: { armed: boolean }) {
           <button
             onClick={go}
             className="rounded px-2.5 py-1 text-xs font-semibold uppercase tracking-wide"
-            style={{ background: "var(--bad)", color: "#160707" }}
+            style={{ background: "var(--bad)", color: "#fff" }}
           >
             confirm reset
           </button>
@@ -50,7 +50,14 @@ export function ResetButton({ armed }: { armed: boolean }) {
         </button>
       )}
       {result && (
-        <div className="absolute right-0 top-9 z-10 w-80">
+        // Solid background: the Result box's own tint is translucent, which is fine inside a
+        // panel but unreadable floating over page content.
+        <div
+          className="absolute right-0 top-9 z-20 w-80 rounded-lg border p-1"
+          style={{ background: "var(--bg)", borderColor: "var(--line)", boxShadow: "0 10px 36px rgba(40,40,70,.18)" }}
+          onClick={() => setResult(null)}
+          title="Click to dismiss"
+        >
           <Result result={result} />
         </div>
       )}

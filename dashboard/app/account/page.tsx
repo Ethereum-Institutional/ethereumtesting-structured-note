@@ -10,12 +10,15 @@ import {
 } from "@/lib/db/types";
 import { suggestionFor } from "@/lib/fake";
 import { applicantStatus } from "@/lib/applications";
-import { addresses, publicClient } from "@/lib/chain";
-import { ERC20_ABI } from "@/lib/abis";
-import { Panel, Badge, Mono, short, num } from "@/components/ui";
+import { passportOf, type Passport } from "@/lib/passport";
+import { plainGate } from "@/lib/gates";
+import { addresses, publicClient, poolId, priceFromSqrt, COUNTRY_NAMES } from "@/lib/chain";
+import { ERC20_ABI, STATE_VIEW_ABI } from "@/lib/abis";
+import { Panel, Stat, Badge, Mono, short, num } from "@/components/ui";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ProfileForm } from "@/components/ProfileForm";
 import { InvestorTrade } from "@/components/InvestorTrade";
+import { PassportCard } from "@/components/PassportCard";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { ProvisionWatcher } from "@/components/ProvisionWatcher";
@@ -55,25 +58,46 @@ export default async function AccountPage() {
     editable.map((f) => [f, suggestionFor(f, user.email)]).filter(([, v]) => v),
   ) as Record<string, string>;
 
+  // Everything below is read live from the chain: the passport the market checks, the balances,
+  // the current pool price, and whichever gate (if any) would stop the next order.
   let chain: Awaited<ReturnType<typeof applicantStatus>> | null = null;
+  let passport: Passport | null = null;
   let cash = 0n;
   let decimals = 18;
-  let symbol = "APACDC";
+  let symbol = "APMMF";
+  let poolPrice: number | null = null;
+  // A demo reset can revert the chain to before this account's contract existed. The record
+  // survives in the database, so detect the gap and let ProvisionWatcher rebuild it.
+  let walletDead = false;
   if (app.wallet) {
     try {
       const a = addresses();
       decimals = a.trex.decimals;
       symbol = a.trex.tokenSymbol;
-      chain = await applicantStatus(app.wallet as `0x${string}`);
-      cash = (await publicClient.readContract({
-        address: a.venue.usdc, abi: ERC20_ABI, functionName: "balanceOf", args: [app.wallet as `0x${string}`],
-      })) as bigint;
+      let code: string | undefined;
+      [chain, passport, cash, code] = await Promise.all([
+        applicantStatus(app.wallet as `0x${string}`),
+        passportOf(app.wallet as `0x${string}`),
+        publicClient.readContract({
+          address: a.venue.usdc, abi: ERC20_ABI, functionName: "balanceOf", args: [app.wallet as `0x${string}`],
+        }) as Promise<bigint>,
+        publicClient.getCode({ address: app.wallet as `0x${string}` }),
+      ]);
+      walletDead = !code || code === "0x";
+      const slot0 = (await publicClient.readContract({
+        address: a.lens.stateView, abi: STATE_VIEW_ABI, functionName: "getSlot0", args: [poolId(a)],
+      })) as any;
+      const assetIs0 = a.pool.currency0.toLowerCase() === a.venue.permissionsAdapter.toLowerCase();
+      poolPrice = priceFromSqrt(slot0[0], assetIs0);
     } catch {
       /* chain unreachable */
     }
   }
 
   const accOk = accreditationPermitsApproval(app.accreditationLevel);
+  const approved = app.status === "approved";
+  const displayName =
+    app.accountType === "entity" ? app.entityName ?? app.applicantName : app.applicantName;
 
   return (
     <main className="mx-auto max-w-4xl p-5 pb-16">
@@ -89,9 +113,7 @@ export default async function AccountPage() {
       </nav>
 
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {app.accountType === "entity" ? app.entityName ?? app.applicantName : app.applicantName}
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{displayName}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge tone={app.accountType === "entity" ? "accent" : "muted"}>
             {app.accountType === "entity" ? "entity account" : "individual account"}
@@ -107,68 +129,59 @@ export default async function AccountPage() {
       </header>
 
       <div className="mt-6 space-y-4">
-        {!app.wallet && <ProvisionWatcher />}
+        {(!app.wallet || walletDead) && <ProvisionWatcher />}
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title="Your account" subtitle="Held in a segregated custody account">
-            <dl className="space-y-1.5 text-xs">
-              <div className="flex justify-between gap-3">
-                <dt style={{ color: "var(--muted)" }}>Custody account</dt>
-                <dd>{app.wallet ? <Mono title={app.wallet}>{short(app.wallet)}</Mono> : <Badge tone="warn">opening</Badge>}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt style={{ color: "var(--muted)" }}>Settlement cash</dt>
-                <dd><Mono>{num(formatUnits(cash, 6), 0)} USDC</Mono></dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt style={{ color: "var(--muted)" }}>Fund holding</dt>
-                <dd><Mono>{chain ? num(formatUnits(chain.assetBalance, decimals), 0) : "—"} {symbol}</Mono></dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt style={{ color: "var(--muted)" }}>May trade</dt>
-                <dd className="flex gap-1">
-                  <Badge tone={chain?.canSwap ? "ok" : "bad"}>subscribe</Badge>
-                  <Badge tone={chain?.canProvideLiquidity ? "ok" : "bad"}>provide liquidity</Badge>
-                </dd>
-              </div>
-            </dl>
-            {chain && chain.gate !== "clear" && (
-              <p className="mt-3 rounded border px-2.5 py-2 text-[11px]"
-                style={{ borderColor: "rgba(255,107,107,.3)", background: "rgba(255,107,107,.06)", color: "var(--bad)" }}>
-                Not yet permitted to trade: {chain.gate}.
-              </p>
-            )}
-          </Panel>
+        <PassportCard
+          name={displayName}
+          countryName={
+            // The registry's country once registered on-chain; the declared one before that.
+            COUNTRY_NAMES[passport?.country || app.country || 0] ?? "—"
+          }
+          wallet={app.wallet}
+          passport={passport}
+        />
 
-          <Panel title="Accreditation" subtitle="This fund is restricted to accredited investors">
-            <p className="text-xs leading-relaxed">
-              {app.accreditationBasis ?? "Not yet assessed."}
-            </p>
-            <div className="mt-3 border-t pt-3 text-[11px] leading-relaxed" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>
-              {app.accountType === "entity" ? (
-                <>An entity qualifies with net assets of at least S${THRESHOLDS.entityNetAssets.toLocaleString()}.</>
-              ) : (
-                <>
-                  An individual qualifies with net financial assets of at least
-                  S${THRESHOLDS.individualNetFinancialAssets.toLocaleString()} <em>or</em> annual income of at
-                  least S${THRESHOLDS.individualAnnualIncome.toLocaleString()}.
-                </>
-              )}
+        <Panel title="Your account" subtitle="Held in a segregated custody account — balances read live from the chain">
+          <div className="grid grid-cols-2 gap-4">
+            <Stat
+              label={`Fund holding (${symbol})`}
+              value={chain ? num(formatUnits(chain.assetBalance, decimals), 0) : "—"}
+            />
+            <Stat label="Settlement cash (USDC)" value={num(formatUnits(cash, 6), 0)} />
+          </div>
+          <dl className="mt-4 space-y-1.5 text-xs">
+            <div className="flex justify-between gap-3">
+              <dt style={{ color: "var(--muted)" }}>Custody account</dt>
+              <dd>{app.wallet ? <Mono title={app.wallet}>{short(app.wallet)}</Mono> : <Badge tone="warn">opening</Badge>}</dd>
             </div>
-            {!accOk && (
-              <p className="mt-3 rounded border px-2.5 py-2 text-[11px]"
-                style={{ borderColor: "rgba(255,107,107,.3)", color: "var(--bad)" }}>
-                On the figures declared this fund is not available to you. Compliance cannot approve
-                a retail file for a restricted fund.
-              </p>
-            )}
-          </Panel>
-        </div>
+            <div className="flex justify-between gap-3">
+              <dt style={{ color: "var(--muted)" }}>May trade</dt>
+              <dd className="flex gap-1">
+                <Badge tone={chain?.canSwap ? "ok" : "bad"}>subscribe / redeem</Badge>
+                <Badge tone={chain?.canProvideLiquidity ? "ok" : "bad"}>provide liquidity</Badge>
+              </dd>
+            </div>
+          </dl>
+          {chain && chain.gate !== "clear" && (
+            <p className="mt-3 rounded border px-2.5 py-2 text-xs leading-relaxed"
+              style={{ borderColor: "rgba(255,107,107,.3)", background: "rgba(255,107,107,.06)", color: "var(--bad)" }}>
+              {plainGate(chain.gate)}. The pool itself will reject your orders until this clears —
+              it is enforced by the market&apos;s compliance hook, not by this app.
+            </p>
+          )}
+        </Panel>
 
-        {app.status === "approved" && chain?.canSwap ? (
+        {approved && app.wallet ? (
           <Panel
             title="Place an order"
-            subtitle={`You hold ${num(formatUnits(cash, 6), 0)} USDC — buy units from the fund's pool`}
+            subtitle="Buy or sell fund units on the live pool — the hook checks your passport on every order"
+            right={
+              poolPrice !== null ? (
+                <span className="text-xs" style={{ color: "var(--muted)" }}>
+                  live pool price <span className="font-mono" style={{ color: "var(--text)" }}>{num(poolPrice)} USDC</span> / {symbol}
+                </span>
+              ) : undefined
+            }
           >
             <InvestorTrade
               symbol={symbol}
@@ -177,24 +190,50 @@ export default async function AccountPage() {
             />
           </Panel>
         ) : (
-          <Panel
-            title={missing.length ? "Complete your application" : "Your application"}
-            subtitle={
-              missing.length
-                ? `Outstanding: ${missing.map((f) => FIELD_LABELS[f] ?? f).join(", ")}`
-                : app.status === "in_review"
-                  ? "With compliance for review"
-                  : "Ready to submit"
-            }
-          >
-            <ProfileForm
-              app={app}
-              editable={editable}
-              missing={missing}
-              complete={complete}
-              suggestions={suggestions}
-            />
-          </Panel>
+          <>
+            <Panel
+              title={missing.length ? "Complete your application" : "Your application"}
+              subtitle={
+                missing.length
+                  ? `Outstanding: ${missing.map((f) => FIELD_LABELS[f] ?? f).join(", ")}`
+                  : app.status === "in_review"
+                    ? "With compliance for review"
+                    : "Ready to submit"
+              }
+            >
+              <ProfileForm
+                app={app}
+                editable={editable}
+                missing={missing}
+                complete={complete}
+                suggestions={suggestions}
+              />
+            </Panel>
+
+            <Panel title="Accreditation" subtitle="This fund is restricted to accredited investors">
+              <p className="text-xs leading-relaxed">
+                {app.accreditationBasis ?? "Not yet assessed."}
+              </p>
+              <div className="mt-3 border-t pt-3 text-[11px] leading-relaxed" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>
+                {app.accountType === "entity" ? (
+                  <>An entity qualifies with net assets of at least S${THRESHOLDS.entityNetAssets.toLocaleString()}.</>
+                ) : (
+                  <>
+                    An individual qualifies with net financial assets of at least
+                    S${THRESHOLDS.individualNetFinancialAssets.toLocaleString()} <em>or</em> annual income of at
+                    least S${THRESHOLDS.individualAnnualIncome.toLocaleString()}.
+                  </>
+                )}
+              </div>
+              {!accOk && (
+                <p className="mt-3 rounded border px-2.5 py-2 text-[11px]"
+                  style={{ borderColor: "rgba(255,107,107,.3)", color: "var(--bad)" }}>
+                  On the figures declared this fund is not available to you. Compliance cannot approve
+                  a retail file for a restricted fund.
+                </p>
+              )}
+            </Panel>
+          </>
         )}
 
         {app.status === "rejected" && app.rejectionReason && (
@@ -205,10 +244,11 @@ export default async function AccountPage() {
 
         <Panel title="What we put on the blockchain" subtitle="And what stays here">
           <p className="text-[11px] leading-relaxed" style={{ color: "var(--muted)" }}>
-            Nothing on this page goes on-chain. When your application is approved, the fund&apos;s
-            KYC provider signs claims against your custody account carrying two things: this
-            application&apos;s reference, and a cryptographic digest of the record. Your name, date
-            of birth, passport number and address stay in this system.
+            Your name, date of birth, passport number and address never leave this system. What
+            goes on-chain is your passport: an identity contract, carrying claims signed by the
+            fund&apos;s KYC provider that contain only this application&apos;s reference and a
+            cryptographic digest of the record. The market verifies the signature — it never sees
+            the file.
           </p>
           {app.claimDigest && (
             <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>

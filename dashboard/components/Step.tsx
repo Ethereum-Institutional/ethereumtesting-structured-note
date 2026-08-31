@@ -33,7 +33,7 @@ export function Step({
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
         <span
           className="rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
-          style={{ background: "rgba(255,255,255,.08)", color: tone }}
+          style={{ background: "rgba(40,40,70,.06)", color: tone }}
         >
           {who}
         </span>
@@ -99,7 +99,7 @@ export function ToolCall({
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2">
         <span
           className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
-          style={{ background: "rgba(9,194,255,.14)", color: "var(--oz-cyan)" }}
+          style={{ background: "rgba(7,151,201,.1)", color: "var(--oz-cyan)" }}
         >
           MCP call
         </span>
@@ -127,7 +127,7 @@ export function Proof({ label, children }: { label: string; children: ReactNode 
   return (
     <div
       className="mt-3 rounded-lg border p-3"
-      style={{ borderColor: "rgba(9,194,255,.35)", background: "rgba(9,194,255,.06)" }}
+      style={{ borderColor: "rgba(13,138,95,.35)", background: "rgba(13,138,95,.05)" }}
     >
       <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--ok)" }}>
         Verified &middot; {label}
@@ -142,7 +142,7 @@ export function Note({ title, children }: { title: string; children: ReactNode }
   return (
     <div
       className="mt-3 rounded-lg border p-3"
-      style={{ borderColor: "rgba(46,153,255,.35)", background: "rgba(46,153,255,.06)" }}
+      style={{ borderColor: "rgba(10,116,242,.3)", background: "rgba(10,116,242,.04)" }}
     >
       <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--oz-blue)" }}>
         {title}

@@ -102,7 +102,7 @@ export function Servicing({
               onClick={() => kycStart(async () => setKycRes(await completeKyc(kycRef, kycCountry, kycAlloc)))}
               disabled={kycPending}
               className="rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-40"
-              style={{ background: "var(--ok)", color: "#04140d" }}>
+              style={{ background: "var(--ok)", color: "#fff" }}>
               {kycPending ? "onboarding…" : "onboard"}
             </button>
           </div>
@@ -129,7 +129,7 @@ export function Servicing({
             onClick={() => ftStart(async () => setFtRes(await forceTransfer(from as any, to as any, amount)))}
             disabled={ftPending || from === to}
             className="rounded border px-3 py-1.5 text-xs uppercase tracking-wide disabled:opacity-40"
-            style={{ borderColor: "rgba(46,153,255,.4)", color: "var(--warn)" }}>
+            style={{ borderColor: "rgba(10,116,242,.35)", color: "var(--warn)" }}>
             {ftPending ? "…" : "transfer"}
           </button>
         </div>
@@ -162,7 +162,7 @@ export function Servicing({
             onClick={() => pfStart(async () => setPfRes(await setPartialFreeze(pfWallet as any, pfAmount, false)))}
             disabled={pfPending}
             className="rounded border px-3 py-1.5 text-xs uppercase tracking-wide disabled:opacity-40"
-            style={{ borderColor: "rgba(9,194,255,.4)", color: "var(--ok)" }}>
+            style={{ borderColor: "rgba(13,138,95,.4)", color: "var(--ok)" }}>
             release
           </button>
         </div>
@@ -183,7 +183,7 @@ export function Servicing({
             onClick={() => mbStart(async () => setMbRes(await setMaxBalanceModule(true, maxUnits)))}
             disabled={mbPending}
             className="rounded border px-3 py-1.5 text-xs uppercase tracking-wide disabled:opacity-40"
-            style={{ borderColor: "rgba(79,86,250,.4)", color: "var(--accent)" }}>
+            style={{ borderColor: "rgba(78,94,228,.4)", color: "var(--accent)" }}>
             {maxBalanceBound ? "update limit" : "bind limit"}
           </button>
           {maxBalanceBound && (

@@ -76,7 +76,7 @@ export function HoldingsAdmin({
               disabled={pending || !approved || !hasWallet}
               title={!hasWallet ? "No custody account yet" : !approved ? "Approve the file first" : "Issue units"}
               className="rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-30"
-              style={{ background: "var(--ok)", color: "#04140d" }}
+              style={{ background: "var(--ok)", color: "#fff" }}
             >
               issue
             </button>
@@ -102,7 +102,7 @@ export function HoldingsAdmin({
               disabled={pending || !hasWallet}
               title={!hasWallet ? "No custody account yet" : "Fund cash"}
               className="rounded border px-3 py-1.5 text-xs uppercase tracking-wide disabled:opacity-30"
-              style={{ borderColor: "rgba(91,156,255,.4)", color: "var(--accent)" }}
+              style={{ borderColor: "rgba(78,94,228,.4)", color: "var(--accent)" }}
             >
               fund
             </button>

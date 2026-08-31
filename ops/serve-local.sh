@@ -39,7 +39,10 @@ step "opening a public tunnel to it"
 pkill -f "cloudflared tunnel" 2>/dev/null || true
 sleep 1
 rm -f "$TUNNEL_LOG"
-nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8545 > "$TUNNEL_LOG" 2>&1 &
+# --protocol http2 matters: cloudflared defaults to QUIC (UDP), which some networks mangle —
+# the tunnel then registers but flaps forever ("failed to serve tunnel connection" on repeat)
+# and the hosted console hangs on every chain read. TCP-based http2 survives those networks.
+nohup cloudflared tunnel --no-autoupdate --protocol http2 --url http://127.0.0.1:8545 > "$TUNNEL_LOG" 2>&1 &
 
 URL=""
 for _ in $(seq 1 40); do
@@ -53,11 +56,14 @@ echo "   $URL"
 step "checking the tunnel serves JSON-RPC"
 CHAIN_HEX=""
 for _ in $(seq 1 15); do
+  # `|| true` matters: under `set -e` a failed curl (e.g. this machine cannot resolve
+  # trycloudflare.com, which the comment below already anticipates) would otherwise kill the
+  # whole script here instead of falling through to the warn-and-continue path.
   CHAIN_HEX="$(curl -s --max-time 10 -X POST "$URL" -H 'Content-Type: application/json' \
     -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' 2>/dev/null \
     | python3 -c "import json,sys
 try: print(json.load(sys.stdin)['result'])
-except Exception: print('')")"
+except Exception: print('')" || true)"
   [ -n "$CHAIN_HEX" ] && break
   sleep 2
 done

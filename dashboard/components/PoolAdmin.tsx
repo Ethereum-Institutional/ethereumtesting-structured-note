@@ -138,7 +138,7 @@ export function PoolAdmin({ pool, symbol }: { pool: PoolAdminState; symbol: stri
             onClick={() => act(() => addTreasuryLiquidity(units, cash))}
             disabled={pending}
             className="rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-30"
-            style={{ background: "var(--accent)", color: "#07101f" }}
+            style={{ background: "var(--accent)", color: "#fff" }}
           >
             {pending ? "deploying…" : "deploy liquidity"}
           </button>
