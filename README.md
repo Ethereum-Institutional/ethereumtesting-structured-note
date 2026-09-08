@@ -27,11 +27,54 @@ is that missing piece, written against OpenZeppelin's `BaseHook`.
 
 ## Quick start
 
-```bash
-./ops/reset.sh                                    # full clean deploy, ~60s
-forge test --fork-url http://127.0.0.1:8545 -vv   # 13 tests: prove the gates bind
-cd dashboard && npm run dev                       # custody console on :3010
+Everything below runs on a local Anvil node. There is no testnet, no faucet, no account to
+create and no cloud dependency — clone it and it works offline.
+
+**With [Claude Code](https://claude.com/claude-code), one keyword does the whole thing:**
+
 ```
+/demo
+```
+
+It checks prerequisites, initialises the submodules, installs dependencies, deploys the eight
+stack phases in dependency order, starts the console and tells you how to sign in. Budget
+~5 minutes on a cold clone — most of it Solidity compilation, because v4-core's `Pool`
+library forces `via_ir` with a high optimizer-run count.
+
+| Keyword | What it does |
+|---|---|
+| `/demo` | Full bring-up, skipping anything already done |
+| `/demo test` | The 13 compliance tests that prove the gates bind |
+| `/demo reset` | Clean rebuild — a fresh chain between meetings |
+| `/demo stop` | Shut the chain and console down |
+
+The command is [`.claude/commands/demo.md`](.claude/commands/demo.md). It is written to be read,
+so it also serves as the manual runbook, with the failure modes worth knowing about.
+
+### By hand
+
+```bash
+git submodule update --init --recursive   # v4-periphery, uniswap-hooks, forge-std
+( cd trex && npm install )                # reset.sh does NOT install these for you
+( cd dashboard && npm install )
+./ops/reset.sh                            # ~5 min cold, ~1 min cached
+cd dashboard && npm run dev               # console on :3010
+
+forge test --fork-url http://127.0.0.1:8545 -vv   # 13 tests: prove the gates bind
+```
+
+You need **Foundry** and **Node 20+** — nothing else. No Docker, no database, no mail
+provider, no API keys. (`ops/deploy-chain.sh` and `ops/serve-local.sh` also want Python 3, but
+nothing on the local path does.)
+
+Two things about the console that are not guessable: sign-in is a magic link and there is
+deliberately no mail provider wired up, so the link appears **on screen**; and the
+compliance-officer view is behind a staff code you set yourself in `dashboard/.env.local`
+(`STAFF_ACCESS_CODE`, plus `ADMIN_EMAILS` for your own address). Storage falls back to a JSON
+file when no `POSTGRES_URL` is set, so the portal is fully usable with no database.
+
+For a version anyone can reach from a browser without running anything, see
+[Hosting](#hosting) below.
 
 ## The cast
 
