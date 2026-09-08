@@ -1,6 +1,8 @@
 # dependencies
 node_modules/
-/lib/
+# lib/ is NOT ignored: the Foundry dependencies there are git submodules, and ignoring
+# the directory silently kept their gitlinks out of the tree -- so a fresh clone got an
+# empty lib/ and could not compile.
 
 # build output
 out/
