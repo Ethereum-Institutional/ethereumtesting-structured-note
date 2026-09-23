@@ -3,7 +3,7 @@
 | File | Purpose |
 |---|---|
 | `reset.sh` | Full clean deploy in dependency order. Start here. |
-| `anvil.sh` | Starts the local chain with a raised code-size limit. |
+| `anvil.sh` | Starts the local chain. The standard EIP-170 limit is enforced. |
 | `setup-permit2.sh` | Installs canonical Permit2 bytecode at its mainnet address. |
 | `keys.env` | Anvil default accounts mapped to demo roles. `source` it. |
 | `addresses.json` | Every deployed address. Written by the deploy scripts, read by the tests and dashboard. |

@@ -1,4 +1,4 @@
-# Structured note PoC — phase handoff
+# Structured note PoC: phase handoff
 
 Status at the close of the first phase. Written so a later session can pick this up with no
 prior context.
@@ -64,6 +64,11 @@ These took real investigation. Do not re-derive them.
   therefore genuinely the missing piece, is reused unchanged, and **sits in audit scope**.
 - **The permissioned stack is deployed on no network**, test or main. The whole periphery is
   deployed by us.
+- **EIP-170 is solved for the venue (spike 1).** The position manager is 23,195 bytes under a
+  per-path restriction at 500 runs. The pool library does not compile at low runs, so **no file
+  may import both the position manager and the pool manager**; the deploy script deploys both
+  from artifacts. Run `forge clean` after changing the restrictions; the incremental cache
+  reports mixed sizes.
 - Core v4 **is** on the target test network. Reuse the deployed `PoolManager` and canonical
   Permit2 rather than deploying our own, which the inherited local scripts do.
 - The checker interface is
@@ -82,10 +87,16 @@ These took real investigation. Do not re-derive them.
   chosen. Declare the RC to the audit firm and make re-pinning to the final release a gate before
   anything moves past PoC.
 - Licence is permissive with weak copyleft. No contamination issue.
-- **Pragma is `^0.8.24`, floating.** The higher version in its README is only what size
-  measurement used. **So solc is not a barrier** and everything compiles at the version the AMM
-  adapter pins exactly. The only remaining conflict is the standard library version, which is a
-  config question, not a wall.
+- **Pragma is `^0.8.24`, floating.** It compiles at the version the AMM adapter pins exactly,
+  **but it does not fit there** (corrected by spike 1, below). Solc is not a barrier to
+  compilation; it is a barrier to size.
+- **Size (spike 1).** No shipped variant has everything the note needs, and no compiler setting
+  fits the needed set on the standard bases. A lean composition from the rule-engine layer
+  (omitting cross-chain and the gasless forwarder) fits at 24,004 bytes, **572 spare**, but only
+  on the legacy pipeline with solc 0.8.27 or later. The venue's unit is 0.8.26 IR, where the same
+  contract is 26,737. **So instruments build in their own compilation unit**, which also
+  removes the library version conflict. The debt attributes module does not fit. The composing
+  contract is ours and in audit scope. Detail in `docs/spikes/01-contract-size.md`.
 - Native UUPS, with its own upgrade role. That role is what the Tier 2 ceremony holds.
 - The enforcement module exposes `forcedTransfer(from, to, value, bytes data)` and partial freeze
   with the same payload. **That payload carries the written intervention reason**, so the
@@ -139,12 +150,16 @@ credential platform by its contracts.
 
 **Three spikes first.** Each is hours and each can invalidate a large part of the plan.
 
-1. **EIP-170 via per-path compiler restrictions.** Gates the FX pool and covers instrument sizing
+1. **Done, 23 September 2026.** Venue passes; instrument passes only in its own compilation
+   unit as a lean custom composition. See `docs/spikes/01-contract-size.md`. Original brief:
+   **EIP-170 via per-path compiler restrictions.** Gates the FX pool and covers instrument sizing
    with the same mechanism. If it fails, the pool is cut and the test network carries the note,
    deposit, registry and DvP, which is the client draft's entire scope, so the fallback costs
    nothing that was asked for.
 2. **Compliance-interface adapter surface.** Map every uRWA function onto a primitive of the debt
-   standard, and confirm restriction values express as **non-reverting** views.
+   standard, and confirm restriction values express as **non-reverting** views. Work against the
+   lean composition from spike 1, and measure anything added to the token against its 572-byte
+   margin; assume the adapter lives outside the token unless the standard already provides it.
 3. **Payoff specification.** Settle boundary semantics and rounding direction in writing before
    any Solidity.
 
@@ -169,6 +184,12 @@ naming sign-off**. Neither blocks building; both block executing.
 - A numeric-formatting heuristic in the same file breaks at low decimals and truncates long
   strings to twelve characters, which would cut an intervention reason mid-sentence.
 - Price maths hardcodes a decimal gap and is **copy-pasted in two files**, not imported.
+- **The pool's opening price assumes the asset sorts first.** `02_ActivateVenue` orders the
+  currencies by address but initialises with a constant computed for the asset as `currency0`.
+  When the stablecoin sorts first the pool opens at an inverted price and swaps return zero.
+  Local addresses are deterministic and happen to sort the safe way, so the tests pass; a retry
+  on a non-fresh node in spike 1 produced the other order and two swap tests failed. On a public
+  network this is a coin toss. Derive the price from the actual order in Wave 5.
 - `poolId` takes the whole manifest, encoding one pool.
 - The holder cast is a hand-assembled literal that cannot carry the fields the registrar split and
   holder roll need.
@@ -178,6 +199,8 @@ naming sign-off**. Neither blocks building; both block executing.
 - The address manifest is passed as a hosting environment variable and has a size ceiling it will
   approach.
 - **Submodules are not checked out.** Nothing compiles until they are initialised.
+- ~~The local node runs with a raised code-size limit.~~ Removed in spike 1; every node start
+  now enforces the standard limit.
 
 ---
 

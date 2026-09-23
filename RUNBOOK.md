@@ -312,11 +312,9 @@ the asset, OpenZeppelin for the integration and custody layers.
 `PermissionedComplianceHook` (the hook v4-periphery leaves to integrators), and
 `CustodyAccount` (segregated client custody). Everything else is Tokeny's or Uniswap's.
 
-**If asked whether it works on mainnet:** the compliance layer, yes. One caveat —
-Uniswap's `PermissionedPositionManager` compiles to ~32KB here, over the 24,576-byte
-contract size limit, so the local node runs with a raised limit. That has to be resolved
-before a public deployment. Don't oversell this point; it's a build-config issue, not a
-design one.
+**If asked whether it works on mainnet:** the compliance layer, yes. Every contract,
+including the position manager, deploys under the standard 24,576-byte size limit, and the
+local node enforces that limit.
 
 **If asked for a link:** it's laptop-local today. Making it shareable means hosting the
 dashboard on Vercel and the chain on a small cloud box — about an hour of work. Ask first.

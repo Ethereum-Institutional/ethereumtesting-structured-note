@@ -24,7 +24,7 @@ command -v cloudflared >/dev/null || fail "cloudflared not installed. Run: brew 
 step "starting the chain from the baked snapshot"
 pkill -f "anvil --chain-id 31337" 2>/dev/null || true
 sleep 1
-nohup anvil --chain-id 31337 --code-size-limit 60000 \
+nohup anvil --chain-id 31337 \
   --host 127.0.0.1 --load-state "$STATE" --silent > /tmp/anvil-apac.log 2>&1 &
 for _ in $(seq 1 40); do
   cast block-number --rpc-url http://127.0.0.1:8545 >/dev/null 2>&1 && break

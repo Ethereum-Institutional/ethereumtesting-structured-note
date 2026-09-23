@@ -17,7 +17,7 @@ cd "$ROOT"
 source ./ops/keys.env
 
 RPC="${RPC:-http://127.0.0.1:8545}"
-FS="--rpc-url $RPC --broadcast --disable-code-size-limit"
+FS="--rpc-url $RPC --broadcast"
 
 step() { printf '\n\033[1m── %s\033[0m\n' "$1"; }
 

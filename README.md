@@ -170,13 +170,12 @@ reset between meetings. This is the recommended setup: a conference-room wifi fa
 break it.
 
 **If you want a shareable link — Vercel for the dashboard, Anvil on a small cloud box.**
-Keeps every local advantage (no faucets, no gas, and we control the node's
-`--code-size-limit`, which matters given the position-manager issue below) and gives a URL.
+Keeps every local advantage (no faucets, no gas) and gives a URL.
 Three small changes are needed: read `addresses.json` from an env var rather than the
 filesystem, move the demo keys into env vars, and expose the RPC.
 
-**Public testnet is blocked today.** `PermissionedPositionManager` is ~32KB and will not
-deploy under EIP-170 on a real network. That has to be solved first.
+**Public testnet is no longer blocked on code size.** Every contract deploys under the
+standard EIP-170 limit. See "Contract size" below.
 
 > Security note for any hosted version: the dashboard signs with keys held server-side and
 > exposes freeze, pause and trade to anyone with the URL. That is fine for a disposable demo
@@ -210,10 +209,14 @@ The venue is onboarded exactly like an investor. That is what makes the model au
 
 ## Known limitations
 
-- **`PermissionedPositionManager` is ~32KB**, over the 24,576-byte EIP-170 limit. Upstream
-  fits it with a dedicated low-optimizer-runs IR profile, but that profile cannot compile
-  v4-core's `Pool.sol` in this tree. The local node runs with `--code-size-limit 60000` and
-  scripts use `--disable-code-size-limit`. Resolve before any public-network deployment.
+- **Contract size.** At the default profile `PermissionedPositionManager` is 31,983 bytes,
+  over the 24,576-byte EIP-170 limit. `foundry.toml` compiles it and its `PositionManager`
+  base at 500 optimizer runs through per-path compilation restrictions, as upstream does,
+  which gives 23,195 bytes. v4-core's `Pool` library does not compile at 500 runs, so no
+  file may import both the position manager and `PoolManager`. The deploy script therefore
+  deploys both from their artifacts (`script/artifacts/`), which also keeps the script, the
+  hook and the router on the default profile with exactly one build each. The local node
+  enforces the standard limit.
 - **`DemoPermissionedRouter` is a minimal stand-in.** `PermissionedV4Router` is abstract;
   production uses Uniswap's Universal Router (v2.2.0+).
 - **ERC-3643 is not yet in OpenZeppelin Contracts.** The OZ ↔ T-REX Network partnership

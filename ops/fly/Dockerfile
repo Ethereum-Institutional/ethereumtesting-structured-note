@@ -16,14 +16,10 @@ EXPOSE 8545
 # Auto-mine rather than a fixed block time: blocks are produced only when a transaction
 # arrives, so an idle demo chain does not accumulate empty blocks or burn CPU.
 #
-# --code-size-limit is raised because Uniswap's PermissionedPositionManager compiles to ~32KB
-# with the IR settings v4-core's Pool library requires. See README "Known limitations".
-#
 # A restart reloads the snapshot, discarding anything done since. That is deliberate: it makes
 # a machine restart equivalent to a clean demo reset.
 ENTRYPOINT ["anvil"]
 CMD ["--host", "0.0.0.0", \
      "--port", "8545", \
      "--chain-id", "31337", \
-     "--code-size-limit", "60000", \
      "--load-state", "/chain/anvil-state.json"]

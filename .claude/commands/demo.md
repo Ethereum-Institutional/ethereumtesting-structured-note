@@ -60,7 +60,7 @@ Both are required — `ops/reset.sh` does **not** install them for you.
 ./ops/reset.sh
 ```
 
-This starts Anvil (chain 31337, `--code-size-limit 60000`) and runs the eight deploy phases in
+This starts Anvil (chain 31337, standard EIP-170 limit enforced) and runs the eight deploy phases in
 dependency order — Permit2, the T-REX issuer stack under Hardhat, the Uniswap v4 venue under
 Foundry, adapter allow-listing, pool activation, then custody. See `ops/README.md`.
 
@@ -131,7 +131,7 @@ If `ops/anvil-state.json` is present, the entire toolchain is unnecessary — th
 fully-deployed chain, and `anvil` alone can serve it:
 
 ```bash
-anvil --chain-id 31337 --code-size-limit 60000 --load-state ops/anvil-state.json
+anvil --chain-id 31337 --load-state ops/anvil-state.json
 ```
 
 Skip steps 2, 3 and 4 entirely; you still need `dashboard/npm install` for step 6. Contract
@@ -147,8 +147,9 @@ it, but that needs the full toolchain — so on a cold clone, take the long path
   `http://127.0.0.1:8545`) — check `dashboard/.env.local` for a leftover hosted value.
 - **Port 3010 in use.** `npm run dev` pins the port; free it or change it in
   `dashboard/package.json`.
-- **`PermissionedPositionManager` deploy fails on code size.** It is ~32KB, over EIP-170. The
-  local node must run with `--code-size-limit 60000` and forge scripts with
-  `--disable-code-size-limit`. This is why the demo cannot go on a public testnet as-is.
+- **A deploy fails on code size.** The position manager is compiled at low optimizer runs by
+  a per-path restriction in `foundry.toml` and deployed from its artifact. If it has grown
+  past 24,576 bytes, something has imported it into a default-profile unit, or the build
+  cache is stale after a change to the restrictions. Run `forge clean` and rebuild.
 - **Anvil already running from something else.** The ops scripts only kill processes matching
   `anvil --chain-id 31337`, so an unrelated node on 8545 will collide. Stop it first.

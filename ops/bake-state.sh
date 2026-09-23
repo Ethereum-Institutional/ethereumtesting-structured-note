@@ -24,7 +24,6 @@ echo "starting anvil with state dumping enabled"
 nohup anvil \
   --chain-id 31337 \
   --block-time 1 \
-  --code-size-limit 60000 \
   --dump-state "$STATE" \
   --silent > "$LOG" 2>&1 &
 ANVIL_PID=$!
