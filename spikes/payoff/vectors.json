@@ -1,0 +1,3258 @@
+{
+ "calculation_amount_cents": 100000,
+ "holders": {
+  "investor-a": 3,
+  "investor-b": 7,
+  "custody-nominee": 2,
+  "issuer-inventory": 5
+ },
+ "excluded": [
+  "issuer-inventory"
+ ],
+ "cases": [
+  {
+   "name": "final-at-barrier",
+   "clause": "B3",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     270720,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "3/5",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "final-one-unit-below-barrier",
+   "clause": "B3",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     270719,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": true,
+    "breach_date": "2027-10-15",
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 60000,
+      "worst_index": 0,
+      "worst_ratio": "270719/451200",
+      "distribution": {
+       "investor-a": 180000,
+       "investor-b": 420000,
+       "custody-nominee": 120000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "final-one-unit-above-barrier",
+   "clause": "B3",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     270721,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "270721/451200",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "coupon-at-barrier",
+   "clause": "B1",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     315840,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     406080,
+     1729285,
+     23750
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "7/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "coupon-one-unit-below",
+   "clause": "B1",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     315839,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     406080,
+     1729285,
+     23750
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "mer-at-trigger",
+   "clause": "B2",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     451200,
+     2184360,
+     30000
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     406080,
+     1729285,
+     23750
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-04-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "1/1",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "mer",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "1/1",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "mer-one-unit-below",
+   "clause": "B2",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     451199,
+     2184360,
+     30000
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     406080,
+     1729285,
+     23750
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "451199/451200",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "mer-first-date",
+   "clause": "S3",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     473760,
+     2184360,
+     30000
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     406080,
+     1729285,
+     23750
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-01-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "21/20",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-01-15",
+      "kind": "mer",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "21/20",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "mer-step-down-at-trigger",
+   "clause": "B2",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 9500
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 9000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     428640,
+     2184360,
+     30000
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     406080,
+     1729285,
+     23750
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-04-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "19/20",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "mer",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "19/20",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "tie-two-worst",
+   "clause": "P4",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     338400,
+     1365225,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "3/4",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "3/4",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "worst-is-last-underlying",
+   "clause": "P4",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     496320,
+     2002330,
+     20000
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 2,
+      "worst_ratio": "4/5",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 100000,
+      "worst_index": 2,
+      "worst_ratio": "4/5",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "breach-half-cent-rounds-up",
+   "clause": "R2",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     225318,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": true,
+    "breach_date": "2027-10-15",
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 49938,
+      "worst_index": 0,
+      "worst_ratio": "799/1600",
+      "distribution": {
+       "investor-a": 149814,
+       "investor-b": 349566,
+       "custody-nominee": 99876
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "breach-rounds-to-nearest-up",
+   "clause": "R2",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     225599,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": true,
+    "breach_date": "2027-10-15",
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 50000,
+      "worst_index": 0,
+      "worst_ratio": "225599/451200",
+      "distribution": {
+       "investor-a": 150000,
+       "investor-b": 350000,
+       "custody-nominee": 100000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "breach-rounds-to-nearest-down",
+   "clause": "R2",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     225601,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": true,
+    "breach_date": "2027-10-15",
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 50000,
+      "worst_index": 0,
+      "worst_ratio": "225601/451200",
+      "distribution": {
+       "investor-a": 150000,
+       "investor-b": 350000,
+       "custody-nominee": 100000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "breach-level-zero",
+   "clause": "P7",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     0,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": true,
+    "breach_date": "2027-10-15",
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 0,
+      "worst_index": 0,
+      "worst_ratio": "0/1",
+      "distribution": {
+       "investor-a": 0,
+       "investor-b": 0,
+       "custody-nominee": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "american-breach-recovered-above-initial",
+   "clause": "P7",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": true,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": true,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": true,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     225600,
+     2002330,
+     27500
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     460224,
+     2184360,
+     30000
+    ]
+   },
+   "expected": {
+    "breached": true,
+    "breach_date": "2027-04-15",
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "51/50",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "51/50",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "american-breach-final-80",
+   "clause": "P7",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": true,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": true,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": true,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     225600,
+     2002330,
+     27500
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     360960,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": true,
+    "breach_date": "2027-04-15",
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "4/5",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 80000,
+      "worst_index": 0,
+      "worst_ratio": "4/5",
+      "distribution": {
+       "investor-a": 240000,
+       "investor-b": 560000,
+       "custody-nominee": 160000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "american-coupon-date-at-barrier",
+   "clause": "B3",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": true,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": true,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": true,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     270720,
+     2002330,
+     27500
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     406080,
+     1729285,
+     23750
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "memory-one-missed",
+   "clause": "P8",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": true,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     311328,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     406080,
+     1729285,
+     23750
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 5000,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 15000,
+       "investor-b": 35000,
+       "custody-nominee": 10000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "no-memory-one-missed",
+   "clause": "P8",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": null
+   },
+   "determinations": {
+    "2027-01-15": [
+     311328,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     406080,
+     1729285,
+     23750
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 100000,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 300000,
+       "investor-b": 700000,
+       "custody-nominee": 200000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "twin-win-final-110",
+   "clause": "P7",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": {
+     "up_participation_bps": 10000,
+     "down_participation_bps": 10000,
+     "cap_bps": null
+    }
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     496320,
+     2184360,
+     30000
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "11/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 110000,
+      "worst_index": 0,
+      "worst_ratio": "11/10",
+      "distribution": {
+       "investor-a": 330000,
+       "investor-b": 770000,
+       "custody-nominee": 220000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "twin-win-final-75",
+   "clause": "P7",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": {
+     "up_participation_bps": 10000,
+     "down_participation_bps": 10000,
+     "cap_bps": null
+    }
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     338400,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "3/4",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 125000,
+      "worst_index": 0,
+      "worst_ratio": "3/4",
+      "distribution": {
+       "investor-a": 375000,
+       "investor-b": 875000,
+       "custody-nominee": 250000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "twin-win-at-barrier",
+   "clause": "P7",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": {
+     "up_participation_bps": 10000,
+     "down_participation_bps": 10000,
+     "cap_bps": null
+    }
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     270720,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 140000,
+      "worst_index": 0,
+      "worst_ratio": "3/5",
+      "distribution": {
+       "investor-a": 420000,
+       "investor-b": 980000,
+       "custody-nominee": 280000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "twin-win-below-barrier",
+   "clause": "P7",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": {
+     "up_participation_bps": 10000,
+     "down_participation_bps": 10000,
+     "cap_bps": null
+    }
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     270719,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": true,
+    "breach_date": "2027-10-15",
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 60000,
+      "worst_index": 0,
+      "worst_ratio": "270719/451200",
+      "distribution": {
+       "investor-a": 180000,
+       "investor-b": 420000,
+       "custody-nominee": 120000
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "twin-win-capped",
+   "clause": "P7",
+   "terms": {
+    "initial_levels": [
+     451200,
+     1820300,
+     25000
+    ],
+    "calculation_amount_cents": 100000,
+    "coupon_barrier_bps": 7000,
+    "coupon_rate_bps": 250,
+    "memory": false,
+    "barrier_bps": 6000,
+    "schedule": [
+     {
+      "date": "2027-01-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-04-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-07-15",
+      "coupon": true,
+      "mer": true,
+      "barrier": false,
+      "final": false,
+      "mer_trigger_bps": 10000
+     },
+     {
+      "date": "2027-10-15",
+      "coupon": true,
+      "mer": false,
+      "barrier": true,
+      "final": true,
+      "mer_trigger_bps": null
+     }
+    ],
+    "twin_win": {
+     "up_participation_bps": 10000,
+     "down_participation_bps": 10000,
+     "cap_bps": 12000
+    }
+   },
+   "determinations": {
+    "2027-01-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-04-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-07-15": [
+     406080,
+     1729285,
+     23750
+    ],
+    "2027-10-15": [
+     293280,
+     2002330,
+     27500
+    ]
+   },
+   "expected": {
+    "breached": false,
+    "breach_date": null,
+    "terminated_on": "2027-10-15",
+    "events": [
+     {
+      "date": "2027-01-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-04-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-07-15",
+      "kind": "coupon",
+      "per_ca_cents": 2500,
+      "worst_index": 0,
+      "worst_ratio": "9/10",
+      "distribution": {
+       "investor-a": 7500,
+       "investor-b": 17500,
+       "custody-nominee": 5000
+      }
+     },
+     {
+      "date": "2027-10-15",
+      "kind": "redemption",
+      "per_ca_cents": 120000,
+      "worst_index": 0,
+      "worst_ratio": "13/20",
+      "distribution": {
+       "investor-a": 360000,
+       "investor-b": 840000,
+       "custody-nominee": 240000
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

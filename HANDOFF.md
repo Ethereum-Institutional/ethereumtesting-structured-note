@@ -169,8 +169,12 @@ credential platform by its contracts.
    `docs/spikes/02-compliance-interface.md`. Original brief: map every uRWA function onto a
    primitive of the debt standard, and confirm restriction values express as **non-reverting**
    views.
-3. **Payoff specification.** Settle boundary semantics and rounding direction in writing before
-   any Solidity.
+3. **Done as a draft, 23 September 2026.** Semantics settled in
+   `docs/spikes/03-payoff-specification.md`, with an independent reference model and 25 test
+   vectors in `spikes/payoff/`. **Ten items (C1 to C10) need confirmation by the Issuer and the
+   Calculation Agent**; each has a default, so Wave 2 can proceed. Economics (levels, rates, dates)
+   remain term sheet parameters. Original brief: settle boundary semantics and rounding direction in
+   writing before any Solidity.
 
 **Then, in order.** Phase 0b, the gated landing site. Wave 1, plumbing and de-branding. Wave 2,
 instruments. Wave 3, lifecycle. Wave 4, ceremony, then **freeze and tag the contract surface**.
