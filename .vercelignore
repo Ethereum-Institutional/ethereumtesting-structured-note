@@ -1,0 +1,16 @@
+# Deploys of site/ upload the repository root so that docs/ is present at build.
+/lib
+/spikes
+/dashboard
+/trex
+/contracts
+/script
+/test
+/ops
+/mcp-token
+/out
+/cache
+/node_modules
+**/node_modules
+**/.next
+site/.data

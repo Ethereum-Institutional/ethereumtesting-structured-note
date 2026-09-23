@@ -17,7 +17,10 @@ navigable solution overview covering roles, instrument, lifecycle, identity, con
 success criteria, programme, test scenarios, responsibilities, approvals and next steps. It was
 reviewed and signed off.
 
-**Nothing has been deployed.** No Vercel project, no registration flow, no contracts, no chain.
+**Phase 0b is built and tested locally** in `site/`: registration with email verification and
+operator approval, everything gated, the architecture as the signed-in home page with each
+component linked into the overview. 24 end-to-end checks pass. See `site/README.md`. No contracts
+and no chain are deployed.
 The repository is a clone of the source demo with history preserved; the strip-to-the-venue
 commit has **not** been made yet.
 
