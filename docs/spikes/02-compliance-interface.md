@@ -140,5 +140,4 @@ carried intact in the securities enforcement event.
 | Lean, guarded (spike 1) | 24,004 | 572 |
 | Adapted | 24,364 | 212 |
 
-As with spike 1, the composition and test sources are kept outside this repository because they
-carry the standard's identifiers. They become Wave 2 code when the dependency is added.
+The composition and the tests are in `spikes/instrument/`; `forge test` there runs all seventeen.

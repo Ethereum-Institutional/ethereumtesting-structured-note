@@ -153,8 +153,5 @@ approach the limit, but should be checked when it is composed.
 Venue: `forge clean && forge build --sizes`, then `./ops/reset.sh` and
 `forge test --fork-url http://127.0.0.1:8545`.
 
-Instrument: clone the standard at its release candidate, install its declared library version,
-add the compositions above as contracts, and build with
-`FOUNDRY_SOLC_VERSION=0.8.34 FOUNDRY_VIA_IR=false FOUNDRY_OPTIMIZER_RUNS=200 FOUNDRY_EVM_VERSION=cancun forge build --sizes`.
-The composition sources were kept outside this repository because they carry the standard's
-identifiers; they become Wave 2 code once the dependency is added.
+Instrument: the compositions are in `spikes/instrument/`, a separate project with the standard pinned as a
+submodule; `forge build --sizes --skip test` there reproduces the tables.
