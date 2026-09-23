@@ -98,6 +98,13 @@ These took real investigation. Do not re-derive them.
   removes the library version conflict. The debt attributes module does not fit. The composing
   contract is ours and in audit scope. Detail in `docs/spikes/01-contract-size.md`.
 - Native UUPS, with its own upgrade role. That role is what the Tier 2 ceremony holds.
+- **The standard's default admin silently holds every role** (its `hasRole` override), including
+  forced transfer, upgrade and replacement of the gate. The composition restores plain semantics
+  so that any self-grant is a visible `RoleGranted`. Do not drop this override: without it the
+  two tiers collapse into whoever holds the admin role (spike 2, A4).
+- **As shipped, `canSend`/`canReceive` ignore eligibility and `canTransfer` can revert** through
+  the rule engine. Both are fixed in the composition by a bounded, fail-closed gate query. A
+  `try` block is not sufficient (spike 2, A1 and A2).
 - The enforcement module exposes `forcedTransfer(from, to, value, bytes data)` and partial freeze
   with the same payload. **That payload carries the written intervention reason**, so the
   justification travels in the enforcement call rather than only in the controller's log.
@@ -156,10 +163,12 @@ credential platform by its contracts.
    with the same mechanism. If it fails, the pool is cut and the test network carries the note,
    deposit, registry and DvP, which is the client draft's entire scope, so the fallback costs
    nothing that was asked for.
-2. **Compliance-interface adapter surface.** Map every uRWA function onto a primitive of the debt
-   standard, and confirm restriction values express as **non-reverting** views. Work against the
-   lean composition from spike 1, and measure anything added to the token against its 572-byte
-   margin; assume the adapter lives outside the token unless the standard already provides it.
+2. **Done, 23 September 2026.** Every function maps. Six adaptations, all inside the token, bring
+   the views to the Final text and remove an implicit superuser; the note is 24,364 bytes, **212
+   spare**. Three obligations fall on the per-instrument gate. See
+   `docs/spikes/02-compliance-interface.md`. Original brief: map every uRWA function onto a
+   primitive of the debt standard, and confirm restriction values express as **non-reverting**
+   views.
 3. **Payoff specification.** Settle boundary semantics and rounding direction in writing before
    any Solidity.
 
