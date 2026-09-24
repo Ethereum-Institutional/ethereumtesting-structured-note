@@ -195,8 +195,8 @@ credential platform by its contracts.
   leg, until Wave 2's instruments replace them. Neither is in audit scope. Cast by capacity.
 - **Checker on the Final interface.** The venue checker reads `canSend` and `canReceive`, not
   the draft views it was written for. Every read fails closed, including a token with no code,
-  through a checked static call. `paused()` is not in ERC-7943 and is read where present: **the
-  Wave 2 instruments must expose it**, or a pause will not register at the venue.
+  through a checked static call. `paused()` is not in ERC-7943 and is read where present; both Wave 2
+  instruments expose it.
 - **Venue tests.** 15, all passing, each with a stated control; the liquidity refusal has a
   positive control so it cannot pass for the wrong reason. The README maps them.
 - **Instruments unit** at `instruments/` (solc 0.8.34, legacy pipeline, `bytecode_hash =
@@ -219,6 +219,45 @@ credential platform by its contracts.
   checks pass. `npm audit` reports a high-severity advisory in the postcss that Next 15 bundles,
   predating this wave; the fix is Next 16, a breaking change. Not yet taken.
 
+**Wave 2, instruments. Done, 24 September 2026.** In `instruments/`; see its README for the
+contracts and sizes.
+
+- **Identity Registry.** Grants of rights and attribute flags, jurisdiction and expiry, one
+  storage slot per grant, so a check is one read (asserted under test). Written by a registrar's
+  issuing key, never by the admin. Every grant expires within `maxValidity`; revocation is one
+  call. The registry verifies no credential and says so.
+- **Instrument gates.** Immutable, one per instrument, masks as constructor parameters. The note
+  requires `HOLD`, `SANCTIONS_CLEAR` and `REG_S` at both ends; the deposit the same without
+  `REG_S`. Neither restricts jurisdiction. G1 and G2 are tested, G1 by fuzzing.
+- **Note and deposit** share `AdaptedToken`: spike 2's six adaptations, written once. Spike 2's
+  conformance suite runs against both. The note is **24,382 bytes, 194 spare**, 18 more than the
+  spike because the ERC-20 surface is resolved through the shared base. Both expose `paused()`,
+  which the venue reads.
+- **Deposit gateway.** Credit and debit only, each against a single-use booking reference; the
+  sole minter and burner of the deposit. A debit cannot reach a frozen balance (tested).
+- **Deployment** is one library used by both the deploy script and the integration tests.
+  `ops/deploy-stack.sh` now ends with it. New capacities: the Access Issuer (account 2) and the
+  Deposit Agent (account 8). The chain library's tape knows every Wave 2 call, and the
+  integration test still requires every call on a fresh deployment to be recognised.
+
+**Defaults taken in Wave 2, to confirm before the contract surface is frozen (Wave 4).**
+
+- **G3, burns.** The gate tests nothing on a burn, so the Agent can redeem a holder whose grant
+  has lapsed by maturity with an ordinary burn. The alternative, forced transfer to zero, would
+  make every such redemption a logged intervention. Burn authority remains the token's burner
+  role. The gate is immutable, so changing this means a new gate.
+- **Registrar ownership outlives expiry.** A lapsed grant still belongs to the registrar that
+  wrote it; another registrar can onboard the address only after the first revokes it. There is
+  no path for the Agent to withdraw another registrar's participant directly. If one is wanted,
+  it belongs in the Wave 4 controller, not the registry.
+- **The deposit is on the debt standard** too, for identical ERC-7943 semantics on both legs.
+- **Interim roles.** The deployer holds each admin role; the Agent holds the note's operational
+  roles, including forced transfer; the Deposit Agent the deposit's. No one holds an upgrade
+  role. All move in Wave 4.
+- **Placeholders.** Token names and symbols pending naming sign-off; the term sheet hash is the
+  hash of a working title, with URI `pending`. Grants from the deploy script are written by the
+  Access Issuer directly, standing in for presentation and verification.
+
 **Open items carried from the spikes and phase 0b (24 September 2026).**
 
 - **Branch.** `spike/eip170` and `wave/1-plumbing` are merged to `main`, which is pushed to
@@ -237,8 +276,7 @@ credential platform by its contracts.
 - **Phones.** The overview's tables stack below 640px; diagrams and the responsibilities matrix
   scroll with a cue. Any copy of the overview published before 24 September has the old layout.
 
-**Then, in order.** Wave 2,
-instruments. Wave 3, lifecycle. Wave 4, ceremony, then **freeze and tag the contract surface**.
+**Then, in order.** Wave 3, lifecycle. Wave 4, ceremony, then **freeze and tag the contract surface**.
 Wave 5, FX pool. Wave 6, hardening and deployment.
 
 Two gates sit outside engineering and should start now: the **independent audit** and **token

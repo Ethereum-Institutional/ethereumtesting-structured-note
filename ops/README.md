@@ -22,7 +22,8 @@ two disagree, the script is right and this table is to be corrected.
 | Venue | `script/01_DeployVenue.s.sol` | Creates the adapter, which the Issuer then onboards as a holder |
 | Activation | `script/02_ActivateVenue.s.sol` | Verification needs the adapter to hold a balance. Opens and seeds the pool |
 | Lens | `script/03_DeployLens.s.sol` | Reads pool state; needs the pool manager |
-| Custody | `script/04_DeployCustody.s.sol` | Client accounts approve the router and position manager, so they come last |
+| Custody | `script/04_DeployCustody.s.sol` | Client accounts approve the router and position manager |
+| Instruments | `instruments/script/DeployInstruments.s.sol` | Onboards the custody accounts to the registry, so it comes after them. Extends the manifest |
 
 On the public test network the core pool manager and Permit2 are already deployed: pass
 `POOL_MANAGER` to the venue script, and skip `setup-permit2.sh`.
