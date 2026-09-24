@@ -1,229 +1,149 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {console2} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-
-import {IV4Router} from "@uniswap/v4-periphery/src/interfaces/IV4Router.sol";
-import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {PermissionFlags} from "@uniswap/v4-periphery/src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
-import {ERC3643AllowlistChecker} from "../contracts/ERC3643AllowlistChecker.sol";
 import {DemoPermissionedRouter} from "../contracts/DemoPermissionedRouter.sol";
-
-interface ITrexAgentActions {
-    function setAddressFrozen(address userAddress, bool freeze) external;
-    function pause() external;
-    function unpause() external;
-    function freezePartialTokens(address userAddress, uint256 amount) external;
-    function balanceOf(address) external view returns (uint256);
-}
+import {VenueTestBase} from "./VenueTestBase.sol";
 
 /**
- * Behavioural proof that the compliance gates actually bind, run against the live local
- * deployment via --fork-url. Each test states an institutional control and shows the
- * transaction failing (or succeeding) for the right reason.
+ * The venue's controls, each shown binding. Every test states a control and shows the
+ * transaction succeeding or failing for the right reason.
  *
  *   forge test --fork-url http://127.0.0.1:8545 -vv
  */
-contract PermissionedTradingTest is Test {
-    address trexToken;
-    address usdc;
-    address adapter;
-    address router;
-    address posm;
-    address permit2;
-    address poolManager;
-    address checker;
-    address hook;
-    address issuer;
-    address agent;
+contract PermissionedTradingTest is VenueTestBase {
+    address investorA; // eligible, approved to provide liquidity
+    address investorB; // eligible, swap only
+    address investorC; // eligible, approved to provide liquidity
+    address investorD; // not eligible
 
-    address alice; // SG, verified + professional  -> swap + LP
-    address bob; //   HK, verified retail          -> swap only
-    address carol; // JP, verified + professional
-    address dave; //  no identity                  -> blocked
+    uint128 constant SWAP_IN = 10_000e6;
 
-    PoolKey key;
-
-    uint128 constant SWAP_IN = 10_000e6; // 10,000 USDC
-
-    function setUp() public {
-        string memory j = vm.readFile("ops/addresses.json");
-        trexToken = vm.parseJsonAddress(j, ".trex.token");
-        usdc = vm.parseJsonAddress(j, ".venue.usdc");
-        adapter = vm.parseJsonAddress(j, ".venue.permissionsAdapter");
-        router = vm.parseJsonAddress(j, ".venue.router");
-        posm = vm.parseJsonAddress(j, ".venue.positionManager");
-        permit2 = vm.parseJsonAddress(j, ".venue.permit2");
-        poolManager = vm.parseJsonAddress(j, ".venue.poolManager");
-        checker = vm.parseJsonAddress(j, ".venue.allowlistChecker");
-        hook = vm.parseJsonAddress(j, ".venue.hook");
-        issuer = vm.parseJsonAddress(j, ".roles.issuer");
-        agent = vm.parseJsonAddress(j, ".roles.agent");
-        dave = vm.parseJsonAddress(j, ".roles.unverified");
-
-        alice = vm.parseJsonAddress(j, ".investors[0].wallet");
-        bob = vm.parseJsonAddress(j, ".investors[1].wallet");
-        carol = vm.parseJsonAddress(j, ".investors[2].wallet");
-
-        key = PoolKey({
-            currency0: Currency.wrap(vm.parseJsonAddress(j, ".pool.currency0")),
-            currency1: Currency.wrap(vm.parseJsonAddress(j, ".pool.currency1")),
-            fee: uint24(vm.parseJsonUint(j, ".pool.fee")),
-            tickSpacing: int24(vm.parseJsonInt(j, ".pool.tickSpacing")),
-            hooks: IHooks(hook)
-        });
-
-        _approve(alice);
-        _approve(bob);
-        _approve(carol);
-        _approve(dave);
-    }
-
-    function _approve(address who) internal {
-        vm.startPrank(who);
-        IERC20(usdc).approve(permit2, type(uint256).max);
-        IERC20(trexToken).approve(permit2, type(uint256).max);
-        IAllowanceTransfer(permit2).approve(usdc, router, type(uint160).max, type(uint48).max);
-        IAllowanceTransfer(permit2).approve(trexToken, router, type(uint160).max, type(uint48).max);
-        IAllowanceTransfer(permit2).approve(usdc, posm, type(uint160).max, type(uint48).max);
-        IAllowanceTransfer(permit2).approve(trexToken, posm, type(uint160).max, type(uint48).max);
-        vm.stopPrank();
-    }
-
-    /// @dev Buys the permissioned asset with USDC. currency0 is the adapter, so USDC->asset
-    ///      is one-for-zero.
-    function _buyAssetCalldata(uint128 amountIn) internal view returns (bytes memory) {
-        bool zeroForOne = Currency.unwrap(key.currency0) == usdc;
-        bytes memory actions =
-            abi.encodePacked(uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL));
-        bytes[] memory params = new bytes[](3);
-        params[0] = abi.encode(
-            IV4Router.ExactInputSingleParams({
-                poolKey: key,
-                zeroForOne: zeroForOne,
-                amountIn: amountIn,
-                amountOutMinimum: 0,
-                minHopPriceX36: 0,
-                hookData: bytes("")
-            })
-        );
-        params[1] = abi.encode(zeroForOne ? key.currency0 : key.currency1, uint256(amountIn));
-        params[2] = abi.encode(zeroForOne ? key.currency1 : key.currency0, uint256(0));
-        return abi.encode(actions, params);
+    function setUp() public override {
+        super.setUp();
+        investorA = _addr(".parties.investorA");
+        investorB = _addr(".parties.investorB");
+        investorC = _addr(".parties.investorC");
+        investorD = _addr(".parties.investorD");
     }
 
     function _buy(address who, uint128 amountIn) internal {
         vm.prank(who);
-        DemoPermissionedRouter(payable(router)).execute(_buyAssetCalldata(amountIn), block.timestamp + 600);
+        DemoPermissionedRouter(payable(router)).execute(_buyCalldata(amountIn), block.timestamp + 600);
     }
 
-    // ------------------------------------------------------------------ //
-    //                              Scenarios                             //
-    // ------------------------------------------------------------------ //
-
-    /// A verified professional investor trades normally.
-    function test_verifiedProfessional_canSwap() public {
-        uint256 before = IERC20(trexToken).balanceOf(alice);
-        _buy(alice, SWAP_IN);
-        uint256 gained = IERC20(trexToken).balanceOf(alice) - before;
-        console2.log("Alice (SG, professional) bought units:", gained);
-        assertGt(gained, 0, "Alice should receive the asset");
-    }
-
-    /// A verified retail investor may trade -- the professional claim only gates LPing.
-    function test_verifiedRetail_canSwap() public {
-        uint256 before = IERC20(trexToken).balanceOf(bob);
-        _buy(bob, SWAP_IN);
-        uint256 gained = IERC20(trexToken).balanceOf(bob) - before;
-        console2.log("Bob (HK, retail) bought units:", gained);
-        assertGt(gained, 0, "Bob should be able to swap");
-    }
-
-    /// The venue requires a professional-investor claim to provide liquidity.
-    function test_verifiedRetail_cannotProvideLiquidity() public {
-        ERC3643AllowlistChecker c = ERC3643AllowlistChecker(checker);
-        assertTrue(
-            (c.checkAllowlist(bob, trexToken) & PermissionFlags.SWAP_ALLOWED) == PermissionFlags.SWAP_ALLOWED,
-            "Bob may swap"
-        );
-        assertFalse(
-            (c.checkAllowlist(bob, trexToken) & PermissionFlags.LIQUIDITY_ALLOWED)
-                == PermissionFlags.LIQUIDITY_ALLOWED,
-            "Bob must not be allowed to LP"
-        );
-        console2.log("Bob: SWAP_ALLOWED yes / LIQUIDITY_ALLOWED no");
-    }
-
-    /// A wallet with no ONCHAINID cannot touch the asset at all.
-    function test_unverifiedWallet_cannotSwap() public {
-        assertTrue(
-            ERC3643AllowlistChecker(checker).checkAllowlist(dave, trexToken) == PermissionFlags.NONE,
-            "Dave must hold no permissions"
-        );
-        vm.prank(dave);
+    function _expectBuyReverts(address who) internal {
+        vm.prank(who);
         vm.expectRevert();
-        DemoPermissionedRouter(payable(router)).execute(_buyAssetCalldata(SWAP_IN), block.timestamp + 600);
-        console2.log("Dave (no identity): swap reverted as expected");
+        DemoPermissionedRouter(payable(router)).execute(_buyCalldata(SWAP_IN), block.timestamp + 600);
     }
 
-    /// An agent freeze in T-REX stops the wallet trading, with no venue action.
+    /// An eligible investor trades normally.
+    function test_eligibleInvestor_canSwap() public {
+        uint256 before = asset.balanceOf(investorA);
+        _buy(investorA, SWAP_IN);
+        uint256 gained = asset.balanceOf(investorA) - before;
+        console2.log("investor A bought units:", gained);
+        assertGt(gained, 0, "investor A should receive the asset");
+    }
+
+    /// Venue approval to provide liquidity is not needed to trade.
+    function test_swapOnlyInvestor_canSwap() public {
+        uint256 before = asset.balanceOf(investorB);
+        _buy(investorB, SWAP_IN);
+        assertGt(asset.balanceOf(investorB) - before, 0, "investor B should be able to swap");
+    }
+
+    function _mintPlan(address owner) internal view returns (bytes memory) {
+        bytes memory actions = abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR));
+        bytes[] memory params = new bytes[](2);
+        params[0] = abi.encode(
+            key,
+            int24(vm.parseJsonInt(manifest, ".pool.tickLower")),
+            int24(vm.parseJsonInt(manifest, ".pool.tickUpper")),
+            uint256(1e15),
+            type(uint128).max,
+            type(uint128).max,
+            owner,
+            bytes("")
+        );
+        params[1] = abi.encode(key.currency0, key.currency1);
+        return abi.encode(actions, params);
+    }
+
+    /// Providing liquidity needs the venue's approval, and the hook refuses without it. The
+    /// same plan succeeds for an approved investor, so the refusal is the permission's.
+    function test_swapOnlyInvestor_cannotProvideLiquidity() public {
+        assertTrue(_may(investorB, PermissionFlags.SWAP_ALLOWED), "investor B may swap");
+        assertFalse(_may(investorB, PermissionFlags.LIQUIDITY_ALLOWED), "investor B may not provide liquidity");
+
+        vm.prank(investorC);
+        IPositionManager(posm).modifyLiquidities(_mintPlan(investorC), block.timestamp + 600);
+
+        vm.prank(investorB);
+        vm.expectRevert();
+        IPositionManager(posm).modifyLiquidities(_mintPlan(investorB), block.timestamp + 600);
+    }
+
+    /// An ineligible wallet holds no permission and cannot reach the asset.
+    function test_ineligibleWallet_cannotSwap() public {
+        assertGt(IERC20(cash).balanceOf(investorD), 0, "investor D is funded");
+        assertTrue(
+            checker.checkAllowlist(investorD, address(asset)) == PermissionFlags.NONE,
+            "investor D must hold no permission"
+        );
+        _expectBuyReverts(investorD);
+    }
+
+    /// Revoking eligibility on the asset stops trading at once, with no venue action.
+    function test_revokedEligibility_haltsTrading() public {
+        _buy(investorC, SWAP_IN);
+
+        vm.prank(issuer);
+        asset.setEligible(investorC, false);
+
+        assertTrue(checker.checkAllowlist(investorC, address(asset)) == PermissionFlags.NONE, "revoked");
+        assertTrue(_may(investorA, PermissionFlags.SWAP_ALLOWED), "other investors unaffected");
+        _expectBuyReverts(investorC);
+    }
+
+    /// A freeze of the whole balance by the Agent stops the wallet trading.
     function test_agentFreeze_haltsTrading() public {
-        _buy(carol, SWAP_IN); // works before the freeze
+        _buy(investorC, SWAP_IN);
 
-        vm.prank(agent);
-        ITrexAgentActions(trexToken).setAddressFrozen(carol, true);
-
-        assertTrue(
-            ERC3643AllowlistChecker(checker).checkAllowlist(carol, trexToken) == PermissionFlags.NONE,
-            "frozen wallet must lose all permissions"
-        );
-
-        vm.prank(carol);
-        vm.expectRevert();
-        DemoPermissionedRouter(payable(router)).execute(_buyAssetCalldata(SWAP_IN), block.timestamp + 600);
-        console2.log("Carol frozen by agent: swap reverted");
-    }
-
-    /// The venue can layer its own jurisdiction rule over the issuer's.
-    function test_venueCountryOverlay_blocksJapan() public {
-        ERC3643AllowlistChecker c = ERC3643AllowlistChecker(checker);
-
-        vm.startPrank(issuer);
-        c.setCountryEnforcement(trexToken, true);
-        c.setCountryAllowed(trexToken, 392, false); // Japan off
+        vm.startPrank(agent);
+        asset.setFrozenTokens(investorC, asset.balanceOf(investorC));
         vm.stopPrank();
 
-        assertTrue(c.checkAllowlist(carol, trexToken) == PermissionFlags.NONE, "JP investor must be blocked");
-        assertTrue(
-            (c.checkAllowlist(alice, trexToken) & PermissionFlags.SWAP_ALLOWED) == PermissionFlags.SWAP_ALLOWED,
-            "SG investor unaffected"
-        );
-
-        vm.prank(carol);
-        vm.expectRevert();
-        DemoPermissionedRouter(payable(router)).execute(_buyAssetCalldata(SWAP_IN), block.timestamp + 600);
-        console2.log("Japan blocked at venue level: Carol reverted, Alice unaffected");
+        assertTrue(checker.checkAllowlist(investorC, address(asset)) == PermissionFlags.NONE, "frozen");
+        _expectBuyReverts(investorC);
     }
 
-    /// An issuer-level pause halts the whole market.
-    function test_issuerPause_haltsWholeMarket() public {
+    /// Pausing the asset halts the whole market.
+    function test_assetPause_haltsWholeMarket() public {
         vm.prank(agent);
-        ITrexAgentActions(trexToken).pause();
+        asset.pause();
 
-        ERC3643AllowlistChecker c = ERC3643AllowlistChecker(checker);
-        assertTrue(c.checkAllowlist(alice, trexToken) == PermissionFlags.NONE, "pause blocks everyone");
+        assertTrue(checker.checkAllowlist(investorA, address(asset)) == PermissionFlags.NONE, "pause blocks all");
+        _expectBuyReverts(investorA);
+    }
 
-        vm.prank(alice);
-        vm.expectRevert();
-        DemoPermissionedRouter(payable(router)).execute(_buyAssetCalldata(SWAP_IN), block.timestamp + 600);
-        console2.log("Issuer pause: even Alice reverted");
+    /// A registered token that does not answer the interface denies rather than reverting.
+    function test_checkerFailsClosedOnNonConformingToken() public {
+        address noCode = address(0xDEAD);
+        address noInterface = cash;
+        vm.startPrank(issuer);
+        checker.registerAsset(noCode);
+        checker.registerAsset(noInterface);
+        vm.stopPrank();
+
+        assertTrue(checker.checkAllowlist(investorA, noCode) == PermissionFlags.NONE, "no code denies");
+        assertTrue(checker.checkAllowlist(investorA, noInterface) == PermissionFlags.NONE, "no interface denies");
+        assertTrue(checker.checkAllowlist(investorA, address(0xBEEF)) == PermissionFlags.NONE, "unregistered denies");
     }
 }

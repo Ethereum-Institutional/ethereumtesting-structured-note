@@ -6,30 +6,31 @@ import {BaseAllowlistChecker} from
     "@uniswap/v4-periphery/src/hooks/permissionedPools/BaseAllowListChecker.sol";
 import {PermissionFlags, PermissionFlag} from
     "@uniswap/v4-periphery/src/hooks/permissionedPools/libraries/PermissionFlags.sol";
-import {IERC7943Token} from "./interfaces/IERC3643.sol";
+import {IERC7943FungibleViews, IPausable} from "./interfaces/IERC7943.sol";
 
 /**
  * @title ERC7943AllowlistChecker
- * @notice Bridges an ERC-7943 (uRWA) token into Uniswap v4 permissioned pools.
+ * @notice Answers the venue's one question, "what may this account do with this asset?", from
+ *         the asset's own ERC-7943 views.
  *
- * The counterpart to {ERC3643AllowlistChecker}. Both answer the same question for the same
- * hook -- "what may this account do with this asset?" -- but read different sources of truth:
+ * Eligibility is the token's, not the venue's: an account may swap only if the token says it
+ * can both send and receive, the token is not paused, and the account's balance is not wholly
+ * frozen. Revoking eligibility on the token therefore stops trading with no venue action.
  *
- *   - ERC-3643 keeps identity in a separate registry with claims signed by trusted issuers,
- *     so the checker can distinguish *why* an account qualifies (KYC vs professional-investor
- *     attestation) and gate liquidity provision on the specific claim.
- *   - ERC-7943 keeps a flat allow/disallow list on the token itself. There is no claim to
- *     inspect, so anything finer than "allowed" has to be maintained by the venue. That is
- *     what {setLiquidityApproved} is for.
+ * The token carries no finer distinction, so permission to provide liquidity, where the venue
+ * restricts it, is the venue's own list ({setLiquidityApproved}).
  *
- * Same hook, same adapter, same pool mechanics either way. Only this contract changes, which
- * is the point: the compliance seam is the swappable part.
+ * One checker serves every asset, since the asset is a parameter of every query.
+ *
+ * Every read of the token fails closed. An account view that reverts, returns malformed data
+ * or reaches an address with no code denies. The one exception is `paused()`, which is not
+ * part of ERC-7943: a token without it is treated as having no pause.
  */
 contract ERC7943AllowlistChecker is BaseAllowlistChecker, Ownable2Step {
     mapping(address token => bool) private _registered;
-    /// @dev Venue-maintained liquidity permission, since ERC-7943 carries no claim to read.
+    /// @dev Venue-maintained liquidity permission, since ERC-7943 carries no attribute to read.
     mapping(address token => mapping(address account => bool)) private _liquidityApproved;
-    /// @dev When false, any allowed holder may provide liquidity.
+    /// @dev When false, any eligible holder may provide liquidity.
     mapping(address token => bool) private _restrictLiquidity;
 
     event AssetRegistered(address indexed token);
@@ -72,10 +73,10 @@ contract ERC7943AllowlistChecker is BaseAllowlistChecker, Ownable2Step {
     {
         if (!_registered[tokenAddress]) return PermissionFlags.NONE;
         if (_isPaused(tokenAddress)) return PermissionFlags.NONE;
-        if (!_isAllowed(tokenAddress, account)) return PermissionFlags.NONE;
+        if (!_isEligible(tokenAddress, account)) return PermissionFlags.NONE;
 
         // A wholly frozen balance cannot trade. A partial freeze still leaves room, and the
-        // token itself rejects any transfer that would dip into the frozen portion.
+        // token itself rejects any transfer that would reach into the frozen portion.
         if (_isWhollyFrozen(tokenAddress, account)) return PermissionFlags.NONE;
 
         PermissionFlag granted = PermissionFlags.SWAP_ALLOWED;
@@ -85,14 +86,14 @@ contract ERC7943AllowlistChecker is BaseAllowlistChecker, Ownable2Step {
         return granted;
     }
 
-    /// @notice Per-gate breakdown for the dashboard, mirroring {ERC3643AllowlistChecker-explain}.
+    /// @notice Each input to {checkAllowlist}, so that a denial can be explained.
     function explain(address account, address tokenAddress)
         external
         view
         returns (
             bool registeredAsset,
             bool assetPaused,
-            bool userAllowed,
+            bool eligible,
             bool whollyFrozen,
             bool liquidityApproved,
             PermissionFlag flags
@@ -101,7 +102,7 @@ contract ERC7943AllowlistChecker is BaseAllowlistChecker, Ownable2Step {
         registeredAsset = _registered[tokenAddress];
         if (!registeredAsset) return (false, false, false, false, false, PermissionFlags.NONE);
         assetPaused = _isPaused(tokenAddress);
-        userAllowed = _isAllowed(tokenAddress, account);
+        eligible = _isEligible(tokenAddress, account);
         whollyFrozen = _isWhollyFrozen(tokenAddress, account);
         liquidityApproved =
             !_restrictLiquidity[tokenAddress] || _liquidityApproved[tokenAddress][account];
@@ -116,35 +117,40 @@ contract ERC7943AllowlistChecker is BaseAllowlistChecker, Ownable2Step {
         return _restrictLiquidity[token];
     }
 
-    // --- fault-tolerant reads: an unconfigured token denies rather than reverting in beforeSwap ---
+    // --- token reads ---
 
     function _isPaused(address token) private view returns (bool) {
-        try IERC7943Token(token).paused() returns (bool p) {
-            return p;
-        } catch {
-            return false;
-        }
+        (bool ok, uint256 value) = _read(token, abi.encodeCall(IPausable.paused, ()));
+        return ok && value == 1;
     }
 
-    function _isAllowed(address token, address account) private view returns (bool) {
-        try IERC7943Token(token).isUserAllowed(account) returns (bool a) {
-            return a;
-        } catch {
-            return false;
-        }
+    /// @dev A swap both sends and receives the asset, so both must hold.
+    function _isEligible(address token, address account) private view returns (bool) {
+        (bool sendOk, uint256 canSend) = _read(token, abi.encodeCall(IERC7943FungibleViews.canSend, (account)));
+        if (!sendOk || canSend != 1) return false;
+        (bool receiveOk, uint256 canReceive) =
+            _read(token, abi.encodeCall(IERC7943FungibleViews.canReceive, (account)));
+        return receiveOk && canReceive == 1;
     }
 
+    /// @dev Unreadable counts as frozen, so that it denies.
     function _isWhollyFrozen(address token, address account) private view returns (bool) {
-        try IERC7943Token(token).available(account) returns (uint256 avail) {
-            if (avail > 0) return false;
-            // available()==0 only blocks trading if the holder actually has a frozen balance.
-            try IERC7943Token(token).balanceOf(account) returns (uint256 bal) {
-                return bal > 0;
-            } catch {
-                return false;
-            }
-        } catch {
-            return false;
-        }
+        (bool balanceOk, uint256 balance) =
+            _read(token, abi.encodeCall(IERC7943FungibleViews.balanceOf, (account)));
+        (bool frozenOk, uint256 frozen) =
+            _read(token, abi.encodeCall(IERC7943FungibleViews.getFrozenTokens, (account)));
+        if (!balanceOk || !frozenOk) return true;
+        return balance > 0 && frozen >= balance;
+    }
+
+    /**
+     * @dev A static call that reports failure rather than reverting. A `try` block does not
+     *      catch a call to an address with no code, or return data that fails to decode, so
+     *      the call is made directly and the return data checked for one word.
+     */
+    function _read(address token, bytes memory data) private view returns (bool ok, uint256 value) {
+        (bool success, bytes memory ret) = token.staticcall(data);
+        if (!success || ret.length != 32) return (false, 0);
+        return (true, abi.decode(ret, (uint256)));
     }
 }

@@ -18,34 +18,28 @@ import {IPositionDescriptor} from "@uniswap/v4-periphery/src/interfaces/IPositio
 import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {HookMiner} from "@uniswap/v4-periphery/test/shared/HookMiner.sol";
 
-import {ERC3643AllowlistChecker} from "../contracts/ERC3643AllowlistChecker.sol";
+import {ERC7943AllowlistChecker} from "../contracts/ERC7943AllowlistChecker.sol";
 import {PermissionedComplianceHook} from "../contracts/PermissionedComplianceHook.sol";
 import {DemoPermissionedRouter} from "../contracts/DemoPermissionedRouter.sol";
-import {DemoUSDC} from "../contracts/DemoUSDC.sol";
+import {RestrictedAsset} from "../test/fixtures/RestrictedAsset.sol";
 
 /**
- * Deploys the trading venue: Uniswap v4 plus the permissioned-pool contracts, the
- * ERC-3643 identity bridge, and the compliance hook.
+ * Deploys the venue: the pool manager (locally), the permissioned-pool periphery, the
+ * checker and the compliance hook, and wraps the permissioned asset in an adapter.
  *
- * Reads the already-deployed ERC-3643 token from ops/addresses.json and writes the
- * venue addresses back under the `venue` key.
+ * Reads the asset from ops/addresses.json and writes the venue addresses back under `venue`.
  *
- * The adapter is created here but NOT yet verified: verification requires the adapter
- * to hold a non-zero balance of the permissioned token, which is only possible once the
- * issuer has registered the adapter in the identity registry. That handshake is
- * trex/scripts/register-adapter.ts, followed by script/02_ActivateVenue.s.sol.
+ * The adapter must be a holder like any other, so the Issuer makes it eligible on the asset
+ * and places one base unit in it. That balance is what the factory's verification checks, in
+ * script/02_ActivateVenue.s.sol.
  */
 contract DeployVenue is Script {
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
-    /// @dev Claim topic a wallet must hold to provide liquidity (professional investor).
-    uint256 constant LIQUIDITY_CLAIM_TOPIC = 42;
-
     struct Venue {
         address manager;
         address weth;
-        address usdc;
         address factory;
         address checker;
         address hook;
@@ -58,19 +52,22 @@ contract DeployVenue is Script {
         uint256 issuerPk = vm.envUint("ISSUER_PK");
         address issuer = vm.addr(issuerPk);
 
-        string memory addrs = vm.readFile("ops/addresses.json");
-        address trexToken = vm.parseJsonAddress(addrs, ".trex.token");
-        console2.log("ERC-3643 token :", trexToken);
+        string memory j = vm.readFile("ops/addresses.json");
+        address asset = vm.parseJsonAddress(j, ".assets.venueAsset.address");
+        console2.log("asset          :", asset);
         console2.log("issuer         :", issuer);
 
         vm.startBroadcast(issuerPk);
         Venue memory v = _deploy(issuer);
 
-        // Wrap the ERC-3643 token for pool trading.
         v.adapter = PermissionsAdapterFactory(v.factory).createPermissionsAdapter(
-            IERC20(trexToken), issuer, IAllowlistChecker(v.checker)
+            IERC20(asset), issuer, IAllowlistChecker(v.checker)
         );
-        _configureChecker(ERC3643AllowlistChecker(v.checker), trexToken);
+        _configureChecker(ERC7943AllowlistChecker(v.checker), asset, j);
+
+        // The adapter is onboarded as a holder.
+        RestrictedAsset(asset).setEligible(v.adapter, true);
+        RestrictedAsset(asset).mint(v.adapter, 1);
         vm.stopBroadcast();
 
         _record(v);
@@ -86,9 +83,8 @@ contract DeployVenue is Script {
             v.manager = deployCode("PoolManager.sol:PoolManager", abi.encode(issuer));
         }
         v.weth = address(new WETH());
-        v.usdc = address(new DemoUSDC(issuer));
         v.factory = address(new PermissionsAdapterFactory(v.manager));
-        v.checker = address(new ERC3643AllowlistChecker(issuer));
+        v.checker = address(new ERC7943AllowlistChecker(issuer));
         v.hook = _deployHook(v.manager, v.factory);
         v.router = address(
             new DemoPermissionedRouter(
@@ -130,18 +126,13 @@ contract DeployVenue is Script {
         return deployCode("PermissionedPositionManager.sol:PermissionedPositionManager", args);
     }
 
-    function _configureChecker(ERC3643AllowlistChecker checker, address trexToken) internal {
-        // Teach the bridge about this asset: verified holders may swap; LPing additionally
-        // requires the professional-investor claim.
-        checker.registerAsset(trexToken, LIQUIDITY_CLAIM_TOPIC);
-
-        // Pre-load the venue jurisdiction overlay (enforcement stays OFF until toggled).
-        uint16[] memory apac = new uint16[](4);
-        apac[0] = 702; // Singapore
-        apac[1] = 344; // Hong Kong
-        apac[2] = 392; // Japan
-        apac[3] = 36; // Australia
-        checker.setCountriesAllowed(trexToken, apac, true);
+    function _configureChecker(ERC7943AllowlistChecker checker, address asset, string memory j) internal {
+        // Eligible holders may swap. Providing liquidity also needs the venue's approval,
+        // which investors A and C hold and investor B does not.
+        checker.registerAsset(asset);
+        checker.setLiquidityRestricted(asset, true);
+        checker.setLiquidityApproved(asset, vm.parseJsonAddress(j, ".parties.investorA"), true);
+        checker.setLiquidityApproved(asset, vm.parseJsonAddress(j, ".parties.investorC"), true);
     }
 
     function _record(Venue memory v) internal {
@@ -151,20 +142,17 @@ contract DeployVenue is Script {
         console2.log("hook           :", v.hook);
         console2.log("router         :", v.router);
         console2.log("positionManager:", v.posm);
-        console2.log("usdc           :", v.usdc);
         console2.log("adapter        :", v.adapter);
 
         string memory obj = "venue";
         vm.serializeAddress(obj, "poolManager", v.manager);
         vm.serializeAddress(obj, "weth", v.weth);
-        vm.serializeAddress(obj, "usdc", v.usdc);
         vm.serializeAddress(obj, "permit2", PERMIT2);
         vm.serializeAddress(obj, "adapterFactory", v.factory);
         vm.serializeAddress(obj, "allowlistChecker", v.checker);
         vm.serializeAddress(obj, "hook", v.hook);
         vm.serializeAddress(obj, "router", v.router);
         vm.serializeAddress(obj, "positionManager", v.posm);
-        vm.serializeUint(obj, "liquidityClaimTopic", LIQUIDITY_CLAIM_TOPIC);
         string memory out = vm.serializeAddress(obj, "permissionsAdapter", v.adapter);
         vm.writeJson(out, "ops/addresses.json", ".venue");
     }

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Starts the local demo chain.
+# Starts the local chain.
 #
 # The default EIP-170 code-size limit is enforced, as on any public network. The position
 # managers fit under it through per-path compiler restrictions in foundry.toml.
 set -euo pipefail
 export PATH="$HOME/.foundry/bin:$PATH"
-LOG="${LOG:-/tmp/anvil-apac-demo.log}"
+LOG="${LOG:-/tmp/anvil-local.log}"
 
 pkill -f "anvil --chain-id 31337" 2>/dev/null || true
 sleep 1
