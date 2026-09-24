@@ -1,0 +1,23 @@
+# The instruments' compilation unit: the note and the tokenized deposit.
+#
+# Separate from the venue's unit by necessity (spike 1). The note fits under EIP-170 only on
+# the legacy pipeline at solc 0.8.27 or later, while the venue is pinned to 0.8.26 on the IR
+# pipeline. The debt standard is pinned at its release candidate; see HANDOFF.md section 3.
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["lib"]
+allow_paths = ["../lib/forge-std"]
+solc_version = "0.8.34"
+evm_version = "cancun"
+via_ir = false
+optimizer = true
+optimizer_runs = 200
+bytecode_hash = "none"
+remappings = [
+  "debt-standard/=lib/debt-standard/contracts/",
+  "@openzeppelin/contracts-upgradeable/=lib/debt-standard/lib/openzeppelin-contracts-upgradeable/contracts/",
+  "@openzeppelin/contracts/=lib/debt-standard/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/",
+  "forge-std/=../lib/forge-std/src/",
+]

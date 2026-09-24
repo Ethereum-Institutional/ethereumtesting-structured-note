@@ -4,8 +4,8 @@ Evidence for spikes 1 and 2 (`docs/spikes/`). Not Wave 2 code, though Wave 2 sta
 `src/H_Adapted.sol`.
 
 A separate Foundry project because the instrument cannot share the venue's compilation unit:
-it fits under EIP-170 only on the legacy pipeline at solc 0.8.27 or later. The debt standard is
-pinned as a submodule at its release candidate.
+it fits under EIP-170 only on the legacy pipeline at solc 0.8.27 or later. It builds against the
+debt standard pinned in `instruments/lib/`, at its release candidate.
 
 ```
 git submodule update --init --recursive
