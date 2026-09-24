@@ -135,6 +135,7 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function setMaxValidity(uint40 maxValidity)", meaning: "Set the longest a grant may run, in seconds", tone: "control", args: ["number"] },
     { signature: "function grant(address account, uint32 flags, uint16 jurisdiction, uint40 expiresAt, bytes32 credentialRef, bytes32 commitment)", meaning: "Granted eligibility after a verified presentation", tone: "onboard", args: ["account", "grantFlags", "number", "time", "ref", "ref"] },
     { signature: "function revoke(address account)", meaning: "Revoked an account's eligibility", tone: "control", args: ["account"] },
+    { signature: "function withdraw(address account, string reason)", meaning: "Withdrew an account's eligibility under supervisory authority, with a written reason", tone: "control", args: ["account", "text"] },
   ],
   gateway: [
     ...ROLES,
@@ -360,7 +361,7 @@ const ROLE_NAMES = new Map<string, string>([
   ["0x0000000000000000000000000000000000000000000000000000000000000000", "DEFAULT_ADMIN_ROLE"],
   ...[
     "MINTER_ROLE", "BURNER_ROLE", "PAUSER_ROLE", "ENFORCER_ROLE", "ERC20ENFORCER_ROLE", "SNAPSHOOTER_ROLE",
-    "DOCUMENT_ROLE", "EXTRA_INFORMATION_ROLE", "FORCED_TRANSFER_ROLE", "PROXY_UPGRADE_ROLE", "DEPOSIT_AGENT_ROLE",
+    "DOCUMENT_ROLE", "EXTRA_INFORMATION_ROLE", "FORCED_TRANSFER_ROLE", "PROXY_UPGRADE_ROLE", "DEPOSIT_AGENT_ROLE", "SUPERVISOR_ROLE",
   ].map((r) => [keccak256(toBytes(r)), r] as [string, string]),
 ]);
 

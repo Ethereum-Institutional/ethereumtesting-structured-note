@@ -174,6 +174,13 @@ test("party keys read as capacities", async () => {
   assert.equal(partyLabel("agent"), "Agent");
 });
 
+test("a supervisory withdrawal shows its reason whole", () => {
+  const why = "Sanctions designation notified 24 September 2026; grant written by the second registrar";
+  const [row] = tape.describe(tx(A(0x42), call("function withdraw(address,string)", [A(3), why])));
+  assert.equal(row.tone, "control");
+  assert.deepEqual(row.args, ["Investor A", JSON.stringify(why)]);
+});
+
 test("flag and reference renderings", () => {
   assert.equal(grantFlags(0), "none");
   assert.equal(ref(stringToHex("opening/investorA", { size: 32 })), '"opening/investorA"');
