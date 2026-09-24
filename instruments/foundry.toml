@@ -15,6 +15,8 @@ via_ir = false
 optimizer = true
 optimizer_runs = 200
 bytecode_hash = "none"
+# The deploy script extends the venue stack's manifest.
+fs_permissions = [{ access = "read-write", path = "../ops" }]
 remappings = [
   "debt-standard/=lib/debt-standard/contracts/",
   "@openzeppelin/contracts-upgradeable/=lib/debt-standard/lib/openzeppelin-contracts-upgradeable/contracts/",

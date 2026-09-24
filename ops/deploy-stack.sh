@@ -5,6 +5,7 @@
 #   - the stand-ins exist before the venue can wrap the asset and register it with the checker
 #   - the adapter holds a balance before the factory can verify it, which the pool needs
 #   - the router and position manager exist before custody accounts can approve them
+#   - custody accounts exist before the Access Issuer can onboard them to the instruments
 set -euo pipefail
 export PATH="$HOME/.foundry/bin:$PATH"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,3 +32,6 @@ forge script script/03_DeployLens.s.sol:DeployLens $FS >/dev/null
 
 step "Custodian and segregated client accounts"
 forge script script/04_DeployCustody.s.sol:DeployCustody $FS >/dev/null
+
+step "instruments: registry, gates, note, deposit, gateway  (solc 0.8.34)"
+( cd instruments && forge script script/DeployInstruments.s.sol:DeployInstruments $FS >/dev/null )
