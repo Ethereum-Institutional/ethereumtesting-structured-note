@@ -25,8 +25,9 @@ sending-only key; **delivery waits on the sending domain's DNS verification**, a
 registration returns "Email delivery is unavailable". 27 end-to-end checks pass locally. The
 domain rule's list and the operator list live only in the Vercel environment, not in this
 repository. See `site/README.md`. No contracts and no chain are deployed.
-The repository is a clone of the source demo with history preserved; the strip-to-the-venue
-commit has **not** been made yet.
+The repository is a clone of the source demo with history preserved. **Wave 1 has stripped it to
+the venue** (section 5); nothing of the retired identity stack, the source console or the source
+hosting remains in the tree, only in history.
 
 The remote is named `upstream` and points at the source demo, deliberately. There is no `origin`,
 so nothing can be pushed to the source repository by accident. Set an `origin` when a home for
@@ -183,10 +184,43 @@ credential platform by its contracts.
    remain term sheet parameters. Original brief: settle boundary semantics and rounding direction in
    writing before any Solidity.
 
+**Wave 1, plumbing and de-branding. Done, 24 September 2026, on `wave/1-plumbing`.**
+
+- **Stripped to the venue.** Removed the retired identity stack and its deploy tree, the identity
+  checker, the source console, the promotional token and every hosting script (tunnel, watchdog,
+  hosted node), which pointed at the source deployment. The venue now runs against two fixtures
+  in `test/fixtures/`: a restricted asset with the ERC-7943 fungible interface and an open cash
+  leg, until Wave 2's instruments replace them. Neither is in audit scope. Cast by capacity.
+- **Checker on the Final interface.** The venue checker reads `canSend` and `canReceive`, not
+  the draft views it was written for. Every read fails closed, including a token with no code,
+  through a checked static call. `paused()` is not in ERC-7943 and is read where present: **the
+  Wave 2 instruments must expose it**, or a pause will not register at the venue.
+- **Venue tests.** 15, all passing, each with a stated control; the liquidity refusal has a
+  positive control so it cannot pass for the wrong reason. The README maps them.
+- **Instruments unit** at `instruments/` (solc 0.8.34, legacy pipeline, `bytecode_hash =
+  "none"`, which is 41 bytes smaller per contract than the spike figures). The debt standard
+  submodule moved there from the spike, which now builds against the same pin and still
+  reproduces 24,364 bytes and 17 tests. **Existing clones** need `git submodule sync --recursive
+  && git submodule update --init --recursive` once.
+- **`ops/build.sh`** builds both units, fails on any contract over EIP-170, on a missing
+  submodule, and on any debt standard pin other than `v3.3.0-rc3`.
+- **Chain library** at `site/lib/chain/`, carried from the console and corrected: manifest
+  loading with every key checked, one price module, the audit tape, and signing by capacity with
+  one queue per signer. 17 unit tests; an integration test decodes the local deployment's whole
+  history and fails if any call is unrecognised. No page uses it yet. Published local keys and
+  the pool-clearing nonce self-heal now apply only on the local chain.
+- **Tape coverage limit.** The tape finds transactions by the events watched contracts emit, so
+  a transaction that emitted none, a reverted one in particular, does not appear. Stated in the
+  code. A console that must show refused attempts needs an indexer over every transaction sent
+  to a watched address; decide in Wave 3.
+- **Site.** Now `"type": "module"` and depends on viem. Build, typecheck and the 31 end-to-end
+  checks pass. `npm audit` reports a high-severity advisory in the postcss that Next 15 bundles,
+  predating this wave; the fix is Next 16, a breaking change. Not yet taken.
+
 **Open items carried from the spikes and phase 0b (24 September 2026).**
 
-- **Branch.** All work since phase 0a is on `spike/eip170`, not merged to `main`. There is still
-  no `origin`; nothing has been pushed.
+- **Branch.** `spike/eip170` is merged to `main`. Wave 1 is on `wave/1-plumbing`, not merged.
+  There is still no `origin`; nothing has been pushed.
 - **Mail sender is temporary.** Production `MAIL_FROM` is Resend's shared test sender, which
   delivers only to the Resend account owner. Once the sending domain verifies in Resend (DNS is
   pending on the DNS provider), set `MAIL_FROM` to `Structured Note PoC
@@ -201,7 +235,7 @@ credential platform by its contracts.
 - **Phones.** The overview's tables stack below 640px; diagrams and the responsibilities matrix
   scroll with a cue. Any copy of the overview published before 24 September has the old layout.
 
-**Then, in order.** Wave 1, plumbing and de-branding. Wave 2,
+**Then, in order.** Wave 2,
 instruments. Wave 3, lifecycle. Wave 4, ceremony, then **freeze and tag the contract surface**.
 Wave 5, FX pool. Wave 6, hardening and deployment.
 
@@ -212,31 +246,35 @@ naming sign-off**. Neither blocks building; both block executing.
 
 ## 6. Hazards inherited from the source repository
 
-- `ADMIN_EMAIL_DOMAIN` **defaults to the original vendor's domain**. This is a live access-control
-  issue, not cosmetic. Fix during de-branding.
-- The health watchdog probes for a literal copy string in a page. Replace with a purpose-built
-  marker **in the same commit** as the page edit, or it silently disables itself.
-- The activity feed is keyed by function name alone and **silently drops unmapped rows**. With two
-  ERC-20-shaped tokens, mint, burn and transfer are ambiguous. An audit tape that is quietly
-  incomplete is the worst possible failure for this audience.
-- A numeric-formatting heuristic in the same file breaks at low decimals and truncates long
-  strings to twelve characters, which would cut an intervention reason mid-sentence.
-- Price maths hardcodes a decimal gap and is **copy-pasted in two files**, not imported.
-- **The pool's opening price assumes the asset sorts first.** `02_ActivateVenue` orders the
-  currencies by address but initialises with a constant computed for the asset as `currency0`.
-  When the stablecoin sorts first the pool opens at an inverted price and swaps return zero.
-  Local addresses are deterministic and happen to sort the safe way, so the tests pass; a retry
-  on a non-fresh node in spike 1 produced the other order and two swap tests failed. On a public
-  network this is a coin toss. Derive the price from the actual order in Wave 5.
-- `poolId` takes the whole manifest, encoding one pool.
-- The holder cast is a hand-assembled literal that cannot carry the fields the registrar split and
-  holder roll need.
-- Four documents each restate the deploy phase count and all four are wrong.
+Struck items were closed in Wave 1.
+
+- ~~`ADMIN_EMAIL_DOMAIN` defaults to the original vendor's domain.~~ Removed with the console. The
+  site names operators by explicit list only, with no default and no domain rule.
+- ~~The health watchdog probes for a literal copy string in a page.~~ Removed with the hosting
+  scripts.
+- ~~The activity feed is keyed by function name alone and silently drops unmapped rows.~~ Replaced
+  by `site/lib/chain/tape.ts`: keyed by target contract and selector, unrecognised calls kept and
+  marked. See the tape coverage limit in section 5.
+- ~~A numeric-formatting heuristic breaks at low decimals and truncates long strings.~~ Amounts
+  use their own token's decimals; text is never truncated.
+- ~~Price maths hardcodes a decimal gap and is copy-pasted in two files.~~ One module,
+  `site/lib/chain/price.ts`, with decimals from the manifest.
+- ~~The pool's opening price assumes the asset sorts first.~~ Fixed early, since the script was
+  rewritten anyway: `02_ActivateVenue` derives the price from the actual order and both tokens'
+  decimals. Verified by redeploying until the cash leg sorted first; all tests pass with either
+  order.
+- ~~`poolId` takes the whole manifest, encoding one pool.~~ It takes a pool key.
+- The holder cast is no longer a hand-assembled literal: parties are a map in the manifest,
+  written by `00_DeployStandIns`. It still carries only addresses; **the fields the registrar split
+  and holder roll need are Wave 3 design**.
+- ~~Four documents each restate the deploy phase count and all four are wrong.~~ The sequence is
+  written once, in `ops/README.md`, which defers to `ops/deploy-stack.sh`.
 - Wall-clock coupon and record dates against any baked or restored chain state. Store the schedule
   as offsets, or ship a re-time action.
-- The address manifest is passed as a hosting environment variable and has a size ceiling it will
-  approach.
-- **Submodules are not checked out.** Nothing compiles until they are initialised.
+- The address manifest has a size ceiling as a hosting environment variable. The chain library
+  prefers a file (`MANIFEST_PATH`); a hosted console still needs a home for it.
+- **Submodules are not checked out** in a fresh clone. Nothing compiles until they are
+  initialised; `ops/build.sh` names the first one missing.
 - **`vercel integration add` writes agent skill files into the repository** (`.agents/skills/`,
   symlinks under `.claude/skills/`, and `skills-lock.json`), unrequested and vendor-named. Delete
   them after any integration install.
