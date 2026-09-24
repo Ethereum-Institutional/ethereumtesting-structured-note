@@ -51,6 +51,11 @@ export type ArgSpec =
   | "time"
   | "ref"
   | "role"
+  | "levels"
+  | "outcome"
+  | "signature"
+  | "kind"
+  | "accounts"
   | { amountIn: string }
   | "calls";
 
@@ -78,6 +83,7 @@ const ADAPTED_TOKEN: Entry[] = [
   { signature: "function forcedTransfer(address from, address to, uint256 amount)", meaning: "Forced a transfer without the holder's signature", tone: "control", args: ["account", "account", "amount"] },
   { signature: "function forcedTransfer(address from, address to, uint256 value, bytes data)", meaning: "Forced a transfer without the holder's signature, with a written reason", tone: "control", args: ["account", "account", "amount", "reason"] },
   { signature: "function setRuleEngine(address ruleEngine)", meaning: "Replaced the instrument's gate", tone: "control", args: ["account"] },
+  { signature: "function setSnapshotEngine(address snapshotEngine)", meaning: "Attached the record-date engine", tone: "control", args: ["account"] },
   { signature: "function upgradeToAndCall(address newImplementation, bytes data)", meaning: "Upgraded the instrument's implementation", tone: "control", args: ["account", "plan"] },
 ];
 
@@ -142,6 +148,20 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function credit(address account, uint256 amount, bytes32 bookingRef)", meaning: "Created deposit on credit to an account", tone: "onboard", args: ["account", { amountIn: "deposit" }, "ref"] },
     { signature: "function debit(address account, uint256 amount, bytes32 bookingRef)", meaning: "Extinguished deposit on debit from an account", tone: "onboard", args: ["account", { amountIn: "deposit" }, "ref"] },
   ],
+  determinations: [
+    { signature: "function determine(uint256 dateIndex, uint256[] levels, (bool breached, bool couponPaid, uint64 couponPerCa, bool redeemed, uint64 redemptionPerCa, uint8 worstIndex) claimed, bytes signature)", meaning: "Accepted the Calculation Agent's determination: two computations agreed", tone: "control", args: ["number", "levels", "outcome", "signature"] },
+  ],
+  payingAgent: [
+    ...ROLES,
+    { signature: "function open(uint256 dateIndex, uint8 kind)", meaning: "Opened a distribution and debited its cash from the Agent", tone: "trade", args: ["number", "kind"] },
+    { signature: "function pay(bytes32 id, address[] holders)", meaning: "Paid holders of record at the Record Time", tone: "trade", args: ["ref", "accounts"] },
+    { signature: "function claim(bytes32 id, address holder)", meaning: "Paid an amount held for a holder the deposit could not credit", tone: "trade", args: ["ref", "account"] },
+  ],
+  settlement: [
+    { signature: "function propose(address seller, address buyer, uint64 units, uint256 price, uint48 deadline)", meaning: "Proposed a delivery-versus-payment trade", tone: "trade", args: ["account", "account", { amountIn: "note" }, { amountIn: "deposit" }, "time"] },
+    { signature: "function accept(uint256 id)", meaning: "Accepted a trade: both legs settled together", tone: "trade", args: ["number"] },
+    { signature: "function cancel(uint256 id)", meaning: "Cancelled a proposed trade", tone: "ops", args: ["number"] },
+  ],
   custodyFactory: [
     { signature: "function createAccount(string clientRef)", meaning: "Opened a segregated client account", tone: "onboard", args: ["text"] },
   ],
@@ -167,6 +187,9 @@ const KIND_OF_KEY: Record<string, string> = {
   "assets.deposit": "deposit",
   "instruments.registry": "registry",
   "instruments.gateway": "gateway",
+  "lifecycle.determinations": "determinations",
+  "lifecycle.payingAgent": "payingAgent",
+  "lifecycle.settlement": "settlement",
 };
 
 function kindOfKey(key: string): string | undefined {
@@ -304,6 +327,11 @@ export class Tape {
       return t ? this.amount(value as bigint, t.address) : `${(value as bigint).toString()} base units`;
     }
     if (spec === "grantFlags") return grantFlags(Number(value));
+    if (spec === "levels") return `[${(value as bigint[]).map(String).join(", ")}]`;
+    if (spec === "outcome") return outcome(value as Record<string, unknown>);
+    if (spec === "signature") return `«signature, ${((value as Hex).length - 2) / 2} bytes»`;
+    if (spec === "kind") return Number(value) === 0 ? "coupon" : "redemption";
+    if (spec === "accounts") return `[${(value as Address[]).map((x) => this.label(x)).join(", ")}]`;
     if (spec === "time") return new Date(Number(value) * 1000).toISOString();
     if (spec === "ref") return ref(value as Hex);
     if (spec === "role") return ROLE_NAMES.get((value as string).toLowerCase()) ?? (value as string);
@@ -340,6 +368,18 @@ export class Tape {
   watched(): Address[] {
     return [...this.book.entries()].filter(([, v]) => !v.key.startsWith("parties.")).map(([a]) => getAddress(a));
   }
+}
+
+/** A determination's outcome, in cents per Calculation Amount. */
+function outcome(o: Record<string, unknown>): string {
+  const cents = (v: unknown) => `EUR ${(Number(v) / 100).toFixed(2)}`;
+  const parts = [
+    o.couponPaid ? `coupon ${cents(o.couponPerCa)} per CA` : "no coupon",
+    o.redeemed ? `redeems at ${cents(o.redemptionPerCa)} per CA` : "no redemption",
+    o.breached ? "barrier breached" : "no breach",
+    `worst performer ${String(o.worstIndex)}`,
+  ];
+  return parts.join("; ");
 }
 
 /** The Identity Registry's flag bits, by name. Unknown bits are shown, not dropped. */

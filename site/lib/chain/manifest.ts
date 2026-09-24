@@ -48,6 +48,12 @@ export type Manifest = {
     deposit: Address;
     gateway: Address;
   };
+  lifecycle?: {
+    determinations: Address;
+    recordDates: Address;
+    payingAgent: Address;
+    settlement: Address;
+  };
 };
 
 export type PoolKey = {
@@ -146,6 +152,12 @@ export function addressBook(m: Manifest): Map<string, { key: string; label: stri
     put(m.instruments.noteGate, "instruments.noteGate", "Note gate");
     put(m.instruments.depositGate, "instruments.depositGate", "Deposit gate");
     put(m.instruments.gateway, "instruments.gateway", "Deposit gateway");
+  }
+  if (m.lifecycle) {
+    put(m.lifecycle.determinations, "lifecycle.determinations", "Determination Agent");
+    put(m.lifecycle.recordDates, "lifecycle.recordDates", "Record-date engine");
+    put(m.lifecycle.payingAgent, "lifecycle.payingAgent", "Paying Agent");
+    put(m.lifecycle.settlement, "lifecycle.settlement", "DvP settlement");
   }
   if (m.custody) {
     put(m.custody.factory, "custody.factory", "Custody factory");

@@ -24,6 +24,7 @@ const manifest: Manifest = {
   pool: { currency0: A(0x11), currency1: A(0x27), fee: 3000, tickSpacing: 60, tickLower: -60, tickUpper: 60, hook: A(0x24) },
   custody: { custodian: A(4), factory: A(0x30), accounts: { "CLIENT-A": A(0x31) } },
   instruments: { registry: A(0x42), noteGate: A(0x43), depositGate: A(0x44), note: A(0x40), deposit: A(0x41), gateway: A(0x45) },
+  lifecycle: { determinations: A(0x50), recordDates: A(0x51), payingAgent: A(0x52), settlement: A(0x53) },
 };
 
 const call = (signature: string, args: unknown[]) =>
@@ -179,6 +180,28 @@ test("a supervisory withdrawal shows its reason whole", () => {
   const [row] = tape.describe(tx(A(0x42), call("function withdraw(address,string)", [A(3), why])));
   assert.equal(row.tone, "control");
   assert.deepEqual(row.args, ["Investor A", JSON.stringify(why)]);
+});
+
+test("a determination reads as its outcome, in euros per Calculation Amount", () => {
+  const input = call(
+    "function determine(uint256,uint256[],(bool,bool,uint64,bool,uint64,uint8),bytes)",
+    [2n, [406_080n, 1_729_285n, 23_750n], [false, true, 2_500n, false, 0n, 0], "0x" + "11".repeat(65)],
+  );
+  const [row] = tape.describe(tx(A(0x50), input, A(9)));
+  assert.equal(row.args[2], "coupon EUR 25.00 per CA; no redemption; no breach; worst performer 0");
+  assert.equal(row.args[3], "«signature, 65 bytes»");
+});
+
+test("a DvP proposal shows units of the note and a price in the deposit", () => {
+  const [row] = tape.describe(tx(A(0x53), call("function propose(address,address,uint64,uint256,uint48)", [A(1), A(3), 10n, 1_000_000n, 1_790_000_000n])));
+  assert.deepEqual(row.args.slice(0, 4), ["Issuer", "Investor A", "10 NOTE", "10000 DEP"]);
+});
+
+test("a distribution's opening and payment name the kind and the holders", () => {
+  const [open] = tape.describe(tx(A(0x52), call("function open(uint256,uint8)", [3n, 1])));
+  const [pay] = tape.describe(tx(A(0x52), call("function pay(bytes32,address[])", [`0x${"cd".repeat(32)}`, [A(3), A(0x31)]])));
+  assert.deepEqual(open.args, ["3", "redemption"]);
+  assert.equal(pay.args[1], "[Investor A, CLIENT-A]");
 });
 
 test("flag and reference renderings", () => {
