@@ -9,8 +9,8 @@ overview, and the overview itself.
 1. A visitor registers with name, organisation and work email, and is sent a one-time link.
 2. Opening the link shows a **Continue** step. The link is consumed only when that is submitted,
    so a mail scanner that fetches links in advance cannot use it up.
-3. The first confirmation verifies the address and places the registration in the approval
-   queue. Operators are emailed.
+3. The first confirmation verifies the address. An address on a domain in `AUTO_APPROVE_DOMAINS`
+   is approved at once; any other joins the approval queue and operators are emailed.
 4. An operator approves at `/operator`. The registrant is emailed and signs in with a new link.
 5. Revocation deletes the registrant's sessions; access ends on their next request.
 
@@ -26,7 +26,8 @@ page.
 | `SITE_URL` | production | Origin written into emailed links. Never taken from the request |
 | `POSTGRES_URL` | production | Store. Without it, production refuses to start |
 | `RESEND_API_KEY`, `MAIL_FROM` | production | Mail. Without them, no link is issued; links are never shown on screen |
-| `OPERATOR_EMAILS` | yes | Comma-separated. Explicit list; there is no default and no domain rule |
+| `OPERATOR_EMAILS` | yes | Comma-separated. Who may approve and revoke. Explicit list; no default, no domain rule |
+| `AUTO_APPROVE_DOMAINS` | no | Comma-separated domains whose addresses are approved on verification. Reading access only; exact match, subdomains excluded |
 
 In development, mail is written to the server log and the store is `site/.data/store.json`.
 
@@ -34,8 +35,8 @@ In development, mail is written to the server log and the store is `site/.data/s
 
 ```
 npm install
-OPERATOR_EMAILS=operator@example.org npm run dev > /tmp/site-dev.log 2>&1 &
-rm -rf .data && npm run e2e          # 24 end-to-end checks against the dev server
+OPERATOR_EMAILS=operator@example.org AUTO_APPROVE_DOMAINS=approved.example npm run dev > /tmp/site-dev.log 2>&1 &
+rm -rf .data && npm run e2e          # 27 end-to-end checks against the dev server
 npm run build && npm run typecheck
 ```
 

@@ -3,7 +3,7 @@
 Drives the forms exactly as a browser with JavaScript disabled would, and reads emailed links
 from the development mail log. Start the server first:
 
-    OPERATOR_EMAILS=operator@example.org npx next dev -p 3020 > /tmp/site-dev.log 2>&1 &
+    OPERATOR_EMAILS=operator@example.org AUTO_APPROVE_DOMAINS=approved.example npx next dev -p 3020 > /tmp/site-dev.log 2>&1 &
     python3 test/e2e.py /tmp/site-dev.log
 
 Uses a fresh .data store; delete site/.data before running.
@@ -190,7 +190,20 @@ mark = log_size()
 sign_in_request(reader, "reader@example.org")
 check(links_for("reader@example.org", mark) == [], "revoked address is sent no link")
 
-# 8. Operator cannot revoke themselves
+# 8. Domain rule: verified addresses on a listed domain are approved without an operator
+auto = Client()
+mark = log_size()
+register(auto, "someone@approved.example", "Auto Reader", "Listed Domain")
+_, _, url = open_and_confirm(auto, links_for("someone@approved.example", mark)[0])
+check(url and url.rstrip("/").endswith("3020") and "INTEGRATION LAYER" in auto.get("/")[1], "listed-domain address is approved on verification")
+check(auto.get("/operator")[0] == 404, "the domain rule grants reading access, not operator rights")
+sub = Client()
+mark = log_size()
+register(sub, "someone@sub.approved.example", "Sub Reader", "Subdomain")
+_, _, url = open_and_confirm(sub, links_for("someone@sub.approved.example", mark)[0])
+check(url and url.endswith("/pending"), "a subdomain of a listed domain waits for an operator")
+
+# 9. Operator cannot revoke themselves
 _, ops, _ = op.get("/operator")
 check('value="revoke"' not in row_for(ops, "operator@example.org"), "no self-revoke control is rendered")
 

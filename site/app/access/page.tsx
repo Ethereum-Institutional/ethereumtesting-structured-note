@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
  */
 export default async function Access({ searchParams }: { searchParams: Promise<{ token?: string; invalid?: string }> }) {
   const { token = "", invalid } = await searchParams;
-  const usable = !invalid && (await linkUsable(token));
+  // A store failure reads as an unusable link, not an error page.
+  const usable = !invalid && (await linkUsable(token).catch(() => false));
   return (
     <div className="wrap narrow">
       <header className="masthead">

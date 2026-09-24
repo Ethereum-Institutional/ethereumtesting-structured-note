@@ -15,7 +15,11 @@ import { sendMail } from "./mail";
  *
  * Every request for a link returns the same response whether or not the address is known, so the
  * form cannot be used to learn who has registered. Operators are named by an explicit list in
- * OPERATOR_EMAILS; there is no default and no domain rule.
+ * OPERATOR_EMAILS; there is no default and no domain rule for operators.
+ *
+ * AUTO_APPROVE_DOMAINS lists domains whose addresses are approved on verification, without
+ * waiting for an operator. It grants reading access only, and only after the link has proved
+ * control of the mailbox. Addresses on other domains wait for an operator.
  */
 
 export const LINK_TTL_MINUTES = 30;
@@ -34,12 +38,16 @@ export function validEmail(email: string): boolean {
   return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
 }
 
+const list = (v: string | undefined) => (v ?? "").split(",").map(normaliseEmail).filter(Boolean);
+
 export function isOperator(email: string): boolean {
-  const list = (process.env.OPERATOR_EMAILS ?? "")
-    .split(",")
-    .map(normaliseEmail)
-    .filter(Boolean);
-  return list.includes(email);
+  return list(process.env.OPERATOR_EMAILS).includes(email);
+}
+
+/** Exact domain match on the part after the last "@"; subdomains do not match. */
+export function autoApproved(email: string): boolean {
+  const domain = email.slice(email.lastIndexOf("@") + 1);
+  return list(process.env.AUTO_APPROVE_DOMAINS).map((d) => d.replace(/^@/, "")).includes(domain);
 }
 
 function clean(v: string, max: number): string {
@@ -118,14 +126,14 @@ export async function confirm(token: string, origin: string): Promise<Confirmati
   if (r.status === "revoked") return "invalid";
 
   if (r.status === "unverified") {
-    const operator = isOperator(r.email);
-    await store.setStatus(r.id, operator ? "approved" : "pending", {
+    const rule = isOperator(r.email) ? "operator list" : autoApproved(r.email) ? "domain rule" : null;
+    await store.setStatus(r.id, rule ? "approved" : "pending", {
       verifiedAt: now(),
-      ...(operator ? { decidedAt: now(), decidedBy: "operator list" } : {}),
+      ...(rule ? { decidedAt: now(), decidedBy: rule } : {}),
     });
-    await store.audit({ at: now(), actor: r.email, action: operator ? "verified, operator" : "verified", subject: r.email });
+    await store.audit({ at: now(), actor: r.email, action: rule ? `verified, approved by ${rule}` : "verified", subject: r.email });
     r = (await store.registrantById(id))!;
-    if (!operator) await notifyOperators(r, origin);
+    if (!rule) await notifyOperators(r, origin);
   }
   if (r.status !== "approved") return "pending";
 
@@ -144,9 +152,8 @@ export async function confirm(token: string, origin: string): Promise<Confirmati
 }
 
 async function notifyOperators(r: Registrant, origin: string) {
-  const list = (process.env.OPERATOR_EMAILS ?? "").split(",").map(normaliseEmail).filter(Boolean);
   await Promise.allSettled(
-    list.map((to) =>
+    list(process.env.OPERATOR_EMAILS).map((to) =>
       sendMail(to, "Registration awaiting approval", `${r.name}, ${r.organisation} <${r.email}>\n\nReview: ${origin}/operator\n`),
     ),
   );

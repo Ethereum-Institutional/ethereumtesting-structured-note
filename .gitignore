@@ -25,3 +25,5 @@ dashboard/.vercel/
 ops/fly/anvil-state.json
 ops/anvil-state.json
 dashboard/.data/
+.vercel
+.env*
