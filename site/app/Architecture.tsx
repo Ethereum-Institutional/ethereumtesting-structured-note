@@ -44,6 +44,7 @@ const FLOWS: [string, boolean][] = [
 export function Architecture() {
   return (
     <figure className="figure">
+      <p className="swipe" aria-hidden="true">Scroll sideways for the whole diagram {"\u2192"}</p>
       <div className="scroller">
         <svg
           viewBox="0 0 1060 470"

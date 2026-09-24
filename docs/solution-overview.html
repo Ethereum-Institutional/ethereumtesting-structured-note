@@ -372,6 +372,30 @@ footer {
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
+/* ---- phones: tables stack into labelled rows; wide grids and diagrams scroll with a cue ---- */
+.swipe { display: none; }
+@media (max-width: 640px) {
+  .stack table { min-width: 0; }
+  .stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .stack tbody, .stack tr, .stack td { display: block; }
+  .stack tr { padding: 0.85rem 0; border-bottom: 1px solid var(--border); }
+  .stack td { border: 0; padding: 0.1rem 0; white-space: normal; }
+  .stack td:first-child { color: var(--fg); font-weight: 600; padding-bottom: 0.3rem; }
+  .stack td.key:first-child, .stack td.ref:first-child { font-weight: 500; }
+  .stack td[data-label]::before {
+    content: attr(data-label); display: block; margin-top: 0.45rem;
+    font-family: var(--mono); font-size: 0.625rem; font-weight: 500;
+    letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--fg3);
+  }
+  .stack tr.grp { padding: 1.4rem 0 0.2rem; border-bottom: 1px solid var(--border2); }
+  .stack tr.grp td { font-family: var(--mono); font-size: 0.6875rem; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--accent); }
+  .matrix th:first-child, .matrix td:first-child { position: sticky; left: 0; z-index: 1; background: var(--bg); box-shadow: 1px 0 0 var(--border); }
+}
+.swipe.on {
+  display: block; margin: 0 0 -0.4rem; font-family: var(--mono); font-size: 0.625rem;
+  letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--fg3);
+}
+
 @media print {
   .toc, .toc-toggle { display: none !important; }
   .layout { display: block; padding: 0; }
@@ -2001,5 +2025,40 @@ footer {
   }
   links.forEach(function (a) { a.addEventListener('click', close); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+})();
+</script>
+<script>
+/* Phones: label each cell of an ordinary table with its column heading so rows can stack, and
+   mark any wide grid or diagram that still scrolls sideways with a visible cue. */
+(function () {
+  var scrollers = Array.prototype.slice.call(document.querySelectorAll('.scroller'));
+  var cues = [];
+  scrollers.forEach(function (box) {
+    var table = box.querySelector('table');
+    if (table && !box.classList.contains('matrix')) {
+      var heads = Array.prototype.map.call(table.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
+      Array.prototype.forEach.call(table.querySelectorAll('tbody tr'), function (tr) {
+        if (tr.classList.contains('grp')) return;
+        Array.prototype.forEach.call(tr.children, function (td, i) { if (i > 0 && heads[i]) td.setAttribute('data-label', heads[i]); });
+      });
+      box.classList.add('stack');
+      return;
+    }
+    var cue = document.createElement('p');
+    cue.className = 'swipe';
+    cue.setAttribute('aria-hidden', 'true');
+    cue.textContent = table ? 'Scroll sideways for all columns \u2192' : 'Scroll sideways for the whole diagram \u2192';
+    box.parentNode.insertBefore(cue, box);
+    cues.push([box, cue]);
+  });
+  function update() {
+    cues.forEach(function (c) {
+      var more = c[0].scrollWidth - c[0].clientWidth - c[0].scrollLeft > 4;
+      c[1].classList.toggle('on', more);
+    });
+  }
+  cues.forEach(function (c) { c[0].addEventListener('scroll', update, { passive: true }); });
+  window.addEventListener('resize', update);
+  update();
 })();
 </script>
