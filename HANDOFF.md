@@ -183,7 +183,25 @@ credential platform by its contracts.
    remain term sheet parameters. Original brief: settle boundary semantics and rounding direction in
    writing before any Solidity.
 
-**Then, in order.** Phase 0b, the gated landing site. Wave 1, plumbing and de-branding. Wave 2,
+**Open items carried from the spikes and phase 0b (24 September 2026).**
+
+- **Branch.** All work since phase 0a is on `spike/eip170`, not merged to `main`. There is still
+  no `origin`; nothing has been pushed.
+- **Mail sender is temporary.** Production `MAIL_FROM` is Resend's shared test sender, which
+  delivers only to the Resend account owner. Once the sending domain verifies in Resend (DNS is
+  pending on the DNS provider), set `MAIL_FROM` to `Structured Note PoC
+  <access@ethereuminstitutional.org>` and redeploy. Until then, nobody else receives links.
+- **Rotate the Resend key** before the site carries anything real; it was pasted into a session.
+- **Deploying.** From the repository root, always with `--scope ethereuminstitutional`: another
+  local session also uses the Vercel CLI and changes its default scope. Environment variables were
+  set through the REST API because `vercel env add` hangs non-interactively.
+- **Commits are GPG-signed** and need the passphrase at the keyboard.
+- **Payoff confirmations C1 to C10** (`docs/spikes/03-payoff-specification.md` section 10) should
+  go to the Issuer and the Calculation Agent early; Wave 3 depends on them.
+- **Phones.** The overview's tables stack below 640px; diagrams and the responsibilities matrix
+  scroll with a cue. Any copy of the overview published before 24 September has the old layout.
+
+**Then, in order.** Wave 1, plumbing and de-branding. Wave 2,
 instruments. Wave 3, lifecycle. Wave 4, ceremony, then **freeze and tag the contract surface**.
 Wave 5, FX pool. Wave 6, hardening and deployment.
 
