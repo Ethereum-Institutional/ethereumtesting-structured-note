@@ -1,0 +1,2709 @@
+{
+ "recordAfter": 172800,
+ "paymentAfter": 432000,
+ "holders": {
+  "investor-a": 3,
+  "investor-b": 7,
+  "custody-nominee": 2,
+  "issuer-inventory": 5
+ },
+ "excluded": [
+  "issuer-inventory"
+ ],
+ "cases": [
+  {
+   "name": "final-at-barrier",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     270720,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "final-one-unit-below-barrier",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     270719,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": true,
+     "redemptionPerCa": 60000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "final-one-unit-above-barrier",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     270721,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "coupon-at-barrier",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     315840,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "coupon-one-unit-below",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     315839,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "mer-at-trigger",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     451200,
+     2184360,
+     30000
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ]
+   ],
+   "terminatedIndex": 1,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "mer-one-unit-below",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     451199,
+     2184360,
+     30000
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "mer-first-date",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     473760,
+     2184360,
+     30000
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ]
+   ],
+   "terminatedIndex": 0,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "mer-step-down-at-trigger",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    9500,
+    9000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     428640,
+     2184360,
+     30000
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ]
+   ],
+   "terminatedIndex": 1,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "tie-two-worst",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     338400,
+     1365225,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "worst-is-last-underlying",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     496320,
+     2002330,
+     20000
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 2
+    }
+   ]
+  },
+  {
+   "name": "breach-half-cent-rounds-up",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     225318,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": true,
+     "redemptionPerCa": 49938,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "breach-rounds-to-nearest-up",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     225599,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": true,
+     "redemptionPerCa": 50000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "breach-rounds-to-nearest-down",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     225601,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": true,
+     "redemptionPerCa": 50000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "breach-level-zero",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     0,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": true,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "american-breach-recovered-above-initial",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     225600,
+     2002330,
+     27500
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     460224,
+     2184360,
+     30000
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "american-breach-final-80",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     225600,
+     2002330,
+     27500
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     360960,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 80000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "american-coupon-date-at-barrier",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     270720,
+     2002330,
+     27500
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "memory-one-missed",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": true,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     311328,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 5000,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "no-memory-one-missed",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": false,
+   "twinUpBps": 0,
+   "twinDownBps": 0,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     311328,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 100000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "twin-win-final-110",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": true,
+   "twinUpBps": 10000,
+   "twinDownBps": 10000,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     496320,
+     2184360,
+     30000
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 110000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "twin-win-final-75",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": true,
+   "twinUpBps": 10000,
+   "twinDownBps": 10000,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     338400,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": true,
+     "redemptionPerCa": 125000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "twin-win-at-barrier",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": true,
+   "twinUpBps": 10000,
+   "twinDownBps": 10000,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     270720,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": true,
+     "redemptionPerCa": 140000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "twin-win-below-barrier",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": true,
+   "twinUpBps": 10000,
+   "twinDownBps": 10000,
+   "twinCapBps": 0,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     270719,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": true,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": true,
+     "redemptionPerCa": 60000,
+     "worstIndex": 0
+    }
+   ]
+  },
+  {
+   "name": "twin-win-capped",
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": true,
+   "twinUpBps": 10000,
+   "twinDownBps": 10000,
+   "twinCapBps": 12000,
+   "dates": [
+    1799971200,
+    1807747200,
+    1815609600,
+    1823558400
+   ],
+   "coupon": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "mer": [
+    true,
+    true,
+    true,
+    false
+   ],
+   "barrier": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "final": [
+    false,
+    false,
+    false,
+    true
+   ],
+   "merTriggerBps": [
+    10000,
+    10000,
+    10000,
+    0
+   ],
+   "levels": [
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     406080,
+     1729285,
+     23750
+    ],
+    [
+     293280,
+     2002330,
+     27500
+    ]
+   ],
+   "terminatedIndex": 3,
+   "outcomes": [
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": true,
+     "couponPerCa": 2500,
+     "redeemed": false,
+     "redemptionPerCa": 0,
+     "worstIndex": 0
+    },
+    {
+     "breached": false,
+     "couponPaid": false,
+     "couponPerCa": 0,
+     "redeemed": true,
+     "redemptionPerCa": 120000,
+     "worstIndex": 0
+    }
+   ]
+  }
+ ]
+}
