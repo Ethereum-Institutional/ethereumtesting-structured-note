@@ -40,6 +40,14 @@ export type Manifest = {
   };
   lens?: { stateView: Address };
   custody?: { custodian: Address; factory: Address; accounts: Record<string, Address> };
+  instruments?: {
+    registry: Address;
+    noteGate: Address;
+    depositGate: Address;
+    note: Address;
+    deposit: Address;
+    gateway: Address;
+  };
 };
 
 export type PoolKey = {
@@ -133,6 +141,12 @@ export function addressBook(m: Manifest): Map<string, { key: string; label: stri
   };
   for (const [key, label] of Object.entries(venue)) put(m.venue[key as keyof Manifest["venue"]], `venue.${key}`, label);
   put(m.lens?.stateView, "lens.stateView", "State lens");
+  if (m.instruments) {
+    put(m.instruments.registry, "instruments.registry", "Identity Registry");
+    put(m.instruments.noteGate, "instruments.noteGate", "Note gate");
+    put(m.instruments.depositGate, "instruments.depositGate", "Deposit gate");
+    put(m.instruments.gateway, "instruments.gateway", "Deposit gateway");
+  }
   if (m.custody) {
     put(m.custody.factory, "custody.factory", "Custody factory");
     for (const [ref, addr] of Object.entries(m.custody.accounts)) put(addr, `custody.accounts.${ref}`, ref);
@@ -141,9 +155,8 @@ export function addressBook(m: Manifest): Map<string, { key: string; label: stri
   return book;
 }
 
-/** "investorA" reads as "Investor A"; a capacity reads with its capital. */
+/** A manifest key read as a capacity: "investorA" is "Investor A", "accessIssuer" is "Access Issuer". */
 export function partyLabel(key: string): string {
-  const m = /^([a-z]+)([A-Z])$/.exec(key);
-  if (m) return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}`;
-  return key[0].toUpperCase() + key.slice(1);
+  const words = key.replace(/([A-Z])/g, " $1").trim();
+  return words[0].toUpperCase() + words.slice(1);
 }

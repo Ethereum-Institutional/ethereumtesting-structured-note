@@ -2,6 +2,8 @@ import {
   decodeFunctionData,
   formatUnits,
   getAddress,
+  keccak256,
+  toBytes,
   parseAbiItem,
   toFunctionSelector,
   type AbiFunction,
@@ -45,9 +47,39 @@ export type ArgSpec =
   | "reason"
   | "plan"
   | "poolKey"
+  | "grantFlags"
+  | "time"
+  | "ref"
+  | "role"
+  | { amountIn: string }
   | "calls";
 
 export type Entry = { signature: string; meaning: string; tone: Tone; args: ArgSpec[] };
+
+/** Role administration, on every contract that uses role-based access control. */
+const ROLES: Entry[] = [
+  { signature: "function grantRole(bytes32 role, address account)", meaning: "Granted a role", tone: "control", args: ["role", "account"] },
+  { signature: "function revokeRole(bytes32 role, address account)", meaning: "Revoked a role", tone: "control", args: ["role", "account"] },
+  { signature: "function renounceRole(bytes32 role, address account)", meaning: "Renounced a role", tone: "control", args: ["role", "account"] },
+];
+
+/** The note and the deposit share the adapted composition, so they share these. */
+const ADAPTED_TOKEN: Entry[] = [
+  ...ROLES,
+  { signature: "function mint(address account, uint256 value)", meaning: "Issued units", tone: "onboard", args: ["account", "amount"] },
+  { signature: "function burn(address account, uint256 value)", meaning: "Burned units", tone: "control", args: ["account", "amount"] },
+  { signature: "function transfer(address to, uint256 value)", meaning: "Transferred units", tone: "trade", args: ["account", "amount"] },
+  { signature: "function transferFrom(address from, address to, uint256 value)", meaning: "Transferred units under an allowance", tone: "trade", args: ["account", "account", "amount"] },
+  { signature: "function approve(address spender, uint256 value)", meaning: "Set an allowance", tone: "ops", args: ["account", "amount"] },
+  { signature: "function pause()", meaning: "Paused the instrument: all transfers halted", tone: "control", args: [] },
+  { signature: "function unpause()", meaning: "Unpaused the instrument", tone: "control", args: [] },
+  { signature: "function setAddressFrozen(address account, bool isFrozen)", meaning: "Froze or unfroze an account", tone: "control", args: ["account", "flag"] },
+  { signature: "function setFrozenTokens(address account, uint256 amount)", meaning: "Set the frozen part of a holding", tone: "control", args: ["account", "amount"] },
+  { signature: "function forcedTransfer(address from, address to, uint256 amount)", meaning: "Forced a transfer without the holder's signature", tone: "control", args: ["account", "account", "amount"] },
+  { signature: "function forcedTransfer(address from, address to, uint256 value, bytes data)", meaning: "Forced a transfer without the holder's signature, with a written reason", tone: "control", args: ["account", "account", "amount", "reason"] },
+  { signature: "function setRuleEngine(address ruleEngine)", meaning: "Replaced the instrument's gate", tone: "control", args: ["account"] },
+  { signature: "function upgradeToAndCall(address newImplementation, bytes data)", meaning: "Upgraded the instrument's implementation", tone: "control", args: ["account", "plan"] },
+];
 
 /** Contract kinds, each with the calls the tape knows for it. */
 export const REGISTRY: Record<string, Entry[]> = {
@@ -95,6 +127,20 @@ export const REGISTRY: Record<string, Entry[]> = {
   permit2: [
     { signature: "function approve(address token, address spender, uint160 amount, uint48 expiration)", meaning: "Set a Permit2 allowance", tone: "ops", args: ["account", "account", { amountOf: 0 }, "number"] },
   ],
+  note: ADAPTED_TOKEN,
+  deposit: ADAPTED_TOKEN,
+  registry: [
+    ...ROLES,
+    { signature: "function setRegistrar(address issuingKey, uint16 registrar)", meaning: "Appointed or removed a registrar's issuing key", tone: "control", args: ["account", "number"] },
+    { signature: "function setMaxValidity(uint40 maxValidity)", meaning: "Set the longest a grant may run, in seconds", tone: "control", args: ["number"] },
+    { signature: "function grant(address account, uint32 flags, uint16 jurisdiction, uint40 expiresAt, bytes32 credentialRef, bytes32 commitment)", meaning: "Granted eligibility after a verified presentation", tone: "onboard", args: ["account", "grantFlags", "number", "time", "ref", "ref"] },
+    { signature: "function revoke(address account)", meaning: "Revoked an account's eligibility", tone: "control", args: ["account"] },
+  ],
+  gateway: [
+    ...ROLES,
+    { signature: "function credit(address account, uint256 amount, bytes32 bookingRef)", meaning: "Created deposit on credit to an account", tone: "onboard", args: ["account", { amountIn: "deposit" }, "ref"] },
+    { signature: "function debit(address account, uint256 amount, bytes32 bookingRef)", meaning: "Extinguished deposit on debit from an account", tone: "onboard", args: ["account", { amountIn: "deposit" }, "ref"] },
+  ],
   custodyFactory: [
     { signature: "function createAccount(string clientRef)", meaning: "Opened a segregated client account", tone: "onboard", args: ["text"] },
   ],
@@ -116,6 +162,10 @@ const KIND_OF_KEY: Record<string, string> = {
   "venue.permit2": "permit2",
   "venue.poolManager": "poolManager",
   "custody.factory": "custodyFactory",
+  "assets.note": "note",
+  "assets.deposit": "deposit",
+  "instruments.registry": "registry",
+  "instruments.gateway": "gateway",
 };
 
 function kindOfKey(key: string): string | undefined {
@@ -247,7 +297,15 @@ export class Tape {
   private render(spec: ArgSpec, value: unknown, target: Address, all: readonly unknown[]): string {
     if (spec === "account") return this.label(value as Address);
     if (spec === "amount") return this.amount(value as bigint, target);
-    if (typeof spec === "object") return this.amount(value as bigint, all[spec.amountOf] as Address);
+    if (typeof spec === "object" && "amountOf" in spec) return this.amount(value as bigint, all[spec.amountOf] as Address);
+    if (typeof spec === "object") {
+      const t = this.manifest.assets[spec.amountIn];
+      return t ? this.amount(value as bigint, t.address) : `${(value as bigint).toString()} base units`;
+    }
+    if (spec === "grantFlags") return grantFlags(Number(value));
+    if (spec === "time") return new Date(Number(value) * 1000).toISOString();
+    if (spec === "ref") return ref(value as Hex);
+    if (spec === "role") return ROLE_NAMES.get((value as string).toLowerCase()) ?? (value as string);
     if (spec === "flag") return value ? "true" : "false";
     if (spec === "number") return (value as bigint | number).toString();
     if (spec === "text") return JSON.stringify(value as string);
@@ -281,6 +339,38 @@ export class Tape {
   watched(): Address[] {
     return [...this.book.entries()].filter(([, v]) => !v.key.startsWith("parties.")).map(([a]) => getAddress(a));
   }
+}
+
+/** The Identity Registry's flag bits, by name. Unknown bits are shown, not dropped. */
+const GRANT_FLAGS: Array<[number, string]> = [
+  [1 << 0, "HOLD"], [1 << 1, "RECEIVE"], [1 << 2, "TRANSFER"], [1 << 3, "SWAP"], [1 << 4, "PROVIDE_LIQUIDITY"],
+  [1 << 8, "REG_S"], [1 << 9, "RULE_144A"], [1 << 10, "PROFESSIONAL"], [1 << 11, "ACCREDITED"], [1 << 12, "QIB"],
+  [1 << 13, "SANCTIONS_CLEAR"], [1 << 14, "CONTRACT_ACCOUNT"],
+];
+
+export function grantFlags(flags: number): string {
+  const names = GRANT_FLAGS.filter(([bit]) => flags & bit).map(([, n]) => n);
+  const known = GRANT_FLAGS.reduce((m, [bit]) => m | bit, 0);
+  const rest = flags & ~known;
+  if (rest) names.push(`0x${rest.toString(16)}`);
+  return names.length ? names.join("|") : "none";
+}
+
+const ROLE_NAMES = new Map<string, string>([
+  ["0x0000000000000000000000000000000000000000000000000000000000000000", "DEFAULT_ADMIN_ROLE"],
+  ...[
+    "MINTER_ROLE", "BURNER_ROLE", "PAUSER_ROLE", "ENFORCER_ROLE", "ERC20ENFORCER_ROLE", "SNAPSHOOTER_ROLE",
+    "DOCUMENT_ROLE", "EXTRA_INFORMATION_ROLE", "FORCED_TRANSFER_ROLE", "PROXY_UPGRADE_ROLE", "DEPOSIT_AGENT_ROLE",
+  ].map((r) => [keccak256(toBytes(r)), r] as [string, string]),
+]);
+
+/** A 32-byte reference: text when it is printable text padded with zeros, otherwise hex. */
+export function ref(value: Hex): string {
+  const bytes = Buffer.from(value.slice(2), "hex");
+  const end = bytes.indexOf(0) === -1 ? bytes.length : bytes.indexOf(0);
+  const head = bytes.subarray(0, end);
+  const printable = end > 0 && head.every((b) => b >= 0x20 && b < 0x7f) && bytes.subarray(end).every((b) => b === 0);
+  return printable ? JSON.stringify(head.toString("latin1")) : value;
 }
 
 /** A reason payload shown as text when it is UTF-8, and in full hex when it is not. */

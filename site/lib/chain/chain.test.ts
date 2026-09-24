@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { encodeFunctionData, parseAbiItem, stringToHex, type Address, type Hex } from "viem";
 import { parseManifest, poolKey, ManifestError, type Manifest } from "./manifest.ts";
 import { price } from "./price.ts";
-import { Tape, reason } from "./tape.ts";
+import { Tape, reason, grantFlags, ref } from "./tape.ts";
 import { signerQueues } from "./queue.ts";
 
 const A = (n: number) => `0x${n.toString(16).padStart(40, "0")}` as Address;
@@ -14,6 +14,8 @@ const manifest: Manifest = {
   assets: {
     venueAsset: { address: A(0x10), symbol: "ASSET", decimals: 18 },
     cash: { address: A(0x11), symbol: "CASH", decimals: 6 },
+    note: { address: A(0x40), symbol: "NOTE", decimals: 0 },
+    deposit: { address: A(0x41), symbol: "DEP", decimals: 2 },
   },
   venue: {
     poolManager: A(0x20), permit2: A(0x21), adapterFactory: A(0x22), allowlistChecker: A(0x23),
@@ -21,6 +23,7 @@ const manifest: Manifest = {
   },
   pool: { currency0: A(0x11), currency1: A(0x27), fee: 3000, tickSpacing: 60, tickLower: -60, tickUpper: 60, hook: A(0x24) },
   custody: { custodian: A(4), factory: A(0x30), accounts: { "CLIENT-A": A(0x31) } },
+  instruments: { registry: A(0x42), noteGate: A(0x43), depositGate: A(0x44), note: A(0x40), deposit: A(0x41), gateway: A(0x45) },
 };
 
 const call = (signature: string, args: unknown[]) =>
@@ -141,6 +144,39 @@ test("a deployment is shown, not skipped", () => {
   const row = tape.describeCreation({ hash: `0x${"cd".repeat(32)}`, block: 1, from: A(1) }, A(0x10));
   assert.equal(row.meaning, "Deployed a contract");
   assert.equal(row.target, "ASSET");
+});
+
+test("a note balance is a count of units; a deposit amount has two decimals", () => {
+  const [note] = tape.describe(tx(A(0x40), call("function mint(address,uint256)", [A(3), 7n])));
+  const [credit] = tape.describe(tx(A(0x45), call("function credit(address,uint256,bytes32)", [A(3), 123456n, stringToHex("booking-1", { size: 32 })])));
+  assert.deepEqual(note.args, ["Investor A", "7 NOTE"]);
+  assert.deepEqual(credit.args, ["Investor A", "1234.56 DEP", '"booking-1"']);
+});
+
+test("a grant shows its flags by name and its expiry as a date", () => {
+  const input = call("function grant(address,uint32,uint16,uint40,bytes32,bytes32)", [A(3), (1 << 0) | (1 << 1) | (1 << 8) | (1 << 20), 276, 1_790_000_000n, `0x${"ab".repeat(32)}`, `0x${"00".repeat(32)}`]);
+  const [row] = tape.describe(tx(A(0x42), input, A(2)));
+  assert.equal(row.meaning, "Granted eligibility after a verified presentation");
+  assert.equal(row.args[1], "HOLD|RECEIVE|REG_S|0x100000", "an unknown bit is shown, not dropped");
+  assert.equal(row.args[3], "2026-09-21T14:13:20.000Z");
+  assert.equal(row.args[4], `0x${"ab".repeat(32)}`, "a reference that is not text stays hex");
+});
+
+test("a role is named when it is a known role", () => {
+  const [row] = tape.describe(tx(A(0x40), call("function grantRole(bytes32,address)", [`0x${"00".repeat(32)}`, A(2)])));
+  assert.deepEqual(row.args, ["DEFAULT_ADMIN_ROLE", "Agent"]);
+});
+
+test("party keys read as capacities", async () => {
+  const { partyLabel } = await import("./manifest.ts");
+  assert.equal(partyLabel("investorA"), "Investor A");
+  assert.equal(partyLabel("accessIssuer"), "Access Issuer");
+  assert.equal(partyLabel("agent"), "Agent");
+});
+
+test("flag and reference renderings", () => {
+  assert.equal(grantFlags(0), "none");
+  assert.equal(ref(stringToHex("opening/investorA", { size: 32 })), '"opening/investorA"');
 });
 
 // --- queue ---
