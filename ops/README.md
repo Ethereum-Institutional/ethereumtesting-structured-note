@@ -24,6 +24,7 @@ two disagree, the script is right and this table is to be corrected.
 | Lens | `script/03_DeployLens.s.sol` | Reads pool state; needs the pool manager |
 | Custody | `script/04_DeployCustody.s.sol` | Client accounts approve the router and position manager |
 | Instruments | `instruments/script/DeployInstruments.s.sol` | Onboards the custody accounts to the registry, so it comes after them. Extends the manifest |
+| Issuance | `instruments/script/IssueNote.s.sol` | Fixes illustrative terms, dated from the chain's own clock; attaches the lifecycle; places units by DvP |
 
 On the public test network the core pool manager and Permit2 are already deployed: pass
 `POOL_MANAGER` to the venue script, and skip `setup-permit2.sh`.

@@ -237,7 +237,7 @@ contracts and sizes.
   sole minter and burner of the deposit. A debit cannot reach a frozen balance (tested).
 - **Deployment** is one library used by both the deploy script and the integration tests.
   `ops/deploy-stack.sh` now ends with it. New capacities: the Access Issuer (account 2) and the
-  Deposit Agent (account 8). The chain library's tape knows every Wave 2 call, and the
+  Deposit Agent (account 9). The chain library's tape knows every Wave 2 call, and the
   integration test still requires every call on a fresh deployment to be recognised.
 
 **Wave 2 decisions, confirmed 24 September 2026.**
@@ -262,6 +262,60 @@ contracts and sizes.
   `DeployInstruments`, so naming sign-off and the final term sheet change configuration, not
   code.
 
+**Wave 3, lifecycle. Done, 24 September 2026.** In `instruments/`; see its README.
+
+- **Determination Agent.** Terms and calendar fixed and validated at issuance (P5, P6). A
+  determination is the Calculation Agent's EIP-712 signature over the Levels and the outcome it
+  computed; the contract recomputes and accepts only an identical outcome (D1). Integer formulas
+  of spike 3 section 9, rounded once per CA, half up. Contract signers are supported.
+- **S-34 met.** All 25 vector scenarios reproduce to the cent end to end, and seven deliberate
+  payoff errors were each caught. The vectors reach Forge through
+  `instruments/test/vectors/flatten.py`, which reshapes the model's output without recomputing it.
+- **Record-date engine** checkpoints every balance by block timestamp (E1) and stops transfers
+  (E4). **Refinement of L2:** an MER is known only once its date is determined, so transfers stop
+  from the Record Time of *any* date that could redeem, and reopen once its determination shows no
+  redemption. A late determination pauses trading rather than moving units whose redemption
+  belongs to the seller. The stop also applies to forced transfers.
+- **Paying Agent**, **DvP settlement** and the **issuance script**: see the decisions below.
+  `live()` and `pending()` are derived from balances. The Calculation Agent is account 7. Dates on
+  the local chain are offsets from its own clock at issuance, which closes the wall-clock hazard in
+  section 6 for the local stack.
+- **Tape** knows every lifecycle call; a determination reads as its outcome in euros per CA.
+
+**Wave 3 decisions, confirmed 24 September 2026.**
+
+- **L1. A holder the deposit cannot credit is held for.** Its amount stays in the Paying Agent
+  against it and the event, claimable by anyone for it once the deposit accepts it again. The
+  event still closes for everyone else.
+- **L2. The engine refuses, then the note pauses.** The engine stops ordinary transfers from the
+  Record Time with no transaction needed; opening a redemption pauses the note so the ERC-7943 views
+  agree. Until then the views can say yes while a transfer refuses, which is the safe direction.
+- **L3. Push, verified, reconciled.** The Agent supplies holders from the Register; each holder's
+  units are read from the record-date balance, never supplied; an event closes only when units
+  paid equal the supply at the Record Time less the inventory.
+- **L4. DvP is propose, then accept,** by the other party; either may cancel before.
+
+**For review, taken during the build.**
+
+- **Allowances need an onboarded spender.** The debt standard's `approve` refuses a spender that
+  cannot send, so the settlement contract is onboarded to the registry like a participant (with
+  the contract-account flag), as the venue's adapter was in Wave 1. The alternative is a seventh
+  adaptation removing the spender check from both tokens, which weakens a control the standard
+  chose to have.
+- **Forge's incremental build can hide a changed contract.** A test that deploys a contract kept
+  its old creation code after the contract changed, so a deliberately broken payoff passed. Run
+  `forge test --force` after any contract change; the instruments README says so.
+- **Custody accounts as nominee (E3)** are covered in the vectors by an address, not a
+  `CustodyAccount`: the custody contract is in the venue's compilation unit and cannot be deployed
+  from the instruments' tests. The venue tests cover it as a holder.
+- **Not in Wave 3:** reversal and restatement of a distribution (the worked example of the wrong
+  record date). It needs forced transfer on the deposit, which no one holds until the Wave 4
+  controller; the Paying Agent keeps per-holder settlement records so a reversal can target them.
+
+**Still needed from outside engineering:** confirmation of C1 to C10 by the Issuer and the
+Calculation Agent (spike 3 section 10). Each default is implemented as a parameter or a clause, so
+a changed answer changes terms or one line, and the vector grid is regenerated.
+
 **Open items carried from the spikes and phase 0b (24 September 2026).**
 
 - **Branch.** `spike/eip170` and `wave/1-plumbing` are merged to `main`, which is pushed to
@@ -275,12 +329,12 @@ contracts and sizes.
   local session also uses the Vercel CLI and changes its default scope. Environment variables were
   set through the REST API because `vercel env add` hangs non-interactively.
 - **Commits are GPG-signed** and need the passphrase at the keyboard.
-- **Payoff confirmations C1 to C10** (`docs/spikes/03-payoff-specification.md` section 10) should
-  go to the Issuer and the Calculation Agent early; Wave 3 depends on them.
+- **Payoff confirmations C1 to C10** (`docs/spikes/03-payoff-specification.md` section 10) are
+  still outstanding. Wave 3 is built on the defaults.
 - **Phones.** The overview's tables stack below 640px; diagrams and the responsibilities matrix
   scroll with a cue. Any copy of the overview published before 24 September has the old layout.
 
-**Then, in order.** Wave 3, lifecycle. Wave 4, ceremony, then **freeze and tag the contract surface**.
+**Then, in order.** Wave 4, ceremony, then **freeze and tag the contract surface**.
 Wave 5, FX pool. Wave 6, hardening and deployment.
 
 Two gates sit outside engineering and should start now: the **independent audit** and **token
@@ -313,8 +367,9 @@ Struck items were closed in Wave 1.
   and holder roll need are Wave 3 design**.
 - ~~Four documents each restate the deploy phase count and all four are wrong.~~ The sequence is
   written once, in `ops/README.md`, which defers to `ops/deploy-stack.sh`.
-- Wall-clock coupon and record dates against any baked or restored chain state. Store the schedule
-  as offsets, or ship a re-time action.
+- Wall-clock coupon and record dates against any baked or restored chain state. The local
+  issuance dates the schedule from the chain's own clock, and there is no baked state any more. A
+  public test network deployment fixes real dates at issuance, which is correct there.
 - The address manifest has a size ceiling as a hosting environment variable. The chain library
   prefers a file (`MANIFEST_PATH`); a hosted console still needs a home for it.
 - **Submodules are not checked out** in a fresh clone. Nothing compiles until they are

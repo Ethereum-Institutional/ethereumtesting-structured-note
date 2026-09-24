@@ -20,14 +20,23 @@ moves past PoC; see HANDOFF.md section 3.
 | `src/StructuredNote.sol` | The note: decimals zero, snapshots, holder list, term sheet anchored by hash | 24,382 (194 spare) |
 | `src/TokenizedDeposit.sol` | The cash leg: decimals two, mint and burn held only by the gateway | 22,135 |
 | `src/interfaces/IDepositGateway.sol`, `src/DepositGateway.sol` | What a deposit service must expose to settle on a public network: credit and debit, each against a single-use booking reference | 1,877 |
+| `src/DeterminationAgent.sol` | The terms and calendar, fixed at issuance; accepts a signed determination only when its own computation agrees (spike 3, D1) | 8,032 |
+| `src/RecordDateEngine.sol` | The note's snapshot engine: balances at any past instant (E1), and the transfer stop at a possible redemption (E4) | 1,832 |
+| `src/PayingAgent.sol` | Coupons and redemptions to holders of record, reconciled on-chain; amounts the deposit cannot credit are held and claimable | 7,898 |
+| `src/DvPSettlement.sol` | Delivery versus payment: propose, then accept, both legs or neither | 2,956 |
 
-`script/Instruments.sol` is the deployment, used by both `script/DeployInstruments.s.sol` and the
-integration tests, so the tests exercise exactly what is deployed. Roles are held by capacities
+`script/Instruments.sol` is the deployment and `script/Lifecycle.sol` the issuance, each used by
+its script (`DeployInstruments.s.sol`, `IssueNote.s.sol`) and by the tests, so the tests
+exercise exactly what is deployed. Roles are held by capacities
 until Wave 4 moves them to the controller and the Agent's multi-signature. Upgrade, forced
 transfer and supervisory withdrawal are held by no one until then. Names, symbols and the term
 sheet are deploy parameters (HANDOFF.md, W6), provisional pending sign-off.
 
 ```bash
 forge build --sizes
-forge test          # 68: conformance on both tokens, registry, gate, and the deployed wiring
+forge test --force  # 86, including all 25 payoff scenarios end to end
+python3 test/vectors/flatten.py   # after regenerating spikes/payoff/vectors.json
 ```
+
+Use `--force` after changing a contract. Forge's incremental build can leave a test running
+against stale creation code for a contract it deploys, so a changed contract appears to pass.
