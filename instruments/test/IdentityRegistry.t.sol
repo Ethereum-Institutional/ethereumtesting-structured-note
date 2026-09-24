@@ -119,6 +119,38 @@ contract IdentityRegistryTest is Test {
         r.grant(other, flags, 276, uint40(block.timestamp) + 1 days, 0, 0);
     }
 
+    /// The supervisor withdraws another registrar's participant, with its reason on the record.
+    function test_supervisorWithdrawsAnyGrantWithAReason() public {
+        address supervisor = makeAddr("governance controller");
+        bytes32 role = r.SUPERVISOR_ROLE();
+        vm.prank(agent);
+        r.grantRole(role, supervisor);
+        _grant(secondKey, investor, 30 days);
+
+        vm.prank(supervisor);
+        vm.expectRevert(IIdentityRegistry.NoReason.selector);
+        r.withdraw(investor, "");
+
+        string memory reason = "Sanctions designation notified 24 September 2026";
+        vm.expectEmit(true, true, false, true, address(r));
+        emit IIdentityRegistry.Withdrawn(investor, SECOND, reason);
+        vm.prank(supervisor);
+        r.withdraw(investor, reason);
+        (uint32 f,) = r.liveFlags(investor);
+        assertEq(f, 0);
+    }
+
+    /// Neither the admin nor an issuing key holds supervisory withdrawal by default.
+    function test_withdrawalNeedsItsOwnRole() public {
+        _grant(agentKey, investor, 30 days);
+        vm.prank(agent);
+        vm.expectRevert();
+        r.withdraw(investor, "reason");
+        vm.prank(agentKey);
+        vm.expectRevert();
+        r.withdraw(investor, "reason");
+    }
+
     /// One storage read per check.
     function test_checkIsOneStorageRead() public {
         _grant(agentKey, investor, 30 days);

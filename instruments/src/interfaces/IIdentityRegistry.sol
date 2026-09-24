@@ -33,11 +33,14 @@ interface IIdentityRegistry {
         bytes32 commitment
     );
     event Revoked(address indexed account, uint16 indexed registrar);
+    /// @notice A supervisory withdrawal, with its written reason in full.
+    event Withdrawn(address indexed account, uint16 indexed registrar, string reason);
 
     error NotAnIssuingKey(address caller);
     error NotYourParticipant(address account, uint16 registrar);
     error ExpiryOutOfRange(uint40 expiresAt, uint40 latest);
     error NoGrant(address account);
+    error NoReason();
 
     /// @notice The grant as recorded, whether or not it has lapsed.
     function grantOf(address account) external view returns (Grant memory);

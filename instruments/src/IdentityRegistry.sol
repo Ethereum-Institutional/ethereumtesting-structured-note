@@ -15,7 +15,8 @@ import {IIdentityRegistry} from "./interfaces/IIdentityRegistry.sol";
  *
  * - **Bounded in time.** Every grant expires, at most `maxValidity` after it is written, and
  *   lapses with no further action. Renewal is a fresh grant after a fresh presentation.
- * - **Revocable immediately.** A registrar withdraws a grant with one call.
+ * - **Revocable immediately.** A registrar revokes a grant with one call. The supervisor can
+ *   withdraw any grant, whichever registrar wrote it, with a written reason.
  * - **Scoped by registrar.** Each issuing key belongs to one registrar. A registrar may write,
  *   renew and revoke only the grants it wrote, so onboarding authority can be delegated to a
  *   further institution without giving it any power over the Agent's participants.
@@ -25,6 +26,11 @@ import {IIdentityRegistry} from "./interfaces/IIdentityRegistry.sol";
  *
  * The admin (the Agent's multi-signature, from Wave 4) appoints issuing keys and sets the
  * validity window. It writes no grants itself: issuing keys are operator keys, distinct from it.
+ *
+ * Supervisory withdrawal is the Agent acting over the whole whitelist, not as a registrar, for
+ * the case where another registrar's participant must be stopped at once, such as a sanctions
+ * designation. It only restricts, so it carries no delay, and its reason is emitted as text. Its
+ * role is held by the governance controller from Wave 4, and by no one before.
  */
 contract IdentityRegistry is IIdentityRegistry, AccessControl {
     // Rights.
@@ -42,6 +48,8 @@ contract IdentityRegistry is IIdentityRegistry, AccessControl {
     uint32 public constant SANCTIONS_CLEAR = 1 << 13;
     /// @dev Set when the address is a contract account, from the wallet control credential.
     uint32 public constant CONTRACT_ACCOUNT = 1 << 14;
+
+    bytes32 public constant SUPERVISOR_ROLE = keccak256("SUPERVISOR_ROLE");
 
     uint40 public maxValidity;
     mapping(address issuingKey => uint16) public registrarOf;
@@ -106,6 +114,19 @@ contract IdentityRegistry is IIdentityRegistry, AccessControl {
         delete credentialRefOf[account];
         delete commitmentOf[account];
         emit Revoked(account, registrar);
+    }
+
+    // --- supervisor ---
+
+    /// @notice Withdraws any grant at once, whichever registrar wrote it. The reason is required.
+    function withdraw(address account, string calldata reason) external onlyRole(SUPERVISOR_ROLE) {
+        if (bytes(reason).length == 0) revert NoReason();
+        uint16 registrar = _grants[account].registrar;
+        if (registrar == 0) revert NoGrant(account);
+        delete _grants[account];
+        delete credentialRefOf[account];
+        delete commitmentOf[account];
+        emit Withdrawn(account, registrar, reason);
     }
 
     // --- reads ---
