@@ -8,7 +8,7 @@ import {CustodyAccount} from "./CustodyAccount.sol";
  * @notice Deploys segregated client accounts for one custodian at deterministic addresses.
  *
  * Deterministic addresses matter operationally: the custodian can hand the issuer a client's
- * account address for KYC onboarding *before* the account is deployed, so identity
+ * account address for onboarding *before* the account is deployed, so eligibility
  * registration and account creation do not have to be serialised.
  */
 contract CustodyAccountFactory {

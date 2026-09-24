@@ -16,18 +16,18 @@ import {IPermissionsAdapterFactory} from
  * @title DemoPermissionedRouter
  * @notice Minimal concrete swap router for permissioned pools.
  *
- * `PermissionedV4Router` is abstract -- in production the concrete implementation is
- * Uniswap's Universal Router (v2.2.0+). This is a deliberately small stand-in that
- * implements only what a permissioned swap needs, so the demo has no dependency on a
- * Universal Router deployment.
+ * `PermissionedV4Router` is abstract. In production the concrete implementation is the
+ * AMM's universal router (v2.2.0 or later). This is a deliberately small stand-in that
+ * implements only what a permissioned swap needs, so the venue does not depend on a
+ * universal router deployment.
  *
- * The important part is `_payPermissionedFromPayer`: the payer's *real* ERC-3643 tokens
+ * The important part is `_payPermissionedFromPayer`: the payer's real permissioned tokens
  * move into the permissions adapter, and the adapter then mints the matching virtual
  * amount straight to the PoolManager. The restricted asset never sits in the PoolManager,
  * which is what keeps the pool compatible with a token that enforces transfer rules.
  *
- * `msgSender()` returns the reentrancy locker -- the original EOA -- which is the address
- * the hook checks against the issuer's identity registry.
+ * `msgSender()` returns the reentrancy locker, the original EOA, which is the address the
+ * hook checks against the asset's eligibility.
  */
 contract DemoPermissionedRouter is PermissionedV4Router, ReentrancyLock {
     IAllowanceTransfer public immutable PERMIT2;

@@ -10,10 +10,9 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
  * @title CustodyAccount
  * @notice A segregated client account operated by a custodian.
  *
- * Each client of the custodian gets one of these. The account is the on-chain holder of
- * record: it carries its own ONCHAINID, its own KYC claim, and its own entry in the
- * issuer's identity registry, so the issuer can freeze, force-transfer or report on a
- * single client without touching any other. Client assets are never commingled.
+ * Each client of the custodian gets one of these. The account is the on-chain holder: it
+ * carries its own eligibility on the asset, so the issuer can freeze, force-transfer or
+ * report on a single client without touching any other. Client assets are never commingled.
  *
  * The custodian holds the keys and signs; the client never does. That split is the point --
  * on-chain segregation with custodial control, which is what a regulated custodian needs
@@ -23,11 +22,10 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
  * against the custodian's key.
  *
  * NOTE: The production shape of this is an ERC-4337 account with ERC-7821 batched
- * execution -- exactly what OpenZeppelin's Contracts MCP generates for `solidity-account`.
- * That output requires OpenZeppelin ^5.7.0 and pragma ^0.8.27, while Uniswap's
+ * execution. The library implementations of those need pragma ^0.8.27, while the venue's
  * `PermissionsAdapter` pins `solidity 0.8.26` exactly, so the two cannot share a
- * compilation unit today. This contract deliberately mirrors that design on the primitives
- * available here; swapping in the 4337 account is a drop-in once the pragmas align.
+ * compilation unit today. This contract mirrors that design on the primitives available
+ * here; the 4337 account replaces it once the pragmas align.
  */
 contract CustodyAccount is IERC1271 {
     using Address for address;

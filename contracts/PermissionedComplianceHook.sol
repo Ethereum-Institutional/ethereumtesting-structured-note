@@ -23,13 +23,13 @@ import {PermissionFlags, PermissionFlag} from
 
 /**
  * @title PermissionedComplianceHook
- * @notice Uniswap v4 hook that gates every swap and liquidity addition on an
- *         issuer-controlled allowlist, built on the OpenZeppelin Uniswap Hooks library.
+ * @notice v4 hook that gates every swap and liquidity addition on the asset's own
+ *         eligibility, as reported by the adapter's checker.
  *
- * v4-periphery ships the `PermissionsAdapter`, router and position manager for
- * permissioned pools, but deliberately leaves the hook itself to the integrator --
- * the only production hook in the repo is a test mock. This is that hook, written
- * against OpenZeppelin's `BaseHook`.
+ * The v4 periphery ships the `PermissionsAdapter`, router and position manager for
+ * permissioned pools, but leaves the hook itself to the integrator: the only hook it ships
+ * is a test mock. This is that hook, written against the hooks library's `BaseHook`, and it
+ * is in audit scope.
  *
  * Enforcement points:
  *   - `beforeInitialize`     -- at least one side must be a *verified* permissions adapter,
