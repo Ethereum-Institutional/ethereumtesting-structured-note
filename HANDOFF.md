@@ -29,9 +29,11 @@ The repository is a clone of the source demo with history preserved. **Wave 1 ha
 the venue** (section 5); nothing of the retired identity stack, the source console or the source
 hosting remains in the tree, only in history.
 
-The remote is named `upstream` and points at the source demo, deliberately. There is no `origin`,
-so nothing can be pushed to the source repository by accident. Set an `origin` when a home for
-this repository exists.
+`origin` is a **private** repository under the owner's personal account
+(`benjaminchodroff/structured-note-poc`), created 24 September 2026. `upstream` still points at
+the source demo for reference, with its push URL set to `DISABLED` in the local clone, so nothing
+can be pushed there by accident. That setting is local: repeat it in any new clone that adds
+`upstream`.
 
 ---
 
@@ -219,8 +221,8 @@ credential platform by its contracts.
 
 **Open items carried from the spikes and phase 0b (24 September 2026).**
 
-- **Branch.** `spike/eip170` is merged to `main`. Wave 1 is on `wave/1-plumbing`, not merged.
-  There is still no `origin`; nothing has been pushed.
+- **Branch.** `spike/eip170` and `wave/1-plumbing` are merged to `main`, which is pushed to
+  `origin`.
 - **Mail sender is temporary.** Production `MAIL_FROM` is Resend's shared test sender, which
   delivers only to the Resend account owner. Once the sending domain verifies in Resend (DNS is
   pending on the DNS provider), set `MAIL_FROM` to `Structured Note PoC
