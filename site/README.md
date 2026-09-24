@@ -36,7 +36,7 @@ In development, mail is written to the server log and the store is `site/.data/s
 ```
 npm install
 OPERATOR_EMAILS=operator@example.org AUTO_APPROVE_DOMAINS=approved.example npm run dev > /tmp/site-dev.log 2>&1 &
-rm -rf .data && npm run e2e          # 27 end-to-end checks against the dev server
+rm -rf .data && npm run e2e          # 31 end-to-end checks against the dev server
 npm run build && npm run typecheck
 ```
 

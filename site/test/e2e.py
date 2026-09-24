@@ -174,6 +174,10 @@ check("INTEGRATION LAYER" in home and 'href="/overview#identity"' in home, "appr
 s, ov, h = reader.get("/overview")
 check(s == 200 and "Structured Note" in ov and "private, no-store" in h.get("Cache-Control", ""), "overview is served, uncached")
 check(reader.get("/operator")[0] == 404, "a non-operator cannot reach the operator page")
+check('class="sitebar"' in ov and 'href="/"' in ov and 'action="/signout"' in ov, "the overview carries the site bar")
+check('href="/operator"' not in ov, "the overview's bar shows no operator link to a non-operator")
+_, ov_op, _ = op.get("/overview")
+check('href="/operator"' in ov_op, "the overview's bar shows the operator link to an operator")
 
 # 6. An operator's form replayed without operator rights does nothing
 _, ops, _ = op.get("/operator")
@@ -189,6 +193,15 @@ check(reader.get("/overview", follow=False)[0] in (303, 307), "revoked registran
 mark = log_size()
 sign_in_request(reader, "reader@example.org")
 check(links_for("reader@example.org", mark) == [], "revoked address is sent no link")
+
+# 7b. Sign out from the overview's bar ends the session
+leaver = Client()
+mark = log_size()
+register(leaver, "leaver@approved.example", "Leaving Reader", "Listed Domain")
+open_and_confirm(leaver, links_for("leaver@approved.example", mark)[0])
+_, ov_l, _ = leaver.get("/overview")
+leaver.submit("/signout", form_with(ov_l, 'action="/signout"'), {})
+check(leaver.get("/overview", follow=False)[0] in (303, 307), "sign out from the overview ends the session")
 
 # 8. Domain rule: verified addresses on a listed domain are approved without an operator
 auto = Client()
