@@ -1,0 +1,328 @@
+import {
+  decodeFunctionData,
+  formatUnits,
+  getAddress,
+  parseAbiItem,
+  toFunctionSelector,
+  type AbiFunction,
+  type Address,
+  type Hex,
+  type PublicClient,
+} from "viem";
+import { addressBook, type Manifest } from "./manifest.ts";
+
+/**
+ * The audit tape: what was instructed on-chain, decoded from each transaction's calldata.
+ *
+ * Three properties matter more than presentation, because an audit tape that is quietly
+ * incomplete is the worst failure this audience can meet.
+ *
+ * - A call is identified by the contract it was sent to and its selector together. Two tokens
+ *   share `mint`, `transfer` and `approve`; keyed by name alone they are indistinguishable.
+ * - Nothing is dropped. A call the registry does not know becomes a row marked unrecognised,
+ *   with its selector and full calldata, so a gap in the registry is visible on the tape.
+ * - Arguments are rendered from what the registry says they are. An amount is formatted with
+ *   the decimals of the token it is denominated in, never guessed from its size, and text is
+ *   shown whole, so a written intervention reason is never cut off.
+ *
+ * Calls made through a custody account are unwrapped, one row per inner call, so the row shows
+ * the instruction the Custodian gave rather than the envelope it travelled in.
+ */
+
+export type Tone = "control" | "trade" | "onboard" | "ops" | "unrecognised";
+
+/**
+ * How an argument is shown. `amount` is in units of the called token; `amountOf` is in units of
+ * the token passed at that argument index.
+ */
+export type ArgSpec =
+  | "account"
+  | "amount"
+  | { amountOf: number }
+  | "flag"
+  | "number"
+  | "text"
+  | "reason"
+  | "plan"
+  | "poolKey"
+  | "calls";
+
+export type Entry = { signature: string; meaning: string; tone: Tone; args: ArgSpec[] };
+
+/** Contract kinds, each with the calls the tape knows for it. */
+export const REGISTRY: Record<string, Entry[]> = {
+  restrictedAsset: [
+    { signature: "function setEligible(address account, bool eligible)", meaning: "Set an account's eligibility to hold the asset", tone: "onboard", args: ["account", "flag"] },
+    { signature: "function mint(address to, uint256 amount)", meaning: "Issued units", tone: "onboard", args: ["account", "amount"] },
+    { signature: "function pause()", meaning: "Paused the asset: all transfers and trading halted", tone: "control", args: [] },
+    { signature: "function unpause()", meaning: "Unpaused the asset", tone: "control", args: [] },
+    { signature: "function setFrozenTokens(address account, uint256 amount)", meaning: "Set the frozen part of a holding", tone: "control", args: ["account", "amount"] },
+    { signature: "function forcedTransfer(address from, address to, uint256 amount)", meaning: "Forced a transfer without the holder's signature", tone: "control", args: ["account", "account", "amount"] },
+    { signature: "function transfer(address to, uint256 amount)", meaning: "Transferred units", tone: "trade", args: ["account", "amount"] },
+    { signature: "function approve(address spender, uint256 amount)", meaning: "Set an allowance on the asset", tone: "ops", args: ["account", "amount"] },
+  ],
+  cash: [
+    { signature: "function mint(address to, uint256 amount)", meaning: "Issued test cash", tone: "ops", args: ["account", "amount"] },
+    { signature: "function transfer(address to, uint256 amount)", meaning: "Transferred cash", tone: "trade", args: ["account", "amount"] },
+    { signature: "function approve(address spender, uint256 amount)", meaning: "Set an allowance on cash", tone: "ops", args: ["account", "amount"] },
+  ],
+  checker: [
+    { signature: "function registerAsset(address token)", meaning: "Registered an asset with the checker", tone: "ops", args: ["account"] },
+    { signature: "function unregisterAsset(address token)", meaning: "Removed an asset from the checker", tone: "control", args: ["account"] },
+    { signature: "function setLiquidityRestricted(address token, bool restricted)", meaning: "Set whether providing liquidity needs venue approval", tone: "control", args: ["account", "flag"] },
+    { signature: "function setLiquidityApproved(address token, address account, bool approved)", meaning: "Set an account's approval to provide liquidity", tone: "control", args: ["account", "account", "flag"] },
+  ],
+  adapter: [
+    { signature: "function updateAllowedWrapper(address wrapper, bool allowed)", meaning: "Allowed or refused a wrapper (router or position manager) on the adapter", tone: "control", args: ["account", "flag"] },
+    { signature: "function updateAllowedHook(address hook, bool allowed)", meaning: "Allowed or refused a hook on the adapter", tone: "control", args: ["account", "flag"] },
+    { signature: "function updateSwappingEnabled(bool enabled)", meaning: "Switched trading of the asset on or off", tone: "control", args: ["flag"] },
+    { signature: "function updateAllowListChecker(address checker)", meaning: "Replaced the adapter's checker", tone: "control", args: ["account"] },
+    { signature: "function depositForVerification(uint256 amount)", meaning: "Placed a balance in the adapter for verification", tone: "ops", args: ["number"] },
+  ],
+  adapterFactory: [
+    { signature: "function createPermissionsAdapter(address token, address owner, address checker)", meaning: "Wrapped an asset in a permissions adapter", tone: "ops", args: ["account", "account", "account"] },
+    { signature: "function verifyPermissionsAdapter(address adapter)", meaning: "Verified a permissions adapter", tone: "ops", args: ["account"] },
+  ],
+  poolManager: [
+    { signature: "function initialize((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, uint160 sqrtPriceX96)", meaning: "Opened a pool", tone: "control", args: ["poolKey", "number"] },
+  ],
+  router: [
+    { signature: "function execute(bytes unlockData, uint256 deadline)", meaning: "Swapped through the permissioned router", tone: "trade", args: ["plan", "number"] },
+  ],
+  positionManager: [
+    { signature: "function modifyLiquidities(bytes unlockData, uint256 deadline)", meaning: "Changed a liquidity position", tone: "trade", args: ["plan", "number"] },
+  ],
+  permit2: [
+    { signature: "function approve(address token, address spender, uint160 amount, uint48 expiration)", meaning: "Set a Permit2 allowance", tone: "ops", args: ["account", "account", { amountOf: 0 }, "number"] },
+  ],
+  custodyFactory: [
+    { signature: "function createAccount(string clientRef)", meaning: "Opened a segregated client account", tone: "onboard", args: ["text"] },
+  ],
+  custodyAccount: [
+    { signature: "function executeOne(address target, uint256 value, bytes data)", meaning: "Custodian acted for a client account", tone: "trade", args: ["account", "number", "plan"] },
+    { signature: "function execute((address target, uint256 value, bytes data)[] calls)", meaning: "Custodian acted for a client account", tone: "trade", args: ["calls"] },
+  ],
+};
+
+/** Which registry kind each manifest key is. Assets not listed here are unrecognised. */
+const KIND_OF_KEY: Record<string, string> = {
+  "assets.venueAsset": "restrictedAsset",
+  "assets.cash": "cash",
+  "venue.allowlistChecker": "checker",
+  "venue.permissionsAdapter": "adapter",
+  "venue.adapterFactory": "adapterFactory",
+  "venue.router": "router",
+  "venue.positionManager": "positionManager",
+  "venue.permit2": "permit2",
+  "venue.poolManager": "poolManager",
+  "custody.factory": "custodyFactory",
+};
+
+function kindOfKey(key: string): string | undefined {
+  if (key.startsWith("custody.accounts.")) return "custodyAccount";
+  return KIND_OF_KEY[key];
+}
+
+/** The maximum of each allowance width in use: an allowance without limit, not an amount. */
+const UNLIMITED = new Set([(1n << 256n) - 1n, (1n << 160n) - 1n]);
+
+type Compiled = { entry: Entry; item: AbiFunction };
+
+function compile(registry: Record<string, Entry[]>): Map<string, Compiled> {
+  const out = new Map<string, Compiled>();
+  for (const [kind, entries] of Object.entries(registry)) {
+    for (const entry of entries) {
+      const item = parseAbiItem(entry.signature) as AbiFunction;
+      if (item.inputs.length !== entry.args.length) {
+        throw new Error(`tape registry: ${kind} ${entry.signature} declares ${entry.args.length} argument kinds`);
+      }
+      const id = `${kind}:${toFunctionSelector(item)}`;
+      if (out.has(id)) throw new Error(`tape registry: ${id} is registered twice`);
+      out.set(id, { entry, item });
+    }
+  }
+  return out;
+}
+
+export type Call = { to: Address; input: Hex };
+
+export type TapeRow = {
+  txHash: Hex;
+  block: number;
+  from: string;
+  target: string;
+  targetAddress: Address;
+  /** The function name, or the selector when unrecognised. */
+  fn: string;
+  args: string[];
+  meaning: string;
+  tone: Tone;
+  recognised: boolean;
+  /** The custody account a call was made through. */
+  via?: string;
+};
+
+export class Tape {
+  private readonly manifest: Manifest;
+  private readonly book: ReturnType<typeof addressBook>;
+  private readonly compiled: Map<string, Compiled>;
+
+  constructor(manifest: Manifest, registry: Record<string, Entry[]> = REGISTRY) {
+    this.manifest = manifest;
+    this.book = addressBook(manifest);
+    this.compiled = compile(registry);
+  }
+
+  /** A deployment. Shown, like everything else, rather than skipped. */
+  describeCreation(tx: { hash: Hex; block: number; from: Address }, created?: Address): TapeRow {
+    return {
+      txHash: tx.hash,
+      block: tx.block,
+      from: this.label(tx.from),
+      target: created ? this.label(created) : "new contract",
+      targetAddress: created ? getAddress(created) : "0x0000000000000000000000000000000000000000",
+      fn: "(deployment)",
+      args: [],
+      meaning: "Deployed a contract",
+      tone: "ops",
+      recognised: true,
+    };
+  }
+
+  /** Rows for one transaction. Always at least one. */
+  describe(tx: { hash: Hex; block: number; from: Address; to: Address; input: Hex }): TapeRow[] {
+    const base = { txHash: tx.hash, block: tx.block, from: this.label(tx.from) };
+    const outer = this.decode({ to: tx.to, input: tx.input });
+    if (!outer.compiled || outer.kind !== "custodyAccount") return [{ ...base, ...this.row({ to: tx.to, input: tx.input }, outer) }];
+
+    // Unwrap the envelope into the calls it carried.
+    const via = this.label(tx.to);
+    const args = outer.args!;
+    const inner: Call[] =
+      outer.compiled.item.name === "executeOne"
+        ? [{ to: args[0] as Address, input: args[2] as Hex }]
+        : (args[0] as Array<{ target: Address; data: Hex }>).map((c) => ({ to: c.target, input: c.data }));
+    return inner.map((c) => ({ ...base, ...this.row(c, this.decode(c)), via }));
+  }
+
+  private decode(call: Call): { kind?: string; compiled?: Compiled; args?: readonly unknown[] } {
+    const kind = this.kindOf(call.to);
+    if (!kind || call.input.length < 10) return { kind };
+    const compiled = this.compiled.get(`${kind}:${call.input.slice(0, 10).toLowerCase()}`);
+    if (!compiled) return { kind };
+    try {
+      const { args } = decodeFunctionData({ abi: [compiled.item], data: call.input });
+      return { kind, compiled, args: args ?? [] };
+    } catch {
+      return { kind };
+    }
+  }
+
+  private row(call: Call, d: ReturnType<Tape["decode"]>): Omit<TapeRow, "txHash" | "block" | "from"> {
+    const target = { target: this.label(call.to), targetAddress: getAddress(call.to) };
+    if (!d.compiled) {
+      return {
+        ...target,
+        fn: call.input.slice(0, 10),
+        args: [call.input],
+        meaning: d.kind
+          ? `Unrecognised call to a known contract: the tape's registry has no entry for this selector on ${d.kind}`
+          : "Unrecognised call to a contract the manifest does not name",
+        tone: "unrecognised",
+        recognised: false,
+      };
+    }
+    const { entry, item } = d.compiled;
+    const args = d.args!;
+    return {
+      ...target,
+      fn: item.name,
+      args: entry.args.map((spec, i) => this.render(spec, args[i], call.to, args)),
+      meaning: entry.meaning,
+      tone: entry.tone,
+      recognised: true,
+    };
+  }
+
+  private render(spec: ArgSpec, value: unknown, target: Address, all: readonly unknown[]): string {
+    if (spec === "account") return this.label(value as Address);
+    if (spec === "amount") return this.amount(value as bigint, target);
+    if (typeof spec === "object") return this.amount(value as bigint, all[spec.amountOf] as Address);
+    if (spec === "flag") return value ? "true" : "false";
+    if (spec === "number") return (value as bigint | number).toString();
+    if (spec === "text") return JSON.stringify(value as string);
+    if (spec === "reason") return reason(value as Hex);
+    if (spec === "plan") return `«encoded plan, ${((value as Hex).length - 2) / 2} bytes»`;
+    if (spec === "poolKey") {
+      const k = value as { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address };
+      return `${this.label(k.currency0)} / ${this.label(k.currency1)}, fee ${k.fee}, spacing ${k.tickSpacing}, hook ${this.label(k.hooks)}`;
+    }
+    return `[${(value as unknown[]).length} calls]`;
+  }
+
+  /** Formatted in the token's own decimals, or as a raw integer when the token is not known. */
+  private amount(value: bigint, token: Address): string {
+    const t = Object.values(this.manifest.assets).find((a) => same(a.address, token));
+    if (UNLIMITED.has(value)) return `unlimited ${t?.symbol ?? "base units"}`;
+    if (!t) return `${value.toString()} base units`;
+    return `${formatUnits(value, t.decimals)} ${t.symbol}`;
+  }
+
+  private kindOf(addr: Address): string | undefined {
+    const hit = this.book.get(addr.toLowerCase());
+    return hit ? kindOfKey(hit.key) : undefined;
+  }
+
+  label(addr: Address): string {
+    return this.book.get(addr.toLowerCase())?.label ?? getAddress(addr);
+  }
+
+  /** Every contract address the manifest names; the set whose events locate transactions. */
+  watched(): Address[] {
+    return [...this.book.entries()].filter(([, v]) => !v.key.startsWith("parties.")).map(([a]) => getAddress(a));
+  }
+}
+
+/** A reason payload shown as text when it is UTF-8, and in full hex when it is not. */
+export function reason(data: Hex): string {
+  const bytes = Buffer.from(data.slice(2), "hex");
+  try {
+    return JSON.stringify(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    return data;
+  }
+}
+
+function same(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+/**
+ * The most recent transactions, as tape rows, newest first.
+ *
+ * Transactions are located by the events the manifest's contracts emitted, which is cheap on
+ * any node. A transaction that emitted no such event does not appear: in particular a reverted
+ * one. That coverage limit is stated here rather than hidden; closing it needs an indexer that
+ * reads every transaction sent to a watched address.
+ */
+export async function readTape(client: PublicClient, tape: Tape, limit = 20): Promise<TapeRow[]> {
+  const logs = await client.getLogs({ address: tape.watched(), fromBlock: 0n, toBlock: "latest" });
+  logs.sort((x, y) => Number((y.blockNumber ?? 0n) - (x.blockNumber ?? 0n)) || (y.logIndex ?? 0) - (x.logIndex ?? 0));
+
+  const seen = new Set<Hex>();
+  const rows: TapeRow[] = [];
+  for (const log of logs) {
+    if (!log.transactionHash || seen.has(log.transactionHash)) continue;
+    seen.add(log.transactionHash);
+    if (seen.size > limit) break;
+    const tx = await client.getTransaction({ hash: log.transactionHash });
+    const at = { hash: tx.hash, block: Number(tx.blockNumber), from: tx.from };
+    if (!tx.to) {
+      const receipt = await client.getTransactionReceipt({ hash: tx.hash });
+      rows.push(tape.describeCreation(at, receipt.contractAddress ?? undefined));
+      continue;
+    }
+    rows.push(...tape.describe({ ...at, to: tx.to, input: tx.input }));
+  }
+  return rows;
+}

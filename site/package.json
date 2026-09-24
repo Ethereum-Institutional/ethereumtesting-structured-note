@@ -2,6 +2,7 @@
   "name": "poc-site",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "scripts": {
     "content": "node scripts/copy-content.mjs",
     "predev": "npm run content",
@@ -10,14 +11,17 @@
     "build": "next build",
     "start": "next start -p 3020",
     "typecheck": "tsc --noEmit",
-    "e2e": "python3 test/e2e.py /tmp/site-dev.log"
+    "e2e": "python3 test/e2e.py /tmp/site-dev.log",
+    "test": "node --test lib/chain/chain.test.ts",
+    "test:chain": "node --test lib/chain/deployment.test.ts"
   },
   "dependencies": {
     "next": "^15.5.23",
     "postgres": "^3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "viem": "^2.56.8"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

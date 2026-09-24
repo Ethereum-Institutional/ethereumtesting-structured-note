@@ -43,3 +43,23 @@ npm run build && npm run typecheck
 The overview is copied from `docs/solution-overview.html` at build time, so the repository keeps
 one copy. Deploy from the repository root with the Vercel project's root directory set to `site`,
 so that `docs/` is present at build.
+
+## Chain library
+
+`lib/chain/` is the chain-side plumbing the operations console will use from Wave 3. No page
+imports it yet.
+
+| Module | Does |
+|---|---|
+| `manifest.ts` | Loads and checks `ops/addresses.json` (`MANIFEST_PATH`, or `MANIFEST_JSON`); pool key and id |
+| `price.ts` | Pool price from the actual currency order and both tokens' decimals |
+| `tape.ts` | The audit tape: calls keyed by target contract and selector, unrecognised calls kept and marked, amounts in their own token's decimals, text never truncated |
+| `queue.ts`, `signer.ts` | Signing by capacity, one queue per signer. Published local keys and the local nonce self-heal apply only on the local chain |
+
+```
+npm test                                                   # unit tests
+../ops/reset.sh && MANIFEST_PATH=../ops/addresses.json npm run test:chain
+```
+
+The second decodes the local deployment's whole history and fails if the tape does not
+recognise every call.
