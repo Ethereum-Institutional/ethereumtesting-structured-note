@@ -35,9 +35,13 @@ contract DeployInstruments is Script {
                 accessIssuer: vm.addr(accessIssuerPk),
                 depositAgent: depositAgent,
                 maxValidity: MAX_VALIDITY,
-                // Placeholder until the term sheet is final: the hash of its working title.
-                termSheetHash: keccak256("Structured Note PoC term sheet, draft"),
-                termSheetUri: "pending"
+                // Placeholders until sign-off, each overridable from the environment.
+                termSheetHash: vm.envOr("TERM_SHEET_HASH", keccak256("Structured Note PoC term sheet, draft")),
+                termSheetUri: vm.envOr("TERM_SHEET_URI", string("pending")),
+                noteName: vm.envOr("NOTE_NAME", string("Structured Note (PoC)")),
+                noteSymbol: vm.envOr("NOTE_SYMBOL", string("NOTE")),
+                depositName: vm.envOr("DEPOSIT_NAME", string("Tokenized deposit (simulated)")),
+                depositSymbol: vm.envOr("DEPOSIT_SYMBOL", string("DEP"))
             })
         );
         vm.stopBroadcast();
@@ -86,8 +90,8 @@ contract DeployInstruments is Script {
         vm.serializeAddress(o, "deposit", address(d.deposit));
         vm.writeJson(vm.serializeAddress(o, "gateway", address(d.gateway)), MANIFEST, ".instruments");
 
-        vm.writeJson(_token("note", address(d.note), "NOTE", 0), MANIFEST, ".assets.note");
-        vm.writeJson(_token("deposit", address(d.deposit), "DEP", 2), MANIFEST, ".assets.deposit");
+        vm.writeJson(_token("note", address(d.note), d.note.symbol(), 0), MANIFEST, ".assets.note");
+        vm.writeJson(_token("deposit", address(d.deposit), d.deposit.symbol(), 2), MANIFEST, ".assets.deposit");
         vm.writeJson(vm.toString(accessIssuer), MANIFEST, ".parties.accessIssuer");
         vm.writeJson(vm.toString(depositAgent), MANIFEST, ".parties.depositAgent");
     }

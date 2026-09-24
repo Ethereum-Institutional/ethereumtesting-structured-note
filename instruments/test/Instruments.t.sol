@@ -35,7 +35,11 @@ contract InstrumentsTest is Test {
                 depositAgent: depositAgent,
                 maxValidity: 365 days,
                 termSheetHash: TERMS,
-                termSheetUri: "ipfs://term-sheet"
+                termSheetUri: "ipfs://term-sheet",
+                noteName: "Note",
+                noteSymbol: "NOTE",
+                depositName: "Deposit",
+                depositSymbol: "DEP"
             })
         );
         IdentityRegistry r = d.registry;
@@ -75,13 +79,24 @@ contract InstrumentsTest is Test {
         assertEq(t.doc.documentHash, TERMS);
     }
 
-    function test_noOneHoldsTheUpgradeRole() public view {
+    /// Upgrade, forced transfer and supervisory withdrawal wait for the Wave 4 controller.
+    function test_noOneHoldsTheControllerPowers() public view {
         bytes32 up = d.note.PROXY_UPGRADE_ROLE();
+        bytes32 forced = d.note.FORCED_TRANSFER_ROLE();
+        bytes32 supervisor = d.registry.SUPERVISOR_ROLE();
         address[5] memory who = [address(this), agent, accessIssuer, depositAgent, address(d.gateway)];
         for (uint256 i; i < who.length; ++i) {
             assertFalse(d.note.hasRole(up, who[i]));
             assertFalse(d.deposit.hasRole(up, who[i]));
+            assertFalse(d.note.hasRole(forced, who[i]));
+            assertFalse(d.deposit.hasRole(forced, who[i]));
+            assertFalse(d.registry.hasRole(supervisor, who[i]));
         }
+    }
+
+    function test_namesComeFromConfiguration() public view {
+        assertEq(d.note.symbol(), "NOTE");
+        assertEq(d.deposit.name(), "Deposit");
     }
 
     function test_deployerHoldsAdminOnly() public view {

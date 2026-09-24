@@ -27,10 +27,14 @@ interface IInitialize {
  *
  * Roles are assigned to capacities for Wave 2 and 3. Wave 4 moves every privileged role to the
  * governance controller and the Agent's multi-signature, and the deployer renounces its admin
- * rights as its last act. Until then the deployer holds the admin role of each contract. No one
- * holds the upgrade role: an upgrade is a Tier 2 act, and Tier 2 does not exist yet.
+ * rights as its last act. Until then the deployer holds the admin role of each contract.
  *
- * Names and symbols are provisional, pending token naming sign-off.
+ * Three powers are held by no one until the controller exists: upgrade (Tier 2), forced
+ * transfer (the most powerful function in the system, not to sit with a single key even
+ * locally), and supervisory withdrawal from the registry. No step of issuance or servicing
+ * needs any of them.
+ *
+ * Names, symbols and the term sheet are parameters: sign-off changes configuration, not code.
  */
 library Instruments {
     struct Config {
@@ -41,6 +45,10 @@ library Instruments {
         uint40 maxValidity;
         bytes32 termSheetHash;
         string termSheetUri;
+        string noteName;
+        string noteSymbol;
+        string depositName;
+        string depositSymbol;
     }
 
     struct Deployed {
@@ -74,7 +82,7 @@ library Instruments {
             _proxy(
                 address(new StructuredNote()),
                 c.deployer,
-                ICMTATConstructor.ERC20Attributes("Structured Note (PoC)", "NOTE", 0),
+                ICMTATConstructor.ERC20Attributes(c.noteName, c.noteSymbol, 0),
                 IERC1643CMTAT.DocumentInfo("Term sheet", c.termSheetUri, c.termSheetHash),
                 d.noteGate
             )
@@ -83,7 +91,7 @@ library Instruments {
             _proxy(
                 address(new TokenizedDeposit()),
                 c.deployer,
-                ICMTATConstructor.ERC20Attributes("Tokenized deposit (simulated)", "DEP", 2),
+                ICMTATConstructor.ERC20Attributes(c.depositName, c.depositSymbol, 2),
                 IERC1643CMTAT.DocumentInfo("", "", bytes32(0)),
                 d.depositGate
             )
@@ -91,15 +99,14 @@ library Instruments {
         d.gateway = new DepositGateway(IMintBurn(address(d.deposit)), c.deployer, c.depositAgent);
 
         // The note: the Agent issues, services and enforces.
-        bytes32[8] memory agentRoles = [
+        bytes32[7] memory agentRoles = [
             d.note.MINTER_ROLE(),
             d.note.BURNER_ROLE(),
             d.note.PAUSER_ROLE(),
             d.note.ENFORCER_ROLE(),
             d.note.ERC20ENFORCER_ROLE(),
             d.note.SNAPSHOOTER_ROLE(),
-            d.note.DOCUMENT_ROLE(),
-            d.note.FORCED_TRANSFER_ROLE()
+            d.note.DOCUMENT_ROLE()
         ];
         for (uint256 i = 0; i < agentRoles.length; ++i) {
             d.note.grantRole(agentRoles[i], c.agent);
@@ -112,7 +119,6 @@ library Instruments {
         d.deposit.grantRole(d.deposit.PAUSER_ROLE(), c.depositAgent);
         d.deposit.grantRole(d.deposit.ENFORCER_ROLE(), c.depositAgent);
         d.deposit.grantRole(d.deposit.ERC20ENFORCER_ROLE(), c.depositAgent);
-        d.deposit.grantRole(d.deposit.FORCED_TRANSFER_ROLE(), c.depositAgent);
     }
 
     function _proxy(
