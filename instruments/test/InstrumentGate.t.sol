@@ -16,6 +16,7 @@ contract InstrumentGateTest is Test {
     address receiveOnly = makeAddr("receive only");
     address abroad = makeAddr("outside the permitted jurisdictions");
     address nobody = makeAddr("no grant");
+    address settler = makeAddr("settlement contract");
 
     uint32 base;
 
@@ -29,14 +30,16 @@ contract InstrumentGateTest is Test {
         uint16[] memory permitted = new uint16[](2);
         permitted[0] = 276;
         permitted[1] = 250;
-        regS = new InstrumentGate(r, base | r.TRANSFER() | r.REG_S(), base | r.RECEIVE() | r.REG_S(), permitted);
-        anywhere = new InstrumentGate(r, base | r.TRANSFER(), base | r.RECEIVE(), new uint16[](0));
+        uint32 settlement = r.SETTLEMENT() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT();
+        regS = new InstrumentGate(r, base | r.TRANSFER() | r.REG_S(), base | r.RECEIVE() | r.REG_S(), settlement, permitted);
+        anywhere = new InstrumentGate(r, base | r.TRANSFER(), base | r.RECEIVE(), 0, new uint16[](0));
 
         uint32 both = base | r.RECEIVE() | r.TRANSFER();
         _grant(regSHolder, both | r.REG_S(), 276);
         _grant(rule144aHolder, both | r.RULE_144A(), 276);
         _grant(receiveOnly, base | r.RECEIVE() | r.REG_S(), 250);
         _grant(abroad, both | r.REG_S(), 840);
+        _grant(settler, settlement, 276);
     }
 
     function _grant(address a, uint32 flags, uint16 j) internal {
@@ -74,7 +77,7 @@ contract InstrumentGateTest is Test {
 
     /// A zero mask still needs a live grant.
     function test_zeroMaskStillNeedsAGrant() public {
-        InstrumentGate open = new InstrumentGate(r, 0, 0, new uint16[](0));
+        InstrumentGate open = new InstrumentGate(r, 0, 0, 0, new uint16[](0));
         assertFalse(open.canReceive(nobody));
         assertTrue(open.canReceive(regSHolder));
     }
@@ -99,6 +102,14 @@ contract InstrumentGateTest is Test {
     function test_burnPassesForALapsedHolder() public {
         vm.warp(block.timestamp + 30 days);
         assertTrue(regS.canTransfer(regSHolder, address(0), 1));
+    }
+
+    /// ADR 0013: settlement infrastructure may send (be approved) but never hold or receive.
+    function test_settlementMaySendButNeverReceive() public view {
+        assertTrue(regS.canSend(settler), "may be given an allowance");
+        assertFalse(regS.canReceive(settler), "may not be sent units");
+        assertFalse(anywhere.canSend(settler), "a gate with no settlement mask admits none");
+        assertFalse(regS.canTransfer(regSHolder, settler, 1));
     }
 
     /// G2: far inside the token's 100,000 gas bound, cold.

@@ -70,13 +70,19 @@ library Instruments {
 
         uint32 base = d.registry.HOLD() | d.registry.SANCTIONS_CLEAR();
         uint32 regS = d.registry.REG_S();
+        // Settlement infrastructure may be given allowances on either instrument (ADR 0013).
+        uint32 settlement = d.registry.SETTLEMENT() | d.registry.SANCTIONS_CLEAR() | d.registry.CONTRACT_ACCOUNT();
         // The note is sold under Regulation S: both ends need the Regulation S flag.
         d.noteGate = new InstrumentGate(
-            d.registry, base | d.registry.TRANSFER() | regS, base | d.registry.RECEIVE() | regS, new uint16[](0)
+            d.registry,
+            base | d.registry.TRANSFER() | regS,
+            base | d.registry.RECEIVE() | regS,
+            settlement,
+            new uint16[](0)
         );
         // The cash leg: any onboarded, screened holder.
         d.depositGate =
-            new InstrumentGate(d.registry, base | d.registry.TRANSFER(), base | d.registry.RECEIVE(), new uint16[](0));
+            new InstrumentGate(d.registry, base | d.registry.TRANSFER(), base | d.registry.RECEIVE(), settlement, new uint16[](0));
 
         d.note = StructuredNote(
             _proxy(

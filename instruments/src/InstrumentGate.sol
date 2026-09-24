@@ -16,7 +16,10 @@ import {IIdentityRegistry} from "./interfaces/IIdentityRegistry.sol";
  *         token then points at, and that replacement is itself a privileged, recorded act.
  *
  * An account may receive when its live grant carries every flag in `RECEIVE_MASK`, and send
- * when it carries every flag in `SEND_MASK`. Where the gate was built with a set of permitted
+ * when it carries every flag in `SEND_MASK`. Settlement infrastructure, which the debt standard
+ * requires to pass `canSend` before it can be given an allowance, qualifies to send by carrying
+ * every flag in `SETTLEMENT_MASK` instead, with no investor attribute and no right to hold or
+ * receive, so nothing can be parked in it (ADR 0013). A zero settlement mask admits none. Where the gate was built with a set of permitted
  * jurisdictions, the account's jurisdiction must also be in it. A Regulation S note requires
  * the Regulation S flag; reissuing under Rule 144A means a gate with a different mask, not a
  * different contract.
@@ -40,6 +43,7 @@ contract InstrumentGate is IEligibilityGate {
     IIdentityRegistry public immutable REGISTRY;
     uint32 public immutable SEND_MASK;
     uint32 public immutable RECEIVE_MASK;
+    uint32 public immutable SETTLEMENT_MASK;
     /// @dev False when every jurisdiction is permitted.
     bool public immutable RESTRICTS_JURISDICTION;
 
@@ -47,10 +51,17 @@ contract InstrumentGate is IEligibilityGate {
 
     error NotEligible(address from, address to);
 
-    constructor(IIdentityRegistry registry, uint32 sendMask, uint32 receiveMask, uint16[] memory jurisdictions) {
+    constructor(
+        IIdentityRegistry registry,
+        uint32 sendMask,
+        uint32 receiveMask,
+        uint32 settlementMask,
+        uint16[] memory jurisdictions
+    ) {
         REGISTRY = registry;
         SEND_MASK = sendMask;
         RECEIVE_MASK = receiveMask;
+        SETTLEMENT_MASK = settlementMask;
         RESTRICTS_JURISDICTION = jurisdictions.length > 0;
         for (uint256 i = 0; i < jurisdictions.length; ++i) {
             jurisdictionPermitted[jurisdictions[i]] = true;
@@ -60,7 +71,7 @@ contract InstrumentGate is IEligibilityGate {
     // --- account views ---
 
     function canSend(address account) public view returns (bool) {
-        return _holds(account, SEND_MASK);
+        return _holds(account, SEND_MASK) || (SETTLEMENT_MASK != 0 && _holds(account, SETTLEMENT_MASK));
     }
 
     function canReceive(address account) public view returns (bool) {

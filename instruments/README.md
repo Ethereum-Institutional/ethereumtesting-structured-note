@@ -14,8 +14,8 @@ moves past PoC; see HANDOFF.md section 3.
 
 | Contract | Is | Size (bytes) |
 |---|---|---|
-| `src/IdentityRegistry.sol` | The whitelist of record: rights and attribute flags, jurisdiction and expiry per address, written by a registrar's issuing key, one storage read per check | 3,736 |
-| `src/InstrumentGate.sol` | One instrument's test against the registry: required send and receive masks, optional permitted jurisdictions. Immutable. Meets spike 2's G1 and G2 | 1,527 |
+| `src/IdentityRegistry.sol` | The whitelist of record: rights and attribute flags, jurisdiction and expiry per address, written by a registrar's issuing key, one storage read per check | 4,283 |
+| `src/InstrumentGate.sol` | One instrument's test against the registry: required send and receive masks, optional permitted jurisdictions, and a settlement mask for infrastructure spenders (ADR 0013). Immutable. Meets spike 2's G1 and G2 | 1,688 |
 | `src/base/AdaptedToken.sol` | The lean composition with spike 2's six adaptations, shared by both tokens | |
 | `src/StructuredNote.sol` | The note: decimals zero, snapshots, holder list, term sheet anchored by hash | 24,382 (194 spare) |
 | `src/TokenizedDeposit.sol` | The cash leg: decimals two, mint and burn held only by the gateway | 22,135 |
@@ -34,7 +34,7 @@ sheet are deploy parameters (HANDOFF.md, W6), provisional pending sign-off.
 
 ```bash
 forge build --sizes
-forge test --force  # 86, including all 25 payoff scenarios end to end
+forge test --force  # 88, including all 25 payoff scenarios end to end
 python3 test/vectors/flatten.py   # after regenerating spikes/payoff/vectors.json
 ```
 

@@ -48,9 +48,9 @@ contract LifecycleTest is Test {
         _grant(agent, flags | d.registry.REG_S());
         _grant(outsider, flags);
         _grant(address(l.payingAgent), flags | d.registry.CONTRACT_ACCOUNT());
-        // The debt standard refuses an allowance to a spender that cannot send, so the
-        // settlement contract is onboarded like a participant, as the venue's adapter is.
-        _grant(address(l.settlement), flags | d.registry.REG_S() | d.registry.CONTRACT_ACCOUNT());
+        // The debt standard refuses an allowance to a spender that cannot send; the settlement
+        // contract carries the settlement right, and no right to hold (ADR 0013).
+        _grant(address(l.settlement), d.registry.SETTLEMENT() | d.registry.SANCTIONS_CLEAR() | d.registry.CONTRACT_ACCOUNT());
 
         vm.prank(depositAgent);
         d.gateway.credit(agent, 100_000_000_00, "funding");
@@ -397,6 +397,13 @@ contract LifecycleTest is Test {
         vm.prank(a);
         vm.expectRevert();
         d.note.approve(makeAddr("unknown operator"), 1);
+    }
+
+    /// ADR 0013: units cannot be parked in the settlement contract.
+    function test_settlementContractCannotBeSentUnits() public {
+        vm.prank(inventory);
+        vm.expectRevert();
+        d.note.transfer(address(l.settlement), 1);
     }
 
     /// The record-date engine answers only its own note.

@@ -386,7 +386,7 @@ function outcome(o: Record<string, unknown>): string {
 const GRANT_FLAGS: Array<[number, string]> = [
   [1 << 0, "HOLD"], [1 << 1, "RECEIVE"], [1 << 2, "TRANSFER"], [1 << 3, "SWAP"], [1 << 4, "PROVIDE_LIQUIDITY"],
   [1 << 8, "REG_S"], [1 << 9, "RULE_144A"], [1 << 10, "PROFESSIONAL"], [1 << 11, "ACCREDITED"], [1 << 12, "QIB"],
-  [1 << 13, "SANCTIONS_CLEAR"], [1 << 14, "CONTRACT_ACCOUNT"],
+  [1 << 13, "SANCTIONS_CLEAR"], [1 << 14, "CONTRACT_ACCOUNT"], [1 << 15, "SETTLEMENT"],
 ];
 
 export function grantFlags(flags: number): string {

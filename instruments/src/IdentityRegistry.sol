@@ -48,6 +48,8 @@ contract IdentityRegistry is IIdentityRegistry, AccessControl {
     uint32 public constant SANCTIONS_CLEAR = 1 << 13;
     /// @dev Set when the address is a contract account, from the wallet control credential.
     uint32 public constant CONTRACT_ACCOUNT = 1 << 14;
+    /// @dev Infrastructure that moves units under allowances but never holds them (ADR 0013).
+    uint32 public constant SETTLEMENT = 1 << 15;
 
     bytes32 public constant SUPERVISOR_ROLE = keccak256("SUPERVISOR_ROLE");
 

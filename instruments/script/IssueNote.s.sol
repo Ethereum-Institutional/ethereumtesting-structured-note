@@ -23,7 +23,8 @@ interface IDeposit {
  * Issues the note on the local stack: fixes the terms, attaches the lifecycle contracts, mints
  * notional to the Issuer's inventory, and places units with investors A and B by DvP.
  *
- * The terms are the illustrative ones of spike 3, not the term sheet. **Dates are offsets from the
+ * The terms are the illustrative ones of spike 3, not the term sheet, with Twin Win applicable at
+ * 100% participation each way, capped at 150% (C5, ADR 0015). **Dates are offsets from the
  * chain's own clock at issuance**, so a local chain never carries a calendar that has already
  * passed: four quarterly observations, each with its Record Time two days and Payment Date five
  * days after it.
@@ -50,14 +51,15 @@ contract IssueNote is Script {
         );
         vm.stopBroadcast();
 
-        // The Paying Agent holds the cash leg in transit; the settlement contract takes
-        // allowances, which the debt standard grants only to a spender that could send.
+        // The Paying Agent holds the cash leg in transit. The settlement contract takes
+        // allowances, which the debt standard grants only to a spender that could send, so it
+        // carries the settlement right and no right to hold (ADR 0013).
         IdentityRegistry r = d.registry;
         uint32 contractFlags = r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT();
         uint40 until = uint40(block.timestamp + 365 days);
         vm.startBroadcast(vm.envUint("ACCESS_ISSUER_PK"));
         r.grant(address(l.payingAgent), contractFlags, 276, until, keccak256("Paying Agent"), 0);
-        r.grant(address(l.settlement), contractFlags | r.REG_S(), 276, until, keccak256("DvP settlement"), 0);
+        r.grant(address(l.settlement), r.SETTLEMENT() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT(), 276, until, keccak256("DvP settlement"), 0);
         r.grant(agent, r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR(), 276, until, keccak256("Agent"), 0);
         vm.stopBroadcast();
 
@@ -108,6 +110,8 @@ contract IssueNote is Script {
         t.couponBarrierBps = 7_000;
         t.couponRateBps = 250;
         t.barrierBps = 6_000;
+        // C5: Twin Win applicable. Illustrative figures until the term sheet gives them (ADR 0015).
+        t.twinWin = IDeterminationAgent.TwinWin(true, 10_000, 10_000, 15_000);
         t.schedule = new IDeterminationAgent.Observation[](4);
         for (uint256 k = 0; k < 4; ++k) {
             uint48 date = uint48(block.timestamp + (k + 1) * QUARTER);
