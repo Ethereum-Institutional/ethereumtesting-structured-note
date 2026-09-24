@@ -240,23 +240,27 @@ contracts and sizes.
   Deposit Agent (account 8). The chain library's tape knows every Wave 2 call, and the
   integration test still requires every call on a fresh deployment to be recognised.
 
-**Defaults taken in Wave 2, to confirm before the contract surface is frozen (Wave 4).**
+**Wave 2 decisions, confirmed 24 September 2026.**
 
-- **G3, burns.** The gate tests nothing on a burn, so the Agent can redeem a holder whose grant
-  has lapsed by maturity with an ordinary burn. The alternative, forced transfer to zero, would
-  make every such redemption a logged intervention. Burn authority remains the token's burner
-  role. The gate is immutable, so changing this means a new gate.
-- **Registrar ownership outlives expiry.** A lapsed grant still belongs to the registrar that
-  wrote it; another registrar can onboard the address only after the first revokes it. There is
-  no path for the Agent to withdraw another registrar's participant directly. If one is wanted,
-  it belongs in the Wave 4 controller, not the registry.
-- **The deposit is on the debt standard** too, for identical ERC-7943 semantics on both legs.
-- **Interim roles.** The deployer holds each admin role; the Agent holds the note's operational
-  roles, including forced transfer; the Deposit Agent the deposit's. No one holds an upgrade
-  role. All move in Wave 4.
-- **Placeholders.** Token names and symbols pending naming sign-off; the term sheet hash is the
-  hash of a working title, with URI `pending`. Grants from the deploy script are written by the
-  Access Issuer directly, standing in for presentation and verification.
+- **W1. Burns pass the gate** (spike 2, G3). Only the token's burner can burn, and the Agent can
+  redeem a holder whose grant lapsed by maturity with an ordinary burn, rather than by forced
+  transfer. **Wave 3 consequence:** the deposit's gate will still refuse to credit that holder,
+  so the Paying Agent needs a rule for where a lapsed holder's redemption money waits.
+- **W2. Supervisory withdrawal.** `IdentityRegistry.withdraw(account, reason)` removes any grant,
+  whichever registrar wrote it, at once and with its written reason emitted in full. Its role is
+  held by the Wave 4 controller and by no one before. Registrars still act only on their own
+  participants.
+- **W3. A lapsed grant stays with its registrar** until that registrar revokes it; a hand-over is
+  a revoke followed by a new grant.
+- **W4. The deposit stays on the debt standard,** sharing the note's adapted base, so both legs
+  answer eligibility with the same code.
+- **W5. Interim roles.** The deployer holds each admin role; the Agent the note's operational
+  roles and the Deposit Agent the deposit's. **Upgrade, forced transfer and supervisory
+  withdrawal are held by no one** until the controller exists; a test asserts it.
+- **W6. Placeholders are parameters.** `NOTE_NAME`, `NOTE_SYMBOL`, `DEPOSIT_NAME`,
+  `DEPOSIT_SYMBOL`, `TERM_SHEET_HASH` and `TERM_SHEET_URI` override the defaults in
+  `DeployInstruments`, so naming sign-off and the final term sheet change configuration, not
+  code.
 
 **Open items carried from the spikes and phase 0b (24 September 2026).**
 

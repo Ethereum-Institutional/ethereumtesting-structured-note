@@ -62,7 +62,7 @@ Each test states a control and shows a transaction succeeding or failing for the
 
 ## What the instruments tests show
 
-`cd instruments && forge test` runs 65. Spike 2's conformance suite runs against both the note
+`cd instruments && forge test` runs 68. Spike 2's conformance suite runs against both the note
 and the deposit: views that never revert under any gate failure, forced transfer only under its
 own role and never to an ineligible account, the written reason carried whole, and an admin that
 holds no role it was not granted. Against the registry: grants lapse at expiry, revocation is

@@ -23,10 +23,11 @@ moves past PoC; see HANDOFF.md section 3.
 
 `script/Instruments.sol` is the deployment, used by both `script/DeployInstruments.s.sol` and the
 integration tests, so the tests exercise exactly what is deployed. Roles are held by capacities
-until Wave 4 moves them to the controller and the Agent's multi-signature; no one holds the
-upgrade role. Names and symbols are provisional, pending naming sign-off.
+until Wave 4 moves them to the controller and the Agent's multi-signature. Upgrade, forced
+transfer and supervisory withdrawal are held by no one until then. Names, symbols and the term
+sheet are deploy parameters (HANDOFF.md, W6), provisional pending sign-off.
 
 ```bash
 forge build --sizes
-forge test          # 65: conformance on both tokens, registry, gate, and the deployed wiring
+forge test          # 68: conformance on both tokens, registry, gate, and the deployed wiring
 ```
