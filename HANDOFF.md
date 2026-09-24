@@ -17,10 +17,14 @@ navigable solution overview covering roles, instrument, lifecycle, identity, con
 success criteria, programme, test scenarios, responsibilities, approvals and next steps. It was
 reviewed and signed off.
 
-**Phase 0b is built and tested locally** in `site/`: registration with email verification and
-operator approval, everything gated, the architecture as the signed-in home page with each
-component linked into the overview. 24 end-to-end checks pass. See `site/README.md`. No contracts
-and no chain are deployed.
+**Phase 0b is deployed** from `site/` to the Vercel project `structurednote` (team scope, Hobby
+plan, research use): registration with email verification, then approval by an operator or by
+the domain rule, everything gated, the architecture as the signed-in home page with each
+component linked into the overview. Postgres is Neon in Frankfurt. Mail is Resend with a
+sending-only key; **delivery waits on the sending domain's DNS verification**, and until then a
+registration returns "Email delivery is unavailable". 27 end-to-end checks pass locally. The
+domain rule's list and the operator list live only in the Vercel environment, not in this
+repository. See `site/README.md`. No contracts and no chain are deployed.
 The repository is a clone of the source demo with history preserved; the strip-to-the-venue
 commit has **not** been made yet.
 
@@ -215,6 +219,9 @@ naming sign-off**. Neither blocks building; both block executing.
 - The address manifest is passed as a hosting environment variable and has a size ceiling it will
   approach.
 - **Submodules are not checked out.** Nothing compiles until they are initialised.
+- **`vercel integration add` writes agent skill files into the repository** (`.agents/skills/`,
+  symlinks under `.claude/skills/`, and `skills-lock.json`), unrequested and vendor-named. Delete
+  them after any integration install.
 - ~~The local node runs with a raised code-size limit.~~ Removed in spike 1; every node start
   now enforces the standard limit.
 
