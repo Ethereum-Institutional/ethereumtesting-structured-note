@@ -7,6 +7,7 @@ Agent acting as issuing and paying agent, registrar and transfer agent.
   deliverable. The gated site in `site/` serves it.
 - **Where things stand, decisions taken, hazards and open items:** `HANDOFF.md`. Read it
   before changing anything.
+- **Why each design decision went the way it did:** `docs/adr/`.
 - **Spikes:** `docs/spikes/`, with their harnesses under `spikes/`.
 
 Parties are referred to by capacity throughout. No client, counterparty or vendor is named in
@@ -62,7 +63,7 @@ Each test states a control and shows a transaction succeeding or failing for the
 
 ## What the instruments tests show
 
-`cd instruments && forge test --force` runs 86. Spike 2's conformance suite runs against both the note
+`cd instruments && forge test --force` runs 88. Spike 2's conformance suite runs against both the note
 and the deposit: views that never revert under any gate failure, forced transfer only under its
 own role and never to an ineligible account, the written reason carried whole, and an admin that
 holds no role it was not granted. Against the registry: grants lapse at expiry, revocation is

@@ -35,6 +35,10 @@ the source demo for reference, with its push URL set to `DISABLED` in the local 
 can be pushed there by accident. That setting is local: repeat it in any new clone that adds
 `upstream`.
 
+**Decision records.** Every design decision since Wave 1 is an ADR in `docs/adr/`, with the
+options considered and why the choice won (ADR 0001). Record each new decision there, in the same
+change as the work it governs. The W and L items below are ADRs 0003 to 0012.
+
 ---
 
 ## 2. Decisions taken
@@ -152,11 +156,13 @@ credential platform by its contracts.
   expected to be distribution, not technology. Verify the current status of the commercial
   compliance engines and of any revision to the incumbent securities-identity standard before
   deciding; that space moves quickly.
-- **What "multi-signature" actually is.** Named in several places, never specified. It affects
-  audit scope, ceremony design and whether signers can use hardware wallets. Settle before the
-  ceremony work.
-- **Key recovery posture.** The deploying key renounces its rights, so the multi-signature becomes
-  the only upgrade path. If its signers are lost, the contracts are frozen. Choose and record.
+- ~~**What "multi-signature" actually is.**~~ **Decided by ADR 0016:** one established
+  multi-signature wallet per institution; the controller counts institution wallets and sums their
+  thresholds for Tier 2, and Tier 1 is the Agent's own wallet.
+- ~~**Key recovery posture.**~~ **Decided by ADRs 0019 and 0020:** a lost institution wallet is
+  replaced by every other institution after an extended timelock, with a veto for the old wallet;
+  on catastrophic loss governance freezes, servicing continues on roles held apart from it, and
+  the note is re-issued from the Register.
 - **Corporate officer presentation** pinned against entity verification rather than personal
   identity needs building.
 - **Delegation of individuals to a custodian** needs designing.
@@ -240,7 +246,7 @@ contracts and sizes.
   Deposit Agent (account 9). The chain library's tape knows every Wave 2 call, and the
   integration test still requires every call on a fresh deployment to be recognised.
 
-**Wave 2 decisions, confirmed 24 September 2026.**
+**Wave 2 decisions, confirmed 24 September 2026.** ADRs 0003 to 0008.
 
 - **W1. Burns pass the gate** (spike 2, G3). Only the token's burner can burn, and the Agent can
   redeem a holder whose grant lapsed by maturity with an ordinary burn, rather than by forced
@@ -282,7 +288,7 @@ contracts and sizes.
   section 6 for the local stack.
 - **Tape** knows every lifecycle call; a determination reads as its outcome in euros per CA.
 
-**Wave 3 decisions, confirmed 24 September 2026.**
+**Wave 3 decisions, confirmed 24 September 2026.** ADRs 0009 to 0012.
 
 - **L1. A holder the deposit cannot credit is held for.** Its amount stays in the Paying Agent
   against it and the event, claimable by anyone for it once the deposit accepts it again. The
@@ -297,11 +303,10 @@ contracts and sizes.
 
 **For review, taken during the build.**
 
-- **Allowances need an onboarded spender.** The debt standard's `approve` refuses a spender that
-  cannot send, so the settlement contract is onboarded to the registry like a participant (with
-  the contract-account flag), as the venue's adapter was in Wave 1. The alternative is a seventh
-  adaptation removing the spender check from both tokens, which weakens a control the standard
-  chose to have.
+- **Allowances need an onboarded spender. Resolved by ADR 0013.** The debt standard's `approve`
+  refuses a spender that cannot send. The registry now has a `SETTLEMENT` right and each gate a
+  settlement mask: the settlement contract may be given allowances but holds no investor attribute
+  and cannot be sent units.
 - **Forge's incremental build can hide a changed contract.** A test that deploys a contract kept
   its old creation code after the contract changed, so a deliberately broken payoff passed. Run
   `forge test --force` after any contract change; the instruments README says so.
@@ -309,12 +314,14 @@ contracts and sizes.
   `CustodyAccount`: the custody contract is in the venue's compilation unit and cannot be deployed
   from the instruments' tests. The venue tests cover it as a holder.
 - **Not in Wave 3:** reversal and restatement of a distribution (the worked example of the wrong
-  record date). It needs forced transfer on the deposit, which no one holds until the Wave 4
-  controller; the Paying Agent keeps per-holder settlement records so a reversal can target them.
+  record date). **Design fixed by ADR 0014** (per-holder clawback under Tier 2, then restatement);
+  built in Wave 4, since it needs forced transfer on the deposit.
 
 **Still needed from outside engineering:** confirmation of C1 to C10 by the Issuer and the
-Calculation Agent (spike 3 section 10). Each default is implemented as a parameter or a clause, so
-a changed answer changes terms or one line, and the vector grid is regenerated.
+Calculation Agent (spike 3 section 10). **The positions to put to them are ADR 0015** (Proposed):
+the spike's default on nine items, and **Twin Win applicable** (C5), illustratively 100% up and
+100% down, capped at 150%, which the local issuance now uses. Each item is a parameter or a
+clause, so a changed answer changes terms or one line, and the vector grid is regenerated.
 
 **Open items carried from the spikes and phase 0b (24 September 2026).**
 
