@@ -35,3 +35,6 @@ forge script script/04_DeployCustody.s.sol:DeployCustody $FS >/dev/null
 
 step "instruments: registry, gates, note, deposit, gateway  (solc 0.8.34)"
 ( cd instruments && forge script script/DeployInstruments.s.sol:DeployInstruments $FS >/dev/null )
+
+step "issuance: terms fixed, lifecycle attached, units placed by DvP"
+( cd instruments && forge script script/IssueNote.s.sol:IssueNote $FS >/dev/null )
