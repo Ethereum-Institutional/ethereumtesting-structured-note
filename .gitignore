@@ -19,3 +19,6 @@ ops/addresses.json
 __pycache__/
 .vercel
 .env*
+
+# network keys and API tokens (ops/keys.env is the published local-node set, and is tracked)
+ops/keys.*.env

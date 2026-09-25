@@ -34,3 +34,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0024](0024-real-wallets-locally.md) | The local stack runs the real multi-signature wallet | Accepted (Wave 4) |
 | [0025](0025-separate-servicing-wallet.md) | The Agent runs a separate servicing wallet | Accepted (Wave 4) |
 | [0026](0026-freeze-candidate-then-final.md) | Freeze the instruments as a release candidate now, finally after confirmation | Accepted (Wave 4) |
+| [0027](0027-production-presentation-on-chain.md) | What is written on-chain reads as production, and a public deployment sets it explicitly | Accepted (Wave 5) |

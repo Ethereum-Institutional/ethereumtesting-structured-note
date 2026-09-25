@@ -20,7 +20,7 @@ import {HookMiner} from "@uniswap/v4-periphery/test/shared/HookMiner.sol";
 
 import {ERC7943AllowlistChecker} from "../contracts/ERC7943AllowlistChecker.sol";
 import {PermissionedComplianceHook} from "../contracts/PermissionedComplianceHook.sol";
-import {DemoPermissionedRouter} from "../contracts/DemoPermissionedRouter.sol";
+import {PermissionedSwapRouter} from "../contracts/PermissionedSwapRouter.sol";
 import {RestrictedAsset} from "../test/fixtures/RestrictedAsset.sol";
 
 /**
@@ -87,7 +87,7 @@ contract DeployVenue is Script {
         v.checker = address(new ERC7943AllowlistChecker(issuer));
         v.hook = _deployHook(v.manager, v.factory);
         v.router = address(
-            new DemoPermissionedRouter(
+            new PermissionedSwapRouter(
                 IPoolManager(v.manager), IAllowanceTransfer(PERMIT2), IPermissionsAdapterFactory(v.factory)
             )
         );

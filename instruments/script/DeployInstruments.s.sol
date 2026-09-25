@@ -35,13 +35,14 @@ contract DeployInstruments is Script {
                 accessIssuer: vm.addr(accessIssuerPk),
                 depositAgent: depositAgent,
                 maxValidity: MAX_VALIDITY,
-                // Placeholders until sign-off, each overridable from the environment.
-                termSheetHash: vm.envOr("TERM_SHEET_HASH", keccak256("Structured Note PoC term sheet, draft")),
-                termSheetUri: vm.envOr("TERM_SHEET_URI", string("pending")),
-                noteName: vm.envOr("NOTE_NAME", string("Structured Note (PoC)")),
-                noteSymbol: vm.envOr("NOTE_SYMBOL", string("NOTE")),
-                depositName: vm.envOr("DEPOSIT_NAME", string("Tokenized deposit (simulated)")),
-                depositSymbol: vm.envOr("DEPOSIT_SYMBOL", string("DEP"))
+                // Local defaults. On any other chain each value must be set explicitly
+                // (ADR 0027), so nothing unreviewed is written to a public network.
+                termSheetHash: _hashParam("TERM_SHEET_HASH", keccak256("term sheet, draft")),
+                termSheetUri: _param("TERM_SHEET_URI", "pending"),
+                noteName: _param("NOTE_NAME", "EUR Worst-of Autocallable Note"),
+                noteSymbol: _param("NOTE_SYMBOL", "EURWAN"),
+                depositName: _param("DEPOSIT_NAME", "Euro Tokenized Deposit"),
+                depositSymbol: _param("DEPOSIT_SYMBOL", "EURTD")
             })
         );
         vm.stopBroadcast();
@@ -75,6 +76,20 @@ contract DeployInstruments is Script {
         console2.log("deposit    :", address(d.deposit));
         console2.log("gateway    :", address(d.gateway));
         _record(d, vm.addr(accessIssuerPk), depositAgent);
+    }
+
+    /// @dev The local node's chain id. Anywhere else, including a fork of a public network,
+    ///      a missing value stops the deployment.
+    uint256 constant LOCAL_CHAIN_ID = 31337;
+
+    function _param(string memory key, string memory localDefault) private view returns (string memory) {
+        if (block.chainid == LOCAL_CHAIN_ID) return vm.envOr(key, localDefault);
+        return vm.envString(key);
+    }
+
+    function _hashParam(string memory key, bytes32 localDefault) private view returns (bytes32) {
+        if (block.chainid == LOCAL_CHAIN_ID) return vm.envOr(key, localDefault);
+        return vm.envBytes32(key);
     }
 
     function _grant(IdentityRegistry r, address account, uint32 flags, string memory ref) private {

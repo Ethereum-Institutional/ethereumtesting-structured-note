@@ -27,8 +27,7 @@ import {PermissionFlags, PermissionFlag} from
  *         eligibility, as reported by the adapter's checker.
  *
  * The v4 periphery ships the `PermissionsAdapter`, router and position manager for
- * permissioned pools, but leaves the hook itself to the integrator: the only hook it ships
- * is a test mock. This is that hook, written against the hooks library's `BaseHook`, and it
+ * permissioned pools, but leaves the hook itself to the integrator. This is that hook, written against the hooks library's `BaseHook`, and it
  * is in audit scope.
  *
  * Enforcement points:

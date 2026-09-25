@@ -28,3 +28,5 @@ draft could be mistaken for the governing document, and no draft exists in the r
 ## Consequences
 
 - The deployment record shows which values were used.
+- **Amended by ADR 0027:** the defaults now read as production and apply on the local node
+  only; any other chain must set every value explicitly.

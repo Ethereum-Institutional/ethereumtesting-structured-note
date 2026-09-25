@@ -7,7 +7,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {PermissionFlags} from "@uniswap/v4-periphery/src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
-import {DemoPermissionedRouter} from "../contracts/DemoPermissionedRouter.sol";
+import {PermissionedSwapRouter} from "../contracts/PermissionedSwapRouter.sol";
 import {VenueTestBase} from "./VenueTestBase.sol";
 
 /**
@@ -34,13 +34,13 @@ contract PermissionedTradingTest is VenueTestBase {
 
     function _buy(address who, uint128 amountIn) internal {
         vm.prank(who);
-        DemoPermissionedRouter(payable(router)).execute(_buyCalldata(amountIn), block.timestamp + 600);
+        PermissionedSwapRouter(payable(router)).execute(_buyCalldata(amountIn), block.timestamp + 600);
     }
 
     function _expectBuyReverts(address who) internal {
         vm.prank(who);
         vm.expectRevert();
-        DemoPermissionedRouter(payable(router)).execute(_buyCalldata(SWAP_IN), block.timestamp + 600);
+        PermissionedSwapRouter(payable(router)).execute(_buyCalldata(SWAP_IN), block.timestamp + 600);
     }
 
     /// An eligible investor trades normally.

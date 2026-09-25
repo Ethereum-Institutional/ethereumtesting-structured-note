@@ -10,7 +10,7 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {PermissionFlag} from "@uniswap/v4-periphery/src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
 import {ERC7943AllowlistChecker} from "../contracts/ERC7943AllowlistChecker.sol";
-import {DemoPermissionedRouter} from "../contracts/DemoPermissionedRouter.sol";
+import {PermissionedSwapRouter} from "../contracts/PermissionedSwapRouter.sol";
 import {RestrictedAsset} from "./fixtures/RestrictedAsset.sol";
 
 /**
@@ -79,7 +79,7 @@ abstract contract VenueTestBase is Test {
     }
 
     function _routerCall(uint128 amountIn) internal view returns (bytes memory) {
-        return abi.encodeCall(DemoPermissionedRouter.execute, (_buyCalldata(amountIn), block.timestamp + 600));
+        return abi.encodeCall(PermissionedSwapRouter.execute, (_buyCalldata(amountIn), block.timestamp + 600));
     }
 
     function _may(address account, PermissionFlag flag) internal view returns (bool) {

@@ -84,7 +84,7 @@ one institution, four signatures in one firm, and two institutions with weak wal
 checked again at execution; recovery needing every other institution and the longer delay, and
 vetoed by a wallet that still works; the worked example of the wrong Record Time reversed and
 restated; and the deployer holding nothing after the ceremony. Four deliberate errors in the
-controller were each caught. `FOUNDRY_PROFILE=fork forge test` repeats Tier 1 and Tier 2 through
+controller were each caught. `FOUNDRY_PROFILE=fork forge test --fork-url http://127.0.0.1:8545` (from `instruments/`) repeats Tier 1 and Tier 2 through
 the real multi-signature wallets on the local stack.
 
 ## Contract size
