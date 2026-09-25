@@ -22,21 +22,37 @@ moves past PoC; see HANDOFF.md section 3.
 | `src/interfaces/IDepositGateway.sol`, `src/DepositGateway.sol` | What a deposit service must expose to settle on a public network: credit and debit, each against a single-use booking reference | 1,877 |
 | `src/DeterminationAgent.sol` | The terms and calendar, fixed at issuance; accepts a signed determination only when its own computation agrees (spike 3, D1) | 8,032 |
 | `src/RecordDateEngine.sol` | The note's snapshot engine: balances at any past instant (E1), and the transfer stop at a possible redemption (E4) | 1,832 |
-| `src/PayingAgent.sol` | Coupons and redemptions to holders of record, reconciled on-chain; amounts the deposit cannot credit are held and claimable | 7,898 |
+| `src/PayingAgent.sol` | Coupons and redemptions to holders of record, reconciled on-chain; amounts the deposit cannot credit are held and claimable; coupon reversal and restatement for the controller (ADR 0014) | 10,710 |
 | `src/DvPSettlement.sol` | Delivery versus payment: propose, then accept, both legs or neither | 2,956 |
+| `src/GovernanceController.sol` | Every privileged power, in two tiers, through typed acts only: Tier 1 by the Agent's governance wallet; Tier 2 by two of three institutions and four signatures, after a delay; recovery with veto (ADRs 0019, 0021 to 0025) | 13,199 |
 
-`script/Instruments.sol` is the deployment and `script/Lifecycle.sol` the issuance, each used by
-its script (`DeployInstruments.s.sol`, `IssueNote.s.sol`) and by the tests, so the tests
-exercise exactly what is deployed. Roles are held by capacities
+`script/Instruments.sol` is the deployment, `script/Lifecycle.sol` the issuance and
+`script/Governance.sol` the ceremony, each used by its script (`DeployInstruments.s.sol`,
+`IssueNote.s.sol`, `Ceremony.s.sol`) and by the tests, so the tests exercise exactly what is
+deployed. After the ceremony the deployer holds nothing. Roles are held by capacities
 until Wave 4 moves them to the controller and the Agent's multi-signature. Upgrade, forced
 transfer and supervisory withdrawal are held by no one until then. Names, symbols and the term
 sheet are deploy parameters (HANDOFF.md, W6), provisional pending sign-off.
 
 ```bash
 forge build --sizes
-forge test --force  # 88, including all 25 payoff scenarios end to end
+forge test --force  # 107, including all 25 payoff scenarios end to end
+FOUNDRY_PROFILE=fork forge test --fork-url http://127.0.0.1:8545   # governance through the real wallets
 python3 test/vectors/flatten.py   # after regenerating spikes/payoff/vectors.json
 ```
 
 Use `--force` after changing a contract. Forge's incremental build can leave a test running
 against stale creation code for a contract it deploys, so a changed contract appears to pass.
+
+## Contract surface
+
+The surface under assurance review is defined by `surface/rc1.json`: every source in `src/`, each
+deployable contract's runtime code, the compiler settings and the debt standard's pin, all by
+SHA-256. It is tagged `instruments-surface-rc1` (ADR 0026).
+
+```bash
+python3 ops/surface.py check instruments/surface/rc1.json   # from the repository root
+```
+
+A change to any file in the surface before the final freeze is listed, with its reason, in the
+diff put to review.

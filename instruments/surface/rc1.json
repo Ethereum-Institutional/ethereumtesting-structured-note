@@ -1,0 +1,73 @@
+{
+ "compiler": {
+  "bytecode_hash": "none",
+  "evm_version": "cancun",
+  "optimizer": "true",
+  "optimizer_runs": "200",
+  "solc_version": "0.8.34",
+  "via_ir": "false"
+ },
+ "debtStandard": {
+  "commit": "658672f190d56d3f61663a7d6d51962b8980df70",
+  "tag": "v3.3.0-rc3"
+ },
+ "runtime": {
+  "DepositGateway": {
+   "bytes": 1877,
+   "sha256": "28501f538a9964a855fd80473f1a6d8ac77b23f5399cd199a35ac1d457468ed8"
+  },
+  "DeterminationAgent": {
+   "bytes": 8032,
+   "sha256": "751dd246e571a386515b15d20e236e8cf5b0a09095a3f4488f0cc1d1d954d092"
+  },
+  "DvPSettlement": {
+   "bytes": 2956,
+   "sha256": "ef081eebbad4a871e251e59a91bbb3cdd1fcb4027fef296f39fe4ce61cf597f0"
+  },
+  "GovernanceController": {
+   "bytes": 13199,
+   "sha256": "ac355e4e9e1c0e1d0aea9b6739c9e38b0371f42809d5f5f9e546001eb48a97d0"
+  },
+  "IdentityRegistry": {
+   "bytes": 4283,
+   "sha256": "a329c4af3ea3838f171e9222bf210beecd15f7d0e0614f6310e5475fcfe258ac"
+  },
+  "InstrumentGate": {
+   "bytes": 1688,
+   "sha256": "13a4183be635bdffa6bdbc3f929d6cb5e28023db095633941b785cee1e8cd39f"
+  },
+  "PayingAgent": {
+   "bytes": 10710,
+   "sha256": "06abcb0070155514f68c2e816f5f98a3251a69805d171620378836644a8df089"
+  },
+  "RecordDateEngine": {
+   "bytes": 1832,
+   "sha256": "819e96f1acccc79bff7b2ebaf7118474b5ecfd13a11aeac90bf5c3f837a28d81"
+  },
+  "StructuredNote": {
+   "bytes": 24382,
+   "sha256": "df8d46a7d3fd176e9ca15723607d258c8f9b44c30b5559c86ecc18960ce7d8da"
+  },
+  "TokenizedDeposit": {
+   "bytes": 22135,
+   "sha256": "79f9323345483134d6b8a102b8edb0594240cb73aca6d4410fccb247d0295fcb"
+  }
+ },
+ "sources": {
+  "instruments/src/DepositGateway.sol": "59cfa0eddd4f9b2ab5380539265917311bfa7e6fde065f7069b6db0302b2a7fa",
+  "instruments/src/DeterminationAgent.sol": "57f092bf66ec272749d44df4a8dcd739c9e4b0c415622094f961bf1fbfd0f000",
+  "instruments/src/DvPSettlement.sol": "3a7394188098f844587eb3e01c8a99c63afc994910d041ca05220cc839ccbaea",
+  "instruments/src/GovernanceController.sol": "b999fc84ebbe53a63a7754a5d4c8b7f7ad0a1ca7292a7ce822a0fb44ef16ccf1",
+  "instruments/src/IdentityRegistry.sol": "bcf7726efc3ed1c760538757e893690f32f26104eb25a76acc19bd0bc4f0d3fb",
+  "instruments/src/InstrumentGate.sol": "efa92c53b98ea4aaef06925971bc13ae018c2677c930eae6f8abc45776f18605",
+  "instruments/src/PayingAgent.sol": "629fb34909dc2743b07e0ab40dd070c0f1afa3f242871fd2c5ce8e0b11b4c9b3",
+  "instruments/src/RecordDateEngine.sol": "2b09aeaf9b759931c4fe2246a3cbaccebd934f95c7b091736b3e837759138345",
+  "instruments/src/StructuredNote.sol": "f3c6fc3ef039f3477c7e46b6a81f7b13e2f10ee2142378305b4dfaba7ed0fef0",
+  "instruments/src/TokenizedDeposit.sol": "89a52c85c5e417f3c3d0abbf02fa3ad63b0e02293e763042fd6a7cc3018bfef5",
+  "instruments/src/base/AdaptedToken.sol": "a2628504086cc0ea6963b9285ec999e74bd421db6837da1f2219b41de95fa62a",
+  "instruments/src/interfaces/IDepositGateway.sol": "8684ca428e33e469abefac38225a1ae68cc5a3242947c67c3a3c599dd6d8006d",
+  "instruments/src/interfaces/IDeterminationAgent.sol": "7dd7fd404009e633e03f03cbff86cb3b9766431c0889bf3c5cbe3b04fb9c4549",
+  "instruments/src/interfaces/IEligibilityGate.sol": "7a1dca55fa9cabe51a4003a433539bcad00fa713f9b6f5589b4fa7e595d80104",
+  "instruments/src/interfaces/IIdentityRegistry.sol": "ed91ad220ad26ba7c8215893d1d796b68618409b5b0fd32f4ef40a50c1ff1645"
+ }
+}
