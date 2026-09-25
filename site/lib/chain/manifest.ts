@@ -54,6 +54,16 @@ export type Manifest = {
     payingAgent: Address;
     settlement: Address;
   };
+  governance?: {
+    controller: Address;
+    walletFactory: Address;
+    agentGovernance: Address;
+    issuerGovernance: Address;
+    cosigner: Address;
+    servicingWallet: Address;
+    tier2Delay: number;
+    recoveryDelay: number;
+  };
 };
 
 export type PoolKey = {
@@ -158,6 +168,14 @@ export function addressBook(m: Manifest): Map<string, { key: string; label: stri
     put(m.lifecycle.recordDates, "lifecycle.recordDates", "Record-date engine");
     put(m.lifecycle.payingAgent, "lifecycle.payingAgent", "Paying Agent");
     put(m.lifecycle.settlement, "lifecycle.settlement", "DvP settlement");
+  }
+  if (m.governance) {
+    put(m.governance.controller, "governance.controller", "Governance controller");
+    put(m.governance.walletFactory, "governance.walletFactory", "Wallet factory");
+    put(m.governance.agentGovernance, "governance.agentGovernance", "Agent governance wallet");
+    put(m.governance.issuerGovernance, "governance.issuerGovernance", "Issuer governance wallet");
+    put(m.governance.cosigner, "governance.cosigner", "Co-signer wallet");
+    put(m.governance.servicingWallet, "governance.servicingWallet", "Agent servicing wallet");
   }
   if (m.custody) {
     put(m.custody.factory, "custody.factory", "Custody factory");

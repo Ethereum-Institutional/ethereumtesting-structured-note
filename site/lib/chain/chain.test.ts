@@ -25,6 +25,7 @@ const manifest: Manifest = {
   custody: { custodian: A(4), factory: A(0x30), accounts: { "CLIENT-A": A(0x31) } },
   instruments: { registry: A(0x42), noteGate: A(0x43), depositGate: A(0x44), note: A(0x40), deposit: A(0x41), gateway: A(0x45) },
   lifecycle: { determinations: A(0x50), recordDates: A(0x51), payingAgent: A(0x52), settlement: A(0x53) },
+  governance: { controller: A(0x60), walletFactory: A(0x61), agentGovernance: A(0x62), issuerGovernance: A(0x63), cosigner: A(0x64), servicingWallet: A(0x65), tier2Delay: 3600, recoveryDelay: 14400 },
 };
 
 const call = (signature: string, args: unknown[]) =>
@@ -202,6 +203,19 @@ test("a distribution's opening and payment name the kind and the holders", () =>
   const [pay] = tape.describe(tx(A(0x52), call("function pay(bytes32,address[])", [`0x${"cd".repeat(32)}`, [A(3), A(0x31)]])));
   assert.deepEqual(open.args, ["3", "redemption"]);
   assert.equal(pay.args[1], "[Investor A, CLIENT-A]");
+});
+
+test("a wallet transaction is shown as the governance act it carried", () => {
+  const inner = call("function correctRegister(address,address,uint256,string)", [A(3), A(4), 2n, "Register correction"]);
+  const input = call(
+    "function execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)",
+    [A(0x60), 0n, inner, 0, 0n, 0n, 0n, A(0), A(0), "0x" + "22".repeat(130)],
+  );
+  const [row] = tape.describe(tx(A(0x62), input, A(0x70)));
+  assert.equal(row.via, "Agent governance wallet");
+  assert.equal(row.target, "Governance controller");
+  assert.equal(row.meaning, "Tier 1: corrected the register to match the Register");
+  assert.deepEqual(row.args, ["Investor A", "Custodian", "2 NOTE", '"Register correction"']);
 });
 
 test("flag and reference renderings", () => {

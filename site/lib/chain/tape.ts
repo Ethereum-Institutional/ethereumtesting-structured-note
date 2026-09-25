@@ -156,11 +156,35 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function open(uint256 dateIndex, uint8 kind)", meaning: "Opened a distribution and debited its cash from the Agent", tone: "trade", args: ["number", "kind"] },
     { signature: "function pay(bytes32 id, address[] holders)", meaning: "Paid holders of record at the Record Time", tone: "trade", args: ["ref", "accounts"] },
     { signature: "function claim(bytes32 id, address holder)", meaning: "Paid an amount held for a holder the deposit could not credit", tone: "trade", args: ["ref", "account"] },
+    { signature: "function reverse(bytes32 id, address[] holders, string reason)", meaning: "Reversed a distribution, holder by holder, with a written reason", tone: "control", args: ["ref", "accounts", "text"] },
+    { signature: "function restate(bytes32 original, uint48 recordTime, string reason)", meaning: "Restated a reversed distribution against a corrected Record Time", tone: "control", args: ["ref", "time", "text"] },
   ],
   settlement: [
     { signature: "function propose(address seller, address buyer, uint64 units, uint256 price, uint48 deadline)", meaning: "Proposed a delivery-versus-payment trade", tone: "trade", args: ["account", "account", { amountIn: "note" }, { amountIn: "deposit" }, "time"] },
     { signature: "function accept(uint256 id)", meaning: "Accepted a trade: both legs settled together", tone: "trade", args: ["number"] },
     { signature: "function cancel(uint256 id)", meaning: "Cancelled a proposed trade", tone: "ops", args: ["number"] },
+  ],
+  controller: [
+    { signature: "function correctRegister(address from, address to, uint256 units, string reason)", meaning: "Tier 1: corrected the register to match the Register", tone: "control", args: ["account", "account", { amountIn: "note" }, "text"] },
+    { signature: "function withdrawGrant(address account, string reason)", meaning: "Tier 1: withdrew a grant under supervisory authority", tone: "control", args: ["account", "text"] },
+    { signature: "function proposeUpgrade(address token, address implementation, string reason)", meaning: "Tier 2 proposal: upgrade an instrument", tone: "control", args: ["account", "account", "text"] },
+    { signature: "function proposeReplaceGate(address token, address gate, string reason)", meaning: "Tier 2 proposal: replace an instrument's gate", tone: "control", args: ["account", "account", "text"] },
+    { signature: "function proposeAmendNotional(bool increase, uint256 units, string reason)", meaning: "Tier 2 proposal: amend the notional in the Issuer's inventory", tone: "control", args: ["flag", { amountIn: "note" }, "text"] },
+    { signature: "function proposeReverseDistribution(bytes32 distribution, address[] holders, string reason)", meaning: "Tier 2 proposal: reverse a distribution", tone: "control", args: ["ref", "accounts", "text"] },
+    { signature: "function proposeRestateDistribution(bytes32 original, uint48 recordTime, string reason)", meaning: "Tier 2 proposal: restate a distribution", tone: "control", args: ["ref", "time", "text"] },
+    { signature: "function proposeSetRegistrar(address issuingKey, uint16 registrar, string reason)", meaning: "Tier 2 proposal: appoint or remove a registrar's issuing key", tone: "control", args: ["account", "number", "text"] },
+    { signature: "function proposeSetMaxValidity(uint40 maxValidity, string reason)", meaning: "Tier 2 proposal: set the longest a grant may run, in seconds", tone: "control", args: ["number", "text"] },
+    { signature: "function proposeReplaceServicingWallet(address newWallet, string reason)", meaning: "Tier 2 proposal: replace the Agent's servicing wallet", tone: "control", args: ["account", "text"] },
+    { signature: "function proposeReplaceInstitution(address oldWallet, address newWallet, string reason)", meaning: "Recovery proposal: replace an institution's wallet", tone: "control", args: ["account", "account", "text"] },
+    { signature: "function approve(uint256 id)", meaning: "Approved a Tier 2 proposal", tone: "control", args: ["number"] },
+    { signature: "function execute(uint256 id)", meaning: "Executed a Tier 2 proposal after its delay", tone: "control", args: ["number"] },
+    { signature: "function cancel(uint256 id)", meaning: "Cancelled a Tier 2 proposal", tone: "control", args: ["number"] },
+  ],
+  wallet: [
+    { signature: "function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures)", meaning: "A multi-signature wallet acted", tone: "control", args: ["account", "number", "plan", "number", "number", "number", "number", "account", "account", "signature"] },
+  ],
+  walletFactory: [
+    { signature: "function createProxyWithNonce(address singleton, bytes initializer, uint256 saltNonce)", meaning: "Created a multi-signature wallet", tone: "ops", args: ["account", "plan", "number"] },
   ],
   custodyFactory: [
     { signature: "function createAccount(string clientRef)", meaning: "Opened a segregated client account", tone: "onboard", args: ["text"] },
@@ -190,6 +214,12 @@ const KIND_OF_KEY: Record<string, string> = {
   "lifecycle.determinations": "determinations",
   "lifecycle.payingAgent": "payingAgent",
   "lifecycle.settlement": "settlement",
+  "governance.controller": "controller",
+  "governance.walletFactory": "walletFactory",
+  "governance.agentGovernance": "wallet",
+  "governance.issuerGovernance": "wallet",
+  "governance.cosigner": "wallet",
+  "governance.servicingWallet": "wallet",
 };
 
 function kindOfKey(key: string): string | undefined {
@@ -267,6 +297,12 @@ export class Tape {
   describe(tx: { hash: Hex; block: number; from: Address; to: Address; input: Hex }): TapeRow[] {
     const base = { txHash: tx.hash, block: tx.block, from: this.label(tx.from) };
     const outer = this.decode({ to: tx.to, input: tx.input });
+    if (outer.compiled && outer.kind === "wallet") {
+      // A wallet transaction is shown as the act it carried, signed by the wallet.
+      const [to, , data] = outer.args as [Address, bigint, Hex];
+      const inner = { to, input: data };
+      return [{ ...base, ...this.row(inner, this.decode(inner)), via: this.label(tx.to) }];
+    }
     if (!outer.compiled || outer.kind !== "custodyAccount") return [{ ...base, ...this.row({ to: tx.to, input: tx.input }, outer) }];
 
     // Unwrap the envelope into the calls it carried.
