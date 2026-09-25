@@ -52,3 +52,7 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0042](0042-wallet-control-across-chains.md) | Wallet control is accepted from any EVM chain for ordinary wallets, and from the pool's chain for contract wallets | Accepted |
 | [0043](0043-wallet-credential-checked-on-chain.md) | The wallet-control credential is a third credential, checked on-chain | Accepted |
 | [0044](0044-one-presentation-two-grants.md) | One verified presentation writes both the pool grant and the Identity Registry grant | Accepted |
+| [0045](0045-presentation-by-qr.md) | Participants present credentials by scanning a QR code with the holder wallet | Accepted |
+| [0046](0046-officer-presents-for-entity.md) | For an entity, an authorised officer presents | Accepted |
+| [0047](0047-hosted-verifier-for-poc.md) | The protocol's hosted verifier gives the verdict for the PoC; the Access Issuer runs its own before execution | Accepted |
+| [0048](0048-operator-approves-admission.md) | An Access Issuer operator approves each admission; the site then signs both grants | Accepted |
