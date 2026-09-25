@@ -1,6 +1,6 @@
 # 0014. Reversal is a per-holder clawback, then restatement
 
-- **Status:** Accepted (design; built in Wave 4)
+- **Status:** Accepted (built in Wave 4)
 - **Date:** 24 September 2026
 
 ## Context
@@ -32,3 +32,7 @@ chain disagreeing with the Register in precisely the case a reviewer will test.
 - Forced transfer on the deposit goes to the Wave 4 controller.
 - A holder without enough deposit left is recorded as a per-holder shortfall.
 - The Paying Agent's per-holder settlement records are what a reversal targets.
+- **Built in Wave 4, with one limit taken during the build:** only coupons can be reversed. A
+  redemption has burned its units, so reversing one would mean re-issuing them, which is a
+  notional amendment, not a reversal. A mistaken redemption is corrected by amending the notional
+  and paying through a new distribution, each a Tier 2 act.

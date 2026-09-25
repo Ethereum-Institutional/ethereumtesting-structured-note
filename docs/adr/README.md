@@ -21,10 +21,16 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0011](0011-distribution-push-verified-reconciled.md) | Distributions are pushed, verified and reconciled on-chain | Accepted (Wave 3, L3) |
 | [0012](0012-dvp-propose-accept.md) | DvP settlement is propose, then accept | Accepted (Wave 3, L4) |
 | [0013](0013-settlement-right-for-infrastructure.md) | A settlement right for infrastructure spenders | Accepted |
-| [0014](0014-reversal-by-per-holder-clawback.md) | Reversal is a per-holder clawback, then restatement | Accepted (design; built in Wave 4) |
+| [0014](0014-reversal-by-per-holder-clawback.md) | Reversal is a per-holder clawback, then restatement | Accepted (built in Wave 4) |
 | [0015](0015-payoff-positions-c1-c10.md) | Positions on payoff confirmations C1 to C10 | Proposed: for confirmation by the Issuer and the Calculation Agent |
-| [0016](0016-multi-signature-one-wallet-per-institution.md) | Multi-signature is one wallet per institution | Accepted (design; built in Wave 4) |
+| [0016](0016-multi-signature-one-wallet-per-institution.md) | Multi-signature is one wallet per institution | Accepted (built in Wave 4) |
 | [0017](0017-audit-tape-keyed-by-target.md) | The audit tape is keyed by target and never drops a row | Accepted (Wave 1, during the build) |
 | [0018](0018-venue-checker-reads-final-views.md) | The venue checker reads the Final ERC-7943 views and fails closed | Accepted (Wave 1, during the build) |
-| [0019](0019-recovering-a-lost-institution-wallet.md) | A lost institution wallet is replaced by the others, slowly, with veto | Accepted (design; built in Wave 4) |
-| [0020](0020-catastrophic-loss-posture.md) | On catastrophic loss, governance freezes, servicing continues, and the note is re-issued | Accepted (design; built in Wave 4) |
+| [0019](0019-recovering-a-lost-institution-wallet.md) | A lost institution wallet is replaced by the others, slowly, with veto | Accepted (built in Wave 4) |
+| [0020](0020-catastrophic-loss-posture.md) | On catastrophic loss, governance freezes, servicing continues, and the note is re-issued | Accepted (separation built in Wave 4; runbook in Wave 6) |
+| [0021](0021-typed-actions-no-calldata.md) | The controller's fixed action set is typed actions, with no calldata | Accepted (Wave 4) |
+| [0022](0022-tier2-three-institutions.md) | Tier 2 is two of three institutions and at least four signatures | Accepted (Wave 4) |
+| [0023](0023-timelocks-as-parameters.md) | Timelocks are parameters: 72 hours and 14 days, compressed for the PoC | Accepted (Wave 4) |
+| [0024](0024-real-wallets-locally.md) | The local stack runs the real multi-signature wallet | Accepted (Wave 4) |
+| [0025](0025-separate-servicing-wallet.md) | The Agent runs a separate servicing wallet | Accepted (Wave 4) |
+| [0026](0026-freeze-candidate-then-final.md) | Freeze the instruments as a release candidate now, finally after confirmation | Accepted (Wave 4) |

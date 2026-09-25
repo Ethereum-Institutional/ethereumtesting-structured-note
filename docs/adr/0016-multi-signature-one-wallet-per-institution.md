@@ -1,6 +1,6 @@
 # 0016. Multi-signature is one wallet per institution
 
-- **Status:** Accepted (design; built in Wave 4)
+- **Status:** Accepted (built in Wave 4)
 - **Date:** 24 September 2026
 
 ## Context

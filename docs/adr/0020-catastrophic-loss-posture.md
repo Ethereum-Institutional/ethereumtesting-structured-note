@@ -1,6 +1,6 @@
 # 0020. On catastrophic loss, governance freezes, servicing continues, and the note is re-issued
 
-- **Status:** Accepted (design; built in Wave 4)
+- **Status:** Accepted (separation built in Wave 4; runbook in Wave 6)
 - **Date:** 24 September 2026
 
 ## Context

@@ -1,6 +1,6 @@
 # 0019. A lost institution wallet is replaced by the others, slowly, with veto
 
-- **Status:** Accepted (design; built in Wave 4)
+- **Status:** Accepted (built in Wave 4)
 - **Date:** 24 September 2026
 
 ## Context
