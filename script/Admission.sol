@@ -11,7 +11,8 @@ import {PoolCredentialRegistry} from "../contracts/PoolCredentialRegistry.sol";
  *
  * An entity presents its corporate identity, which carries its screening (ADR 0033): the same
  * identifier and schema fill both places, screened when it was issued. Every holder also presents
- * the wallet-control credential binding the wallet to it (ADR 0043).
+ * the wallet-control credential binding the wallet to it (ADR 0043); an entity also names the
+ * officer credential of whoever presented for it (ADR 0049).
  */
 library Admission {
     uint32 internal constant ENTITY_CHECKS = 1 | 2 | 4 | 16; // wallet control, not expired, active, sanctions clean
@@ -25,6 +26,7 @@ library Admission {
     {
         a = _attest(account, true, corporateSchema, corporateSchema, jurisdiction, investorClass, ref);
         a.screeningCredential = a.primaryCredential;
+        a.authorityCredential = keccak256(abi.encodePacked(ref, "/officer"));
     }
 
     /// A natural person: a passport and a screening credential.
@@ -54,6 +56,7 @@ library Admission {
             primaryCredential: keccak256(abi.encodePacked(ref, "/primary")),
             screeningCredential: keccak256(abi.encodePacked(ref, "/screening")),
             walletCredential: keccak256(abi.encodePacked(ref, "/wallet")),
+            authorityCredential: bytes32(0),
             primarySchema: primarySchema,
             screeningSchema: screeningSchema,
             checks: isEntity ? ENTITY_CHECKS : PERSON_CHECKS,

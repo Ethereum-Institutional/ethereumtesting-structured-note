@@ -14,10 +14,12 @@ set -euo pipefail
 export PATH="$HOME/.foundry/bin:$PATH"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-source ./ops/keys.env
+# KEYS names the key file; the local node's published keys by default (ADR 0051).
+source "${KEYS:-./ops/keys.env}"
 
 RPC="${RPC:-http://127.0.0.1:8545}"
-FS="--rpc-url $RPC --broadcast"
+# On a live network, broadcast one transaction at a time and wait for each (FORGE_FLAGS="--slow").
+FS="--rpc-url $RPC --broadcast ${FORGE_FLAGS:-}"
 
 step() { printf '\n\033[1m── %s\033[0m\n' "$1"; }
 

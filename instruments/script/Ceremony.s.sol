@@ -24,8 +24,9 @@ interface IWalletFactory {
  * Creates four real multi-signature wallets from the canonical deployment that
  * ops/setup-multisig.sh installs: the Agent's governance wallet, the Issuer's, the co-signing
  * institution's, and the Agent's servicing wallet. Each has three signers and a threshold of
- * two, so any two institutions together require four signatures. Signers are derived from the
- * local node's published test mnemonic at indices 10 to 21, which the local node funds.
+ * two, so any two institutions together require four signatures. Signers are derived at indices
+ * 10 to 21 from the local node's published test mnemonic on the local node, and from the
+ * network's own mnemonic (WALLET_MNEMONIC) anywhere else (ADR 0051).
  *
  * Delays are compressed for the local stack, as ADR 0023 allows for the PoC: one hour for Tier 2
  * and four hours for recovery. The targets are 72 hours and 14 days. Both are recorded in the
@@ -126,7 +127,7 @@ contract Ceremony is Script {
     function _wallet(uint32 firstIndex, uint256 salt) private returns (address) {
         address[] memory owners = new address[](3);
         for (uint32 k = 0; k < 3; ++k) {
-            owners[k] = vm.addr(vm.deriveKey(MNEMONIC, firstIndex + k));
+            owners[k] = vm.addr(vm.deriveKey(_mnemonic(), firstIndex + k));
         }
         bytes memory setup = abi.encodeWithSignature(
             "setup(address[],uint256,address,bytes,address,address,uint256,address)",
@@ -140,6 +141,10 @@ contract Ceremony is Script {
             address(0)
         );
         return IWalletFactory(WALLET_FACTORY).createProxyWithNonce(WALLET_SINGLETON, setup, salt);
+    }
+
+    function _mnemonic() private view returns (string memory) {
+        return block.chainid == 31337 ? MNEMONIC : vm.envString("WALLET_MNEMONIC");
     }
 
     function _manifest() private view returns (string memory) {

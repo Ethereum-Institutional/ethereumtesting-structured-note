@@ -24,6 +24,9 @@ PORT="${PORT:-8547}"
 export RPC="http://127.0.0.1:$PORT"
 export MANIFEST="ops/addresses.$(basename "$NETWORK_FILE" .json)-fork.json"
 export PUBLIC_NETWORK=1
+# The fork is private, so the dry run uses the local node's published keys and mnemonic, which a
+# live deployment never does (ops/deploy-network.sh refuses them, ADR 0051).
+export WALLET_MNEMONIC="test test test test test test test test test test test junk"
 LOG="$(mktemp -t fork-anvil)"
 
 pkill -f "anvil --port $PORT" 2>/dev/null || true

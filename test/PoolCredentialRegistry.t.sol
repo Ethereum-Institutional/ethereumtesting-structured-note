@@ -69,6 +69,7 @@ contract PoolCredentialRegistryTest is Test {
             primaryCredential: keccak256("passport credential"),
             screeningCredential: keccak256("screening credential"),
             walletCredential: keccak256("wallet-control credential"),
+            authorityCredential: bytes32(0),
             primarySchema: PERSON_SCHEMA,
             screeningSchema: SCREENING_SCHEMA,
             checks: 1 | 2 | 8 | 16 | 32,
@@ -107,6 +108,7 @@ contract PoolCredentialRegistryTest is Test {
         a.primarySchema = ENTITY_SCHEMA;
         a.screeningSchema = ENTITY_SCHEMA;
         a.screeningCredential = a.primaryCredential;
+        a.authorityCredential = keccak256("officer credential");
         a.checks = 1 | 2 | 4 | 16;
         a.investorClass = 2;
     }
@@ -153,6 +155,30 @@ contract PoolCredentialRegistryTest is Test {
         protocol.setRevoked(DID, a.walletCredential, true);
         vm.expectEmit(address(gate));
         emit PoolCredentialRegistry.AccessVoided(holder, a.walletCredential);
+        gate.void(holder);
+        assertFalse(gate.isAllowed(holder));
+    }
+
+    /// An entity needs the presenting officer's credential; a person presents for itself.
+    function test_authorityCredential_requiredForEntity_absentForPerson() public {
+        PoolCredentialRegistry.Attestation memory a = _entity();
+        a.authorityCredential = bytes32(0);
+        _expectRefused(a, abi.encodeWithSelector(PoolCredentialRegistry.AuthorityCredentialRequired.selector));
+        PoolCredentialRegistry.Attestation memory p = _person();
+        p.authorityCredential = keccak256("an officer credential on a person");
+        _expectRefused(p, abi.encodeWithSelector(PoolCredentialRegistry.AuthorityCredentialNotExpected.selector));
+    }
+
+    /// The officer leaving ends the grant: a revoked officer credential is refused, and voids.
+    function test_officerRevocation_refusedAndVoids() public {
+        PoolCredentialRegistry.Attestation memory a = _entity();
+        protocol.setRevoked(DID, a.authorityCredential, true);
+        _expectRefused(a, abi.encodeWithSelector(PoolCredentialRegistry.CredentialRevoked.selector, a.authorityCredential));
+        protocol.setRevoked(DID, a.authorityCredential, false);
+        _grant(a);
+        protocol.setRevoked(DID, a.authorityCredential, true);
+        vm.expectEmit(address(gate));
+        emit PoolCredentialRegistry.AccessVoided(holder, a.authorityCredential);
         gate.void(holder);
         assertFalse(gate.isAllowed(holder));
     }
@@ -393,7 +419,7 @@ contract PoolCredentialRegistryTest is Test {
         vm.record();
         _grant(_person());
         (, bytes32[] memory writes) = vm.accesses(address(gate));
-        assertEq(writes.length, 5, "packed expiry and path, three credential ids, evidence");
+        assertEq(writes.length, 6, "packed expiry and path, four credential ids, evidence");
     }
 
     /// The gate never reverts on the swap path, whatever the account.

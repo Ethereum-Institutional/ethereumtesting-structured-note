@@ -16,9 +16,15 @@
   },
   "walletControl": {
     "cid": "0x<the wallet-control credential's cid, bytes32>",
-    "holderDid": "<must equal corporateIdentity.holderDid>",
+    "holderDid": "<must equal officer.holderDid (ADR 0050)>",
     "chain": "eip155:84532",
     "addressType": "eoa",
     "walletAddress": "0x<the pool wallet>"
+  },
+  "officer": {
+    "cid": "0x<the officer-role credential's cid, bytes32>",
+    "holderDid": "<the officer's DID>",
+    "corporationDid": "<must equal corporateIdentity.holderDid>",
+    "role": "CEO"
   }
 }

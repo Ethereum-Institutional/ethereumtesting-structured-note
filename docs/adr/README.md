@@ -56,3 +56,6 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0046](0046-officer-presents-for-entity.md) | For an entity, an authorised officer presents | Accepted |
 | [0047](0047-hosted-verifier-for-poc.md) | The protocol's hosted verifier gives the verdict for the PoC; the Access Issuer runs its own before execution | Accepted |
 | [0048](0048-operator-approves-admission.md) | An Access Issuer operator approves each admission; the site then signs both grants | Accepted |
+| [0049](0049-officer-credential-on-chain.md) | The officer's credential is a fourth credential, required on the entity path | Accepted |
+| [0050](0050-wallet-credential-to-officer.md) | The wallet-control credential is issued to the officer who presents | Accepted |
+| [0051](0051-integration-deployment.md) | An integration deployment on the test network, separate from the PoC execution | Accepted |

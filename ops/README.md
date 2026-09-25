@@ -9,6 +9,8 @@
 | `setup-permit2.sh` | Installs canonical Permit2 bytecode at its canonical address. |
 | `setup-credential-protocol.sh` | Installs the credential protocol's released registry code at its canonical addresses, refusing any file whose hash has changed (ADR 0040). |
 | `dry-run-fork.sh` | Forks the test network, deploys the whole stack against its real contracts, and runs the venue tests (ADR 0041). |
+| `new-network-keys.sh` | Generates a fresh key set for a public network, never the local node's published keys (ADR 0051). |
+| `deploy-network.sh` | Deploys the whole stack to a live network with those keys, after checking every capacity is funded (ADR 0051). |
 | `networks/` | Each public network's identifiers. Only the template is committed (ADR 0029). |
 | `setup-multisig.sh` | Installs the multi-signature wallet's released code at its canonical addresses, refusing any file whose hash has changed (ADR 0024). |
 | `keys.env` | Local node default accounts, mapped to capacities. `source` it. |

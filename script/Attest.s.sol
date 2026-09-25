@@ -25,8 +25,9 @@ interface IIdentityRegistryWriter {
  *
  * The file is the verifier's result, in the shape of ops/attestations/example.json. This script
  * makes the Access Issuer's own checks, off-chain, before anything is written: a GRANT verdict,
- * the configured issuer, the wallet credential bound to the same holder as the corporate identity,
- * and, for a contract wallet, a signature verified on this chain (ADR 0042). It then writes, from
+ * the configured issuer, the wallet credential issued to the presenting officer, the officer acting
+ * for the corporation the corporate identity names, and, for a contract wallet, a signature
+ * verified on this chain (ADRs 0042, 0046, 0050). It then writes, from
  * the one presentation, the pool grant and the Identity Registry grant (ADR 0044). The gate checks
  * the rest on-chain: issuer active, no credential revoked, and the policy.
  *
@@ -39,6 +40,7 @@ contract Attest is Script {
     struct Presentation {
         bytes32 corporateCid;
         bytes32 walletCid;
+        bytes32 officerCid;
         bytes32 corporateSchema;
         bytes32 evidence;
         address wallet;
@@ -61,6 +63,7 @@ contract Attest is Script {
             primaryCredential: p.corporateCid,
             screeningCredential: p.corporateCid, // the screening rides inside (ADR 0033)
             walletCredential: p.walletCid,
+            authorityCredential: p.officerCid, // the officer who presented (ADR 0049)
             primarySchema: p.corporateSchema,
             screeningSchema: p.corporateSchema,
             checks: p.checks,
@@ -91,9 +94,14 @@ contract Attest is Script {
     function _read(string memory f, PoolCredentialRegistry gate) internal view returns (Presentation memory p) {
         require(_eq(vm.parseJsonString(f, ".verdict"), "GRANT"), "the verifier did not grant");
         require(_eq(vm.parseJsonString(f, ".issuerDid"), gate.issuerDid()), "not the pool's configured issuer");
+        // The chain of trust: wallet, officer, corporation, corporate identity (ADRs 0046, 0050).
         require(
-            _eq(vm.parseJsonString(f, ".walletControl.holderDid"), vm.parseJsonString(f, ".corporateIdentity.holderDid")),
-            "the wallet is bound to another holder"
+            _eq(vm.parseJsonString(f, ".walletControl.holderDid"), vm.parseJsonString(f, ".officer.holderDid")),
+            "the wallet is bound to someone other than the presenting officer"
+        );
+        require(
+            _eq(vm.parseJsonString(f, ".officer.corporationDid"), vm.parseJsonString(f, ".corporateIdentity.holderDid")),
+            "the officer acts for another corporation"
         );
 
         string memory chain = vm.parseJsonString(f, ".walletControl.chain");
@@ -109,6 +117,7 @@ contract Attest is Script {
 
         p.wallet = vm.parseJsonAddress(f, ".walletControl.walletAddress");
         p.walletCid = vm.parseJsonBytes32(f, ".walletControl.cid");
+        p.officerCid = vm.parseJsonBytes32(f, ".officer.cid");
         p.corporateCid = vm.parseJsonBytes32(f, ".corporateIdentity.cid");
         p.corporateSchema = keccak256(bytes(vm.parseJsonString(f, ".corporateIdentity.schemaUri")));
         p.evidence = vm.parseJsonBytes32(f, ".verificationRecordSha256");

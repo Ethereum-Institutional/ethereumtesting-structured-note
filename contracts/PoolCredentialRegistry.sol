@@ -15,8 +15,9 @@ import {ICredentialIssuers, ICredentialRevocations} from "./interfaces/ICredenti
  *   an attestation. The signature check is off-chain; this contract trusts the attester's reading
  *   of the credential and never claims otherwise.
  * - **Checked at grant.** The configured issuer must be active in the protocol, none of the
- *   holder's credentials may be revoked (its primary credential, its screening, and the
- *   wallet-control credential binding the wallet to the holder, ADR 0043), and the attested schema, checks, jurisdiction, investor class and screening
+ *   holder's credentials may be revoked (its primary credential, its screening, the
+ *   wallet-control credential binding the wallet to the holder (ADR 0043) and, for an entity,
+ *   the officer credential of whoever presented for it (ADR 0049)), and the attested schema, checks, jurisdiction, investor class and screening
  *   time must meet the policy. A mismatch reverts and names itself.
  * - **Bounded.** A grant expires at the earlier of the credential's own expiry and the maximum
  *   validity from the time of grant.
@@ -90,6 +91,7 @@ contract PoolCredentialRegistry is AccessControl {
         bytes32 primaryCredential;
         bytes32 screeningCredential;
         bytes32 walletCredential; // the wallet-control credential binding `account` to the holder
+        bytes32 authorityCredential; // entity: the presenting officer's credential; person: empty
         bytes32 primarySchema;
         bytes32 screeningSchema;
         uint32 checks;
@@ -106,6 +108,7 @@ contract PoolCredentialRegistry is AccessControl {
         bytes32 primaryCredential;
         bytes32 screeningCredential;
         bytes32 walletCredential;
+        bytes32 authorityCredential;
         bytes32 evidence;
     }
 
@@ -139,6 +142,7 @@ contract PoolCredentialRegistry is AccessControl {
         bytes32 indexed primaryCredential,
         bytes32 screeningCredential,
         bytes32 walletCredential,
+        bytes32 authorityCredential,
         uint40 expiresAt,
         bytes32 evidence
     );
@@ -162,6 +166,8 @@ contract PoolCredentialRegistry is AccessControl {
     error ScreeningTooOld(uint40 screenedAt);
     error CredentialExpired(uint40 expiry);
     error NoWalletCredential();
+    error AuthorityCredentialRequired();
+    error AuthorityCredentialNotExpected();
     error NoGrant(address account);
     error NotVoidable(address account);
     error IssuerStillActive();
@@ -231,14 +237,31 @@ contract PoolCredentialRegistry is AccessControl {
         if (REVOCATIONS.isRevoked(did, a.primaryCredential)) revert CredentialRevoked(a.primaryCredential);
         if (REVOCATIONS.isRevoked(did, a.screeningCredential)) revert CredentialRevoked(a.screeningCredential);
         if (REVOCATIONS.isRevoked(did, a.walletCredential)) revert CredentialRevoked(a.walletCredential);
+        if (a.authorityCredential != bytes32(0) && REVOCATIONS.isRevoked(did, a.authorityCredential)) {
+            revert CredentialRevoked(a.authorityCredential);
+        }
         if (ROOT_FRESHNESS != 0 && !REVOCATIONS.isRootRecent(did, REVOCATIONS.currentRoot(did), ROOT_FRESHNESS)) {
             revert RootNotRecent();
         }
 
-        _grants[a.account] =
-            Grant(expiresAt, a.path, a.primaryCredential, a.screeningCredential, a.walletCredential, a.evidence);
+        _grants[a.account] = Grant(
+            expiresAt,
+            a.path,
+            a.primaryCredential,
+            a.screeningCredential,
+            a.walletCredential,
+            a.authorityCredential,
+            a.evidence
+        );
         emit AccessGranted(
-            a.account, a.path, a.primaryCredential, a.screeningCredential, a.walletCredential, expiresAt, a.evidence
+            a.account,
+            a.path,
+            a.primaryCredential,
+            a.screeningCredential,
+            a.walletCredential,
+            a.authorityCredential,
+            expiresAt,
+            a.evidence
         );
     }
 
@@ -264,7 +287,11 @@ contract PoolCredentialRegistry is AccessControl {
         if (REVOCATIONS.isRevoked(did, g.primaryCredential)) revoked = g.primaryCredential;
         else if (REVOCATIONS.isRevoked(did, g.screeningCredential)) revoked = g.screeningCredential;
         else if (REVOCATIONS.isRevoked(did, g.walletCredential)) revoked = g.walletCredential;
-        else revert NotVoidable(account);
+        else if (g.authorityCredential != bytes32(0) && REVOCATIONS.isRevoked(did, g.authorityCredential)) {
+            revoked = g.authorityCredential;
+        } else {
+            revert NotVoidable(account);
+        }
         delete _grants[account];
         emit AccessVoided(account, revoked);
     }
@@ -307,6 +334,9 @@ contract PoolCredentialRegistry is AccessControl {
         if (p.screeningSchema == p.primarySchema && a.screeningCredential != a.primaryCredential) {
             revert ScreeningNotInCredential(a.screeningCredential);
         }
+        // An entity is admitted on an officer's presentation (ADRs 0046, 0049); a person on its own.
+        if (a.path == Path.Entity && a.authorityCredential == bytes32(0)) revert AuthorityCredentialRequired();
+        if (a.path == Path.Person && a.authorityCredential != bytes32(0)) revert AuthorityCredentialNotExpected();
         uint32 missing = p.requiredChecks & ~a.checks;
         if (missing != 0) revert ChecksMissing(missing);
         if (!isJurisdictionAllowed[a.jurisdiction]) revert JurisdictionNotAllowed(a.jurisdiction);

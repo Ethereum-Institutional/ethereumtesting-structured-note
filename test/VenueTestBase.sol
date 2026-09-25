@@ -133,6 +133,7 @@ abstract contract VenueTestBase is Test {
             primaryCredential: credential,
             screeningCredential: credential,
             walletCredential: keccak256(abi.encodePacked(account, "/wallet")),
+            authorityCredential: keccak256(abi.encodePacked(account, "/officer")),
             primarySchema: entity,
             screeningSchema: entity,
             checks: 1 | 2 | 4 | 16,

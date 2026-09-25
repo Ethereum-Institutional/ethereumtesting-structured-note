@@ -111,7 +111,7 @@ export const REGISTRY: Record<string, Entry[]> = {
   ],
   credentialGate: [
     ...ROLES,
-    { signature: "function grant((address account, uint8 path, bytes32 primaryCredential, bytes32 screeningCredential, bytes32 walletCredential, bytes32 primarySchema, bytes32 screeningSchema, uint32 checks, bytes2 jurisdiction, uint8 investorClass, uint40 screenedAt, uint40 credentialExpiry, bytes32 evidence) a)", meaning: "Admitted an account to the pool from a presentation verified off-chain", tone: "onboard", args: ["attestation"] },
+    { signature: "function grant((address account, uint8 path, bytes32 primaryCredential, bytes32 screeningCredential, bytes32 walletCredential, bytes32 authorityCredential, bytes32 primarySchema, bytes32 screeningSchema, uint32 checks, bytes2 jurisdiction, uint8 investorClass, uint40 screenedAt, uint40 credentialExpiry, bytes32 evidence) a)", meaning: "Admitted an account to the pool from a presentation verified off-chain", tone: "onboard", args: ["attestation"] },
     { signature: "function revoke(address account)", meaning: "Revoked an account's pool access", tone: "control", args: ["account"] },
     { signature: "function withdraw(address account, string reason)", meaning: "Withdrew an account's pool access under supervisory authority, with a written reason", tone: "control", args: ["account", "text"] },
     { signature: "function void(address account)", meaning: "Voided a pool grant whose credential the protocol has revoked", tone: "control", args: ["account"] },
@@ -422,7 +422,7 @@ export class Tape {
       `checks ${checks(a.checks)}`,
       `screened ${new Date(a.screenedAt * 1000).toISOString()}`,
       `credential valid to ${new Date(a.credentialExpiry * 1000).toISOString()}`,
-      `credentials ${a.primaryCredential}, ${a.screeningCredential}, wallet ${a.walletCredential}`,
+      `credentials ${a.primaryCredential}, ${a.screeningCredential}, wallet ${a.walletCredential}, officer ${a.authorityCredential}`,
     ].join("; ");
   }
 
@@ -455,6 +455,7 @@ type Attestation = {
   primaryCredential: Hex;
   screeningCredential: Hex;
   walletCredential: Hex;
+  authorityCredential: Hex;
   checks: number;
   jurisdiction: Hex;
   investorClass: number;
