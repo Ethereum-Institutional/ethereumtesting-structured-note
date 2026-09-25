@@ -375,10 +375,11 @@ clause, so a changed answer changes terms or one line, and the vector grid is re
 
 - **Branch.** `spike/eip170` and `wave/1-plumbing` are merged to `main`, which is pushed to
   `origin`.
-- **Mail sender is temporary.** Production `MAIL_FROM` is Resend's shared test sender, which
-  delivers only to the Resend account owner. Once the sending domain verifies in Resend (DNS is
-  pending on the DNS provider), set `MAIL_FROM` to `Structured Note PoC
-  <access@ethereuminstitutional.org>` and redeploy. Until then, nobody else receives links.
+- **Mail sender.** Production `MAIL_FROM` is `Structured Note PoC <noreply@ethereumtesting.com>`,
+  on the Resend domain configured 25 September 2026, and production was redeployed with it (a
+  rebuild of the existing deployment, not a deploy of a branch). Confirm delivery by registering
+  with an address outside the Resend account; if sends fail, check the API key is not restricted
+  to another domain.
 - **Rotate the Resend key** before the site carries anything real; it was pasted into a session.
 - **Deploying.** From the repository root, always with `--scope ethereuminstitutional`: another
   local session also uses the Vercel CLI and changes its default scope. Environment variables were
