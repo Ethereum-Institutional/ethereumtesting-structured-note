@@ -375,6 +375,12 @@ clause, so a changed answer changes terms or one line, and the vector grid is re
 
 - **Branch.** `spike/eip170` and `wave/1-plumbing` are merged to `main`, which is pushed to
   `origin`.
+- **Public domain.** The site is `https://structurednote-project.ethereumtesting.com`; production
+  `SITE_URL` names it, so every emailed link carries it. `structurednote.vercel.app` is a
+  permanent (308) redirect to it. `SITE_URL` is stored as sensitive, which Vercel now requires for
+  production variables here, so its value cannot be read back; set it with an explicit
+  `"type": "sensitive"`. Each deployment's own `*.vercel.app` address stays reachable unless
+  deployment protection is turned on.
 - **Mail sender.** Production `MAIL_FROM` is `Structured Note PoC <noreply@ethereumtesting.com>`,
   on the Resend domain configured 25 September 2026, and production was redeployed with it (a
   rebuild of the existing deployment, not a deploy of a branch). Confirm delivery by registering
