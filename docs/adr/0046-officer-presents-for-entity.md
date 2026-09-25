@@ -33,3 +33,5 @@ corporation authorised the wallet: a named officer, on the record, whose authori
 - The corporation's issuer backend must have its corporate identity ingested; today neither demo corporation has.
 - The officer needs an officer-role credential.
 - How the officer credential and the wallet binding are recorded on-chain is decided separately.
+- **Refined by ADR 0052:** the bank, as the configured issuer, verifies the officer structure and
+  issues the officer credential.

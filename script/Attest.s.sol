@@ -25,7 +25,7 @@ interface IIdentityRegistryWriter {
  *
  * The file is the verifier's result, in the shape of ops/attestations/example.json. This script
  * makes the Access Issuer's own checks, off-chain, before anything is written: a GRANT verdict,
- * the configured issuer, the wallet credential issued to the presenting officer, the officer acting
+ * the configured issuer for every credential (ADR 0052), the wallet credential issued to the presenting officer, the officer acting
  * for the corporation the corporate identity names, and, for a contract wallet, a signature
  * verified on this chain (ADRs 0042, 0046, 0050). It then writes, from
  * the one presentation, the pool grant and the Identity Registry grant (ADR 0044). The gate checks
@@ -124,7 +124,13 @@ contract Attest is Script {
         p.jurisdiction = bytes2(bytes(vm.parseJsonString(f, ".corporateIdentity.jurisdiction")));
         p.investorClass = _class(vm.parseJsonString(f, ".corporateIdentity.investorClass"));
         p.issuedAt = uint40(vm.parseJsonUint(f, ".corporateIdentity.issuedAt"));
+        // A grant rests on every credential presented, so it ends with the first to expire; the
+        // officer credential's validity is the bank's refresh period (ADR 0052).
         p.expiresAt = uint40(vm.parseJsonUint(f, ".corporateIdentity.expiresAt"));
+        uint40 officerExpiry = uint40(vm.parseJsonUint(f, ".officer.expiresAt"));
+        uint40 walletExpiry = uint40(vm.parseJsonUint(f, ".walletControl.expiresAt"));
+        if (officerExpiry < p.expiresAt) p.expiresAt = officerExpiry;
+        if (walletExpiry < p.expiresAt) p.expiresAt = walletExpiry;
 
         // The checks the Access Issuer reports, each read from the presentation, never assumed.
         p.checks = 1; // wallet control: verified by the verifier and bound to the holder above

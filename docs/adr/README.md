@@ -59,3 +59,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0049](0049-officer-credential-on-chain.md) | The officer's credential is a fourth credential, required on the entity path | Accepted |
 | [0050](0050-wallet-credential-to-officer.md) | The wallet-control credential is issued to the officer who presents | Accepted |
 | [0051](0051-integration-deployment.md) | An integration deployment on the test network, separate from the PoC execution | Accepted |
+| [0052](0052-bank-verifies-officers.md) | The bank verifies the officer structure and issues officer credentials; changes wait for notice or the periodic refresh | Accepted |
