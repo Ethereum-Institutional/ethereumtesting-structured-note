@@ -138,7 +138,7 @@ contract VectorsTest is Test {
         for (uint256 h = 0; h < 3; ++h) {
             assertEq(d.deposit.balanceOf(holders[h]) - before[h], perCa * units[h], name);
         }
-        (,,, uint64 paid,, bool closed,) = pa.distributions(id);
+        (,,, uint64 paid,, bool closed,,,,) = pa.distributions(id);
         assertTrue(closed, string.concat(name, ": closed"));
         assertEq(paid, 12, name);
         assertEq(d.deposit.balanceOf(inventory), 0, string.concat(name, ": inventory is never paid"));

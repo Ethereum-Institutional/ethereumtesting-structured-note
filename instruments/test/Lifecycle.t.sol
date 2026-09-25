@@ -225,7 +225,7 @@ contract LifecycleTest is Test {
         vm.stopPrank();
         assertEq(d.deposit.balanceOf(a) - aBefore, 10 * 2_500, "the seller at the Record Time is paid");
         assertEq(d.deposit.balanceOf(inventory), inventoryBefore, "the inventory is not paid");
-        (,, uint64 entitled,,,,) = l.payingAgent.distributions(id);
+        (,, uint64 entitled,,,,,,,) = l.payingAgent.distributions(id);
         assertEq(entitled, 10, "entitled units exclude the inventory's ten");
     }
 
@@ -282,7 +282,7 @@ contract LifecycleTest is Test {
         address[] memory one = new address[](1);
         one[0] = a;
         l.payingAgent.pay(id, one);
-        (,,,,, bool closed,) = l.payingAgent.distributions(id);
+        (,,,,, bool closed,,,,) = l.payingAgent.distributions(id);
         assertFalse(closed, "a holder is still unpaid");
         vm.expectRevert(abi.encodeWithSelector(PayingAgent.AlreadySettled.selector, a));
         l.payingAgent.pay(id, one);
@@ -292,7 +292,7 @@ contract LifecycleTest is Test {
         one[0] = b;
         l.payingAgent.pay(id, one);
         vm.stopPrank();
-        (,,,,, closed,) = l.payingAgent.distributions(id);
+        (,,,,, closed,,,,) = l.payingAgent.distributions(id);
         assertTrue(closed);
         assertEq(d.deposit.balanceOf(address(l.payingAgent)), 0, "funded exactly");
     }
@@ -313,7 +313,7 @@ contract LifecycleTest is Test {
         both[1] = b;
         l.payingAgent.pay(id, both);
         vm.stopPrank();
-        (,,,,, bool closed,) = l.payingAgent.distributions(id);
+        (,,,,, bool closed,,,,) = l.payingAgent.distributions(id);
         assertTrue(closed, "closes for everyone else");
         assertEq(l.payingAgent.held(id, b), 3 * 2_500);
 

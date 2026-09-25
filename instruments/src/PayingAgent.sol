@@ -13,6 +13,8 @@ interface INoteServicing {
 }
 
 interface ICashLeg {
+    function balanceOf(address account) external view returns (uint256);
+    function forcedTransfer(address from, address to, uint256 value, bytes calldata data) external returns (bool);
     function transfer(address to, uint256 value) external returns (bool);
     function transferFrom(address from, address to, uint256 value) external returns (bool);
     function canTransfer(address from, address to, uint256 value) external view returns (bool);
@@ -43,12 +45,20 @@ interface IRecordDates {
  *   amount is held here against it and the event, and it or anyone for it can claim it once the
  *   deposit accepts it again. The event still closes for everyone else.
  *
+ * - **Reversal and restatement** (ADR 0014) belong to the governance controller alone. A coupon is
+ *   reversed holder by holder against its original credit, by a forced transfer on the deposit
+ *   carrying the written reason, back to the funding account; a shortfall is recorded, never
+ *   hidden, and an amount that was held and never paid is cancelled instead. The original
+ *   distribution stays on record, marked reversed. It may then be restated against a corrected
+ *   Record Time, as a new distribution paid in the ordinary way.
+ *
  * Amounts per holder are the amount per Calculation Amount times the holder's units (R1), so the
  * total paid equals the amount per CA times the units entitled, with nothing to allocate.
  * Custody accounts are paid as holders of record, as nominee (E3).
  */
 contract PayingAgent is AccessControl {
     bytes32 public constant PAYER_ROLE = keccak256("PAYER_ROLE");
+    bytes32 public constant REVERSER_ROLE = keccak256("REVERSER_ROLE");
 
     enum Kind {
         Coupon,
@@ -63,6 +73,9 @@ contract PayingAgent is AccessControl {
         bool open;
         bool closed;
         Kind kind;
+        bool reversed;
+        uint64 unitsReversed;
+        uint256 dateIndex;
     }
 
     INoteServicing public immutable NOTE;
@@ -77,12 +90,18 @@ contract PayingAgent is AccessControl {
     mapping(bytes32 id => Distribution) public distributions;
     mapping(bytes32 id => mapping(address holder => bool)) public settled;
     mapping(bytes32 id => mapping(address holder => uint256)) public held;
+    mapping(bytes32 id => mapping(address holder => bool)) public reversedFor;
 
     event Opened(bytes32 indexed id, uint256 indexed dateIndex, Kind kind, uint256 perCa, uint256 unitsEntitled);
     event Paid(bytes32 indexed id, address indexed holder, uint256 units, uint256 amount);
     event Held(bytes32 indexed id, address indexed holder, uint256 units, uint256 amount);
     event Claimed(bytes32 indexed id, address indexed holder, uint256 amount);
     event Closed(bytes32 indexed id, uint256 unitsPaid, uint256 inventoryBurned);
+    /// @notice One holder's credit reversed, against the original. `shortfall` could not be recovered.
+    event Reversed(bytes32 indexed id, address indexed holder, uint256 recovered, uint256 cancelledHeld, uint256 shortfall);
+    /// @notice The whole distribution is reversed; the reason is emitted in full.
+    event DistributionReversed(bytes32 indexed id, string reason);
+    event Restated(bytes32 indexed original, bytes32 indexed restatement, uint48 recordTime, string reason);
 
     error NothingDue(uint256 dateIndex, Kind kind);
     error BeforePaymentDate(uint48 paymentDate);
@@ -93,6 +112,13 @@ contract PayingAgent is AccessControl {
     error InventoryIsNotPaid();
     error NothingHeld(address holder);
     error CannotReceive(address holder);
+    error OnlyCouponsReverse();
+    error NotClosed(bytes32 id);
+    error NotSettled(address holder);
+    error AlreadyReversed(address holder);
+    error NotReversed(bytes32 id);
+    error RecordTimeNotPassed(uint48 recordTime);
+    error NoReason();
 
     constructor(
         INoteServicing note,
@@ -122,22 +148,87 @@ contract PayingAgent is AccessControl {
 
     function open(uint256 dateIndex, Kind kind) external onlyRole(PAYER_ROLE) returns (bytes32 id) {
         id = idOf(dateIndex, kind);
-        if (distributions[id].open) revert AlreadyOpen(id);
         if (!DETERMINATIONS.determined(dateIndex)) revert NothingDue(dateIndex, kind);
-        IDeterminationAgent.Outcome memory o = DETERMINATIONS.outcomeOf(dateIndex);
         IDeterminationAgent.Observation memory obs = DETERMINATIONS.observation(dateIndex);
-        if (kind == Kind.Coupon ? !o.couponPaid : !o.redeemed) revert NothingDue(dateIndex, kind);
         if (block.timestamp < obs.paymentDate) revert BeforePaymentDate(obs.paymentDate);
+        _open(id, dateIndex, kind, obs.recordTime);
+    }
+
+    function _open(bytes32 id, uint256 dateIndex, Kind kind, uint48 recordTime) private {
+        if (distributions[id].open) revert AlreadyOpen(id);
+        IDeterminationAgent.Outcome memory o = DETERMINATIONS.outcomeOf(dateIndex);
+        if (kind == Kind.Coupon ? !o.couponPaid : !o.redeemed) revert NothingDue(dateIndex, kind);
 
         uint256 perCa = kind == Kind.Coupon ? o.couponPerCa : o.redemptionPerCa;
-        uint256 entitled = RECORD_DATES.totalSupplyAt(obs.recordTime)
-            - RECORD_DATES.balanceAt(INVENTORY, obs.recordTime);
-        distributions[id] = Distribution(obs.recordTime, uint64(perCa), uint64(entitled), 0, true, false, kind);
+        uint256 entitled = RECORD_DATES.totalSupplyAt(recordTime) - RECORD_DATES.balanceAt(INVENTORY, recordTime);
+        distributions[id] =
+            Distribution(recordTime, uint64(perCa), uint64(entitled), 0, true, false, kind, false, 0, dateIndex);
         emit Opened(id, dateIndex, kind, perCa, entitled);
 
         if (kind == Kind.Redemption && !NOTE.paused()) NOTE.pause();
         if (perCa * entitled > 0) CASH.transferFrom(FUNDER, address(this), perCa * entitled);
         if (entitled == 0) _close(id);
+    }
+
+    // --- reversal and restatement (ADR 0014) ---
+
+    /**
+     * @notice Reverses a closed coupon for the given holders, each against its original credit.
+     *         Recovered cash goes back to the funding account; a held amount is cancelled.
+     */
+    function reverse(bytes32 id, address[] calldata holders, string calldata reason)
+        external
+        onlyRole(REVERSER_ROLE)
+    {
+        if (bytes(reason).length == 0) revert NoReason();
+        Distribution storage d = distributions[id];
+        if (d.kind != Kind.Coupon) revert OnlyCouponsReverse();
+        if (!d.closed) revert NotClosed(id);
+        for (uint256 k = 0; k < holders.length; ++k) {
+            d.unitsReversed += uint64(_reverseOne(id, d, holders[k], reason));
+        }
+        if (d.unitsReversed == d.unitsPaid && !d.reversed) {
+            d.reversed = true;
+            emit DistributionReversed(id, reason);
+        }
+    }
+
+    function _reverseOne(bytes32 id, Distribution storage d, address h, string calldata reason)
+        private
+        returns (uint256 units)
+    {
+        if (!settled[id][h]) revert NotSettled(h);
+        if (reversedFor[id][h]) revert AlreadyReversed(h);
+        reversedFor[id][h] = true;
+        units = RECORD_DATES.balanceAt(h, d.recordTime);
+
+        uint256 cancelled = held[id][h];
+        if (cancelled > 0) {
+            delete held[id][h];
+            CASH.transfer(FUNDER, cancelled);
+            emit Reversed(id, h, 0, cancelled, 0);
+            return units;
+        }
+        uint256 due = uint256(d.perCa) * units;
+        uint256 balance = CASH.balanceOf(h);
+        uint256 recovered = due < balance ? due : balance;
+        if (recovered > 0) CASH.forcedTransfer(h, FUNDER, recovered, bytes(reason));
+        emit Reversed(id, h, recovered, 0, due - recovered);
+    }
+
+    /// @notice Pays a reversed coupon again against a corrected Record Time, as a new distribution.
+    function restate(bytes32 original, uint48 recordTime, string calldata reason)
+        external
+        onlyRole(REVERSER_ROLE)
+        returns (bytes32 id)
+    {
+        if (bytes(reason).length == 0) revert NoReason();
+        Distribution storage o = distributions[original];
+        if (!o.reversed) revert NotReversed(original);
+        if (block.timestamp <= recordTime) revert RecordTimeNotPassed(recordTime);
+        id = keccak256(abi.encode(original, recordTime));
+        _open(id, o.dateIndex, Kind.Coupon, recordTime);
+        emit Restated(original, id, recordTime, reason);
     }
 
     function pay(bytes32 id, address[] calldata holders) external onlyRole(PAYER_ROLE) {
