@@ -44,3 +44,8 @@ the frozen instruments small (ADR 0026) and tests the protocol where the owner a
 - D12 is closed for the pool. HANDOFF section 4's check of the commercial engines was not made.
 - Test credentials cannot be obtained from a faucet: a grant needs an NFC passport read in the protocol's wallet, or the vendor's own stack. Live testing needs the vendor to issue test credentials or register a test issuer (ADR 0041).
 - The deployed protocol proxies were upgraded after the vendor's own deployment record was written; the live implementations are the ones used (ADR 0040).
+- **25 September 2026:** the configured issuer is now a bank issuer on the protocol's new pair of
+  registries on the test network, with its first revocation root published; both are named in
+  the network file (ADR 0029). The protocol's `REGISTRAR_ROLE` is global over every issuer, so a
+  registrar outside the protocol operator can re-key or deactivate any issuer, this pool's
+  included; delegating it needs registrar scoping in the protocol first.

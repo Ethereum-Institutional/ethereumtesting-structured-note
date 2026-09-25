@@ -406,6 +406,10 @@ are ADRs 0027 to 0041.
   meet the fixed policy; grants run at most 90 days. Anyone voids a revoked credential's grant or
   suspends the gate once the issuer is deactivated; the controller withdraws with a reason. The
   swap path reads two storage slots and never calls the protocol.
+- **An entity presents its corporate identity alone** (ADR 0033, amended): the screening rides
+  inside it, screened at issuance, and the gate refuses a separate screening credential on that
+  path. The configured issuer is now a bank issuer on the protocol's new pair of registries,
+  named in the network file; the fork dry run passes against it.
 - **Checker** requires both the deposit's ERC-7943 eligibility and the credential grant (ADR 0031).
 - **Pool** (ADR 0038): the payment token against the deposit at par, fee 0.05%, spacing 10, one
   position from 0.995 to 1.005 by the Deposit Agent, the only liquidity provider.
@@ -446,7 +450,13 @@ are ADRs 0027 to 0041.
   confirm with the vendor.
 - **The local node's published keys carry EIP-7702 delegations on the test network.** A live
   deployment needs a key per capacity (Wave 6).
-- The Base Sepolia revocation root is about 40 days old; freshness is off (ADR 0035).
+- Root freshness stays off (ADR 0035).
+- **The corporate identity schema needs an investor class** (ADR 0033 amendment); the policy
+  requires one. Its screening time is its issuance time, so a credential older than 30 days must
+  be re-issued before it can be granted.
+- **The protocol's registrar role is global over every issuer** (ADR 0028). Scope it before any
+  registrar outside the protocol operator holds it.
+- A wallet-control credential is being built in the protocol (ADR 0036 follow-up).
 
 **Then, in order.** Freeze the venue's surface. The final freeze of the
 instruments once C1 to C10 and naming are confirmed. Wave 6, hardening and deployment.

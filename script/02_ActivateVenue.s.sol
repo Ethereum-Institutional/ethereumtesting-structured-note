@@ -127,9 +127,9 @@ contract ActivateVenue is Script {
 
         vm.startBroadcast(vm.envUint("ACCESS_ISSUER_PK"));
         PoolCredentialRegistry g = PoolCredentialRegistry(gate);
-        g.grant(Admission.attest(vm.parseJsonAddress(j, ".parties.depositAgent"), true, entity, screening, "DE", 2, "CRD-0001"));
-        g.grant(Admission.attest(vm.parseJsonAddress(j, ".parties.investorA"), true, entity, screening, "LU", 1, "CRD-0002"));
-        g.grant(Admission.attest(vm.parseJsonAddress(j, ".parties.investorB"), false, person, screening, "FR", 1, "CRD-0003"));
+        g.grant(Admission.entity(vm.parseJsonAddress(j, ".parties.depositAgent"), entity, "DE", 2, "CRD-0001"));
+        g.grant(Admission.entity(vm.parseJsonAddress(j, ".parties.investorA"), entity, "LU", 1, "CRD-0002"));
+        g.grant(Admission.person(vm.parseJsonAddress(j, ".parties.investorB"), person, screening, "FR", 1, "CRD-0003"));
         vm.stopBroadcast();
     }
 

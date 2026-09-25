@@ -58,9 +58,12 @@ contract PoolCredentialRegistry is AccessControl {
         Person
     }
 
+    /// @dev A path whose screening schema is its primary schema carries its screening inside the
+    ///      primary credential, as the entity path's corporate identity does (ADR 0033): one
+    ///      credential, named in both places.
     struct PathPolicy {
         bytes32 primarySchema; // keccak256 of the schema URI: corporate identity, or passport
-        bytes32 screeningSchema; // keccak256 of the screening schema URI
+        bytes32 screeningSchema; // keccak256 of the screening schema URI, or the primary's
         uint32 requiredChecks;
     }
 
@@ -148,6 +151,7 @@ contract PoolCredentialRegistry is AccessControl {
     error RootNotRecent();
     error CredentialRevoked(bytes32 credential);
     error SchemaNotAccepted(bytes32 schema);
+    error ScreeningNotInCredential(bytes32 screeningCredential);
     error ChecksMissing(uint32 missing);
     error JurisdictionNotAllowed(bytes2 jurisdiction);
     error InvestorClassNotAllowed(uint8 investorClass);
@@ -289,6 +293,9 @@ contract PoolCredentialRegistry is AccessControl {
         PathPolicy memory p = pathPolicy(a.path);
         if (a.primarySchema != p.primarySchema) revert SchemaNotAccepted(a.primarySchema);
         if (a.screeningSchema != p.screeningSchema) revert SchemaNotAccepted(a.screeningSchema);
+        if (p.screeningSchema == p.primarySchema && a.screeningCredential != a.primaryCredential) {
+            revert ScreeningNotInCredential(a.screeningCredential);
+        }
         uint32 missing = p.requiredChecks & ~a.checks;
         if (missing != 0) revert ChecksMissing(missing);
         if (!isJurisdictionAllowed[a.jurisdiction]) revert JurisdictionNotAllowed(a.jurisdiction);

@@ -136,6 +136,7 @@ contract DeployVenue is Script {
         uint32 over18 = 1 << 3;
         uint32 sanctionsClean = 1 << 4;
         uint32 notPep = 1 << 5;
+        bytes32 corporate = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.corporateIdentitySchema")));
         bytes32 screening = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.screeningSchema")));
         c = PoolCredentialRegistry.Config({
             admin: issuer,
@@ -143,10 +144,9 @@ contract DeployVenue is Script {
             issuers: ICredentialIssuers(vm.parseJsonAddress(j, ".credentialProtocol.issuers")),
             revocations: ICredentialRevocations(vm.parseJsonAddress(j, ".credentialProtocol.revocations")),
             issuerDid: vm.parseJsonString(j, ".credentialProtocol.issuerDid"),
+            // An entity's screening rides inside its corporate identity (ADR 0033).
             entity: PoolCredentialRegistry.PathPolicy(
-                keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.corporateIdentitySchema"))),
-                screening,
-                walletControl | notExpired | entityActive
+                corporate, corporate, walletControl | notExpired | entityActive | sanctionsClean
             ),
             person: PoolCredentialRegistry.PathPolicy(
                 keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.passportSchema"))),

@@ -18,8 +18,8 @@ import {Manifest} from "./Manifest.sol";
  * Anywhere else: reads the network file named by NETWORK_FILE (ADR 0029) and deploys nothing.
  */
 contract DeployBase is Script {
-    address constant ISSUER_REGISTRY_IMPL = 0x4A1A49BBB0042F75541D44297A8746525d9B05Ac;
-    address constant REVOCATION_REGISTRY_IMPL = 0xa8E508d587702b2fAdA23f9c55F277E1B29EDE33;
+    address constant ISSUER_REGISTRY_IMPL = 0x747276B7fF453fC0B067704d0d2979d6dc145ae9;
+    address constant REVOCATION_REGISTRY_IMPL = 0x8E5cC797abC82964dC29670C919a37917128a9a9;
 
     string constant LOCAL_ISSUER_DID = "did:example:credential-issuer";
     uint256 constant ML_DSA_65_PUBKEY_LENGTH = 1952;

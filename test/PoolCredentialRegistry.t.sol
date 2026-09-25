@@ -51,7 +51,7 @@ contract PoolCredentialRegistryTest is Test {
             issuers: ICredentialIssuers(address(protocol)),
             revocations: ICredentialRevocations(address(protocol)),
             issuerDid: DID,
-            entity: PoolCredentialRegistry.PathPolicy(ENTITY_SCHEMA, SCREENING_SCHEMA, 1 | 2 | 4),
+            entity: PoolCredentialRegistry.PathPolicy(ENTITY_SCHEMA, ENTITY_SCHEMA, 1 | 2 | 4 | 16),
             person: PoolCredentialRegistry.PathPolicy(PERSON_SCHEMA, SCREENING_SCHEMA, 1 | 2 | 8 | 16 | 32),
             jurisdictions: js,
             investorClasses: uint8(1 << 1 | 1 << 2),
@@ -99,17 +99,47 @@ contract PoolCredentialRegistryTest is Test {
         assertTrue(gate.isAllowed(holder), "granted");
     }
 
-    /// An entity is admitted on its own path, with that path's checks.
-    function test_entityPath() public {
-        PoolCredentialRegistry.Attestation memory a = _person();
+    /// An entity presents its corporate identity alone: the screening rides inside it (ADR 0033).
+    function _entity() internal view returns (PoolCredentialRegistry.Attestation memory a) {
+        a = _person();
         a.path = PoolCredentialRegistry.Path.Entity;
         a.primarySchema = ENTITY_SCHEMA;
-        a.checks = 1 | 2; // not active
+        a.screeningSchema = ENTITY_SCHEMA;
+        a.screeningCredential = a.primaryCredential;
+        a.checks = 1 | 2 | 4 | 16;
         a.investorClass = 2;
+    }
+
+    /// An entity is admitted on its own path, with that path's checks.
+    function test_entityPath() public {
+        PoolCredentialRegistry.Attestation memory a = _entity();
+        a.checks = 1 | 2 | 16; // not active
         _expectRefused(a, abi.encodeWithSelector(PoolCredentialRegistry.ChecksMissing.selector, uint32(4)));
-        a.checks = 1 | 2 | 4;
+        a.checks = 1 | 2 | 4; // screening not reported clean
+        _expectRefused(a, abi.encodeWithSelector(PoolCredentialRegistry.ChecksMissing.selector, uint32(16)));
+        a.checks = 1 | 2 | 4 | 16;
         _grant(a);
         assertTrue(gate.isAllowed(holder));
+    }
+
+    /// The entity's screening is its corporate identity: a separate screening credential is refused.
+    function test_entityScreening_isTheCorporateIdentityItself() public {
+        PoolCredentialRegistry.Attestation memory a = _entity();
+        a.screeningCredential = keccak256("a separate screening credential");
+        _expectRefused(
+            a, abi.encodeWithSelector(PoolCredentialRegistry.ScreeningNotInCredential.selector, a.screeningCredential)
+        );
+        a.screeningSchema = SCREENING_SCHEMA;
+        _expectRefused(a, abi.encodeWithSelector(PoolCredentialRegistry.SchemaNotAccepted.selector, SCREENING_SCHEMA));
+    }
+
+    /// Revoking the one corporate identity credential voids the entity's grant.
+    function test_entityRevocation_voidsTheGrant() public {
+        PoolCredentialRegistry.Attestation memory a = _entity();
+        _grant(a);
+        protocol.setRevoked(DID, a.primaryCredential, true);
+        gate.void(holder);
+        assertFalse(gate.isAllowed(holder));
     }
 
     /// The configured issuer must be active in the protocol.

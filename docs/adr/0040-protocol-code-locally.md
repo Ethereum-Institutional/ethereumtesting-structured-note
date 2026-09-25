@@ -33,5 +33,8 @@ does for the wallet. The stand-in keeps unit tests fast and able to simulate fai
 ## Consequences
 
 - The vendor's deployment record lists older implementations; the live ones, read from each proxy's implementation slot on 25 September 2026, are the ones installed.
+- **Updated the same day:** the protocol now runs a new pair of registries on the test network, the
+  pair the network file names, with implementations at different addresses. The installed code
+  and its recorded hashes are those of the new pair; the first pair is no longer used.
 - The local issuer registers placeholder public keys of the lengths the registry requires; no credential signature is checked on-chain in any case.
 - The local node funds 23 accounts.

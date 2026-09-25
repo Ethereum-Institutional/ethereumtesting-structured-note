@@ -122,18 +122,19 @@ abstract contract VenueTestBase is Test {
         return (checker.checkAllowlist(account, address(deposit)) & flag) == flag;
     }
 
-    /// The same attestation the deploy scripts write (script/Admission.sol), for a new account.
+    /// The same attestation the deploy scripts write (script/Admission.sol), for a new entity:
+    /// its corporate identity, which carries its screening.
     function _admit(address account) internal {
         bytes32 entity = keccak256(bytes(vm.parseJsonString(manifest, ".credentialProtocol.corporateIdentitySchema")));
-        bytes32 screening = keccak256(bytes(vm.parseJsonString(manifest, ".credentialProtocol.screeningSchema")));
+        bytes32 credential = keccak256(abi.encodePacked(account, "/corporate-identity"));
         PoolCredentialRegistry.Attestation memory a = PoolCredentialRegistry.Attestation({
             account: account,
             path: PoolCredentialRegistry.Path.Entity,
-            primaryCredential: keccak256(abi.encodePacked(account, "/primary")),
-            screeningCredential: keccak256(abi.encodePacked(account, "/screening")),
+            primaryCredential: credential,
+            screeningCredential: credential,
             primarySchema: entity,
-            screeningSchema: screening,
-            checks: 1 | 2 | 4,
+            screeningSchema: entity,
+            checks: 1 | 2 | 4 | 16,
             jurisdiction: "NL",
             investorClass: 2,
             screenedAt: uint40(block.timestamp - 1 days),

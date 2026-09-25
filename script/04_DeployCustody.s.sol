@@ -69,7 +69,6 @@ contract DeployCustody is Script {
         IIdentityRegistryWriter r = IIdentityRegistryWriter(vm.parseJsonAddress(j, ".instruments.registry"));
         PoolCredentialRegistry gate = PoolCredentialRegistry(vm.parseJsonAddress(j, ".venue.credentialGate"));
         bytes32 entity = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.corporateIdentitySchema")));
-        bytes32 screening = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.screeningSchema")));
 
         vm.startBroadcast(vm.envUint("ACCESS_ISSUER_PK"));
         uint32 holder = r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT();
@@ -77,8 +76,8 @@ contract DeployCustody is Script {
         r.grant(accts[0], holder | r.REG_S(), 276, until, "ONB-0011", bytes32(0));
         r.grant(accts[1], holder | r.REG_S(), 276, until, "ONB-0012", bytes32(0));
         r.grant(accts[2], holder, 276, until, "ONB-0013", bytes32(0));
-        gate.grant(Admission.attest(accts[0], true, entity, screening, "DE", 2, "CRD-0011"));
-        gate.grant(Admission.attest(accts[1], true, entity, screening, "DE", 2, "CRD-0012"));
+        gate.grant(Admission.entity(accts[0], entity, "DE", 2, "CRD-0011"));
+        gate.grant(Admission.entity(accts[1], entity, "DE", 2, "CRD-0012"));
         vm.stopBroadcast();
     }
 
