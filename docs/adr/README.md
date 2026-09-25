@@ -35,3 +35,17 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0025](0025-separate-servicing-wallet.md) | The Agent runs a separate servicing wallet | Accepted (Wave 4) |
 | [0026](0026-freeze-candidate-then-final.md) | Freeze the instruments as a release candidate now, finally after confirmation | Accepted (Wave 4) |
 | [0027](0027-production-presentation-on-chain.md) | What is written on-chain reads as production, and a public deployment sets it explicitly | Accepted (Wave 5) |
+| [0028](0028-credential-protocol-selected.md) | The credential protocol is selected, for the conversion pool first | Accepted (Wave 5) |
+| [0029](0029-vendors-by-capacity.md) | Vendors are named by capacity; their identifiers live in a network file | Accepted (Wave 5) |
+| [0030](0030-pool-credential-gate.md) | The pool has its own credential gate: verify off-chain, check issuer and revocation on-chain, gate on one read | Accepted (Wave 5) |
+| [0031](0031-pool-requires-both.md) | The pool requires both the deposit's eligibility and a live credential grant | Accepted (Wave 5) |
+| [0032](0032-fixed-policy-per-gate.md) | The policy is fixed at construction, one gate per policy, with one configured issuer | Accepted (Wave 5) |
+| [0033](0033-participant-paths-and-attributes.md) | Two participant paths, entity and natural person, on the protocol's own schema fields | Accepted (Wave 5) |
+| [0034](0034-attributes-checked-on-chain.md) | The attester's attribute values are checked against the policy on-chain | Accepted (Wave 5) |
+| [0035](0035-grant-lifetime.md) | A grant runs to the earlier of the credential's expiry and a maximum validity; root freshness is off by default | Accepted (Wave 5) |
+| [0036](0036-contract-wallets-admitted.md) | Contract wallets are admitted by their own signature, so custody accounts can be granted | Accepted (Wave 5) |
+| [0037](0037-grant-authority.md) | Grants are written by the Access Issuer, withdrawn under supervision, and voided by anyone on revocation | Accepted (Wave 5) |
+| [0038](0038-pool-configuration.md) | Pool configuration: the euro payment token against the deposit, near par, one liquidity provider | Accepted (Wave 5) |
+| [0039](0039-venue-under-the-controller.md) | The venue is governed through typed controller acts | Accepted (Wave 5) |
+| [0040](0040-protocol-code-locally.md) | The local stack installs the protocol's released registry code at its canonical addresses | Accepted (Wave 5) |
+| [0041](0041-fork-dry-run-first.md) | Wave 5 is built locally and dry-run against a fork of the test network; the live deployment waits | Accepted (Wave 5) |

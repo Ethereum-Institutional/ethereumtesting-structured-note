@@ -21,27 +21,53 @@ import {HookMiner} from "@uniswap/v4-periphery/test/shared/HookMiner.sol";
 import {ERC7943AllowlistChecker} from "../contracts/ERC7943AllowlistChecker.sol";
 import {PermissionedComplianceHook} from "../contracts/PermissionedComplianceHook.sol";
 import {PermissionedSwapRouter} from "../contracts/PermissionedSwapRouter.sol";
-import {RestrictedAsset} from "../test/fixtures/RestrictedAsset.sol";
+import {PoolCredentialRegistry} from "../contracts/PoolCredentialRegistry.sol";
+import {ICredentialIssuers, ICredentialRevocations} from "../contracts/interfaces/ICredentialProtocol.sol";
+import {Manifest} from "./Manifest.sol";
+
+/// The instruments are in the other compilation unit; the venue reaches them here.
+interface IIdentityRegistryWriter {
+    function HOLD() external view returns (uint32);
+    function RECEIVE() external view returns (uint32);
+    function TRANSFER() external view returns (uint32);
+    function SANCTIONS_CLEAR() external view returns (uint32);
+    function CONTRACT_ACCOUNT() external view returns (uint32);
+    function SETTLEMENT() external view returns (uint32);
+    function grant(address account, uint32 flags, uint16 jurisdiction, uint40 expiresAt, bytes32 ref, bytes32 commitment)
+        external;
+}
+
+interface IDepositGateway {
+    function credit(address account, uint256 amount, bytes32 bookingRef) external;
+}
 
 /**
- * Deploys the venue: the pool manager (locally), the permissioned-pool periphery, the
- * checker and the compliance hook, and wraps the permissioned asset in an adapter.
+ * Deploys the venue around the deposit: the pool manager (locally), the permissioned-pool
+ * periphery, the checker, the pool's credential gate and the compliance hook, and wraps the
+ * deposit in its permissions adapter (ADRs 0030, 0031, 0038).
  *
- * Reads the asset from ops/addresses.json and writes the venue addresses back under `venue`.
+ * The adapter holds the deposit, and Permit2 moves it under allowances, so the Access Issuer
+ * onboards both to the Identity Registry: the adapter as a contract holder, Permit2 with the
+ * settlement right only (ADR 0013). The Deposit Agent then credits the adapter one cent, which is
+ * what the factory's verification checks, in script/02_ActivateVenue.s.sol.
  *
- * The adapter must be a holder like any other, so the Issuer makes it eligible on the asset
- * and places one base unit in it. That balance is what the factory's verification checks, in
- * script/02_ActivateVenue.s.sol.
+ * Every venue contract is owned by the deployer until the ceremony hands it to the controller
+ * (ADR 0039). The credential gate's attester is the Access Issuer.
  */
 contract DeployVenue is Script {
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    uint40 constant POOL_MAX_VALIDITY = 90 days;
+    uint40 constant SCREENING_MAX_AGE = 30 days;
+    uint40 constant INFRASTRUCTURE_GRANT = 180 days;
 
     struct Venue {
         address manager;
         address weth;
         address factory;
         address checker;
+        address gate;
         address hook;
         address router;
         address posm;
@@ -52,39 +78,47 @@ contract DeployVenue is Script {
         uint256 issuerPk = vm.envUint("ISSUER_PK");
         address issuer = vm.addr(issuerPk);
 
-        string memory j = vm.readFile("ops/addresses.json");
-        address asset = vm.parseJsonAddress(j, ".assets.venueAsset.address");
-        console2.log("asset          :", asset);
-        console2.log("issuer         :", issuer);
+        string memory j = Manifest.read();
+        address deposit = vm.parseJsonAddress(j, ".assets.deposit.address");
+        address depositAgent = vm.parseJsonAddress(j, ".parties.depositAgent");
+        console2.log("deposit        :", deposit);
 
         vm.startBroadcast(issuerPk);
-        Venue memory v = _deploy(issuer);
-
+        Venue memory v = _deploy(issuer, j);
         v.adapter = PermissionsAdapterFactory(v.factory).createPermissionsAdapter(
-            IERC20(asset), issuer, IAllowlistChecker(v.checker)
+            IERC20(deposit), issuer, IAllowlistChecker(v.checker)
         );
-        _configureChecker(ERC7943AllowlistChecker(v.checker), asset, j);
+        ERC7943AllowlistChecker checker = ERC7943AllowlistChecker(v.checker);
+        checker.registerAsset(deposit);
+        checker.setCredentialGate(deposit, v.gate);
+        // The Deposit Agent is the pool's only liquidity provider (ADR 0038).
+        checker.setLiquidityRestricted(deposit, true);
+        checker.setLiquidityApproved(deposit, depositAgent, true);
+        vm.stopBroadcast();
 
-        // The adapter is onboarded as a holder.
-        RestrictedAsset(asset).setEligible(v.adapter, true);
-        RestrictedAsset(asset).mint(v.adapter, 1);
+        _onboardInfrastructure(j, v.adapter);
+
+        vm.startBroadcast(vm.envUint("DEPOSIT_AGENT_PK"));
+        IDepositGateway(vm.parseJsonAddress(j, ".instruments.gateway")).credit(v.adapter, 1, "VEN-0001");
         vm.stopBroadcast();
 
         _record(v);
     }
 
-    function _deploy(address issuer) internal returns (Venue memory v) {
+    function _deploy(address issuer, string memory j) internal returns (Venue memory v) {
         // PoolManager and the position manager are deployed from their artifacts rather than
         // imported. foundry.toml restricts the position manager to low optimizer runs for
         // EIP-170, and v4-core's Pool library does not compile at low runs, so the two must
-        // never share a compilation unit. On a public network, pass the canonical PoolManager.
-        v.manager = vm.envOr("POOL_MANAGER", address(0));
+        // never share a compilation unit. On a public network the deployed PoolManager is used.
+        v.manager = vm.parseJsonAddress(j, ".network.poolManager");
         if (v.manager == address(0)) {
             v.manager = deployCode("PoolManager.sol:PoolManager", abi.encode(issuer));
         }
-        v.weth = address(new WETH());
+        v.weth = vm.parseJsonAddress(j, ".network.weth");
+        if (v.weth == address(0)) v.weth = address(new WETH());
         v.factory = address(new PermissionsAdapterFactory(v.manager));
         v.checker = address(new ERC7943AllowlistChecker(issuer));
+        v.gate = address(new PoolCredentialRegistry(_policy(issuer, j)));
         v.hook = _deployHook(v.manager, v.factory);
         v.router = address(
             new PermissionedSwapRouter(
@@ -92,6 +126,61 @@ contract DeployVenue is Script {
             )
         );
         v.posm = _deployPositionManager(v.manager, v.weth, v.factory);
+    }
+
+    /// The pool's credential policy (ADRs 0032 to 0035).
+    function _policy(address issuer, string memory j) internal view returns (PoolCredentialRegistry.Config memory c) {
+        uint32 walletControl = 1 << 0;
+        uint32 notExpired = 1 << 1;
+        uint32 entityActive = 1 << 2;
+        uint32 over18 = 1 << 3;
+        uint32 sanctionsClean = 1 << 4;
+        uint32 notPep = 1 << 5;
+        bytes32 screening = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.screeningSchema")));
+        c = PoolCredentialRegistry.Config({
+            admin: issuer,
+            attester: vm.parseJsonAddress(j, ".parties.accessIssuer"),
+            issuers: ICredentialIssuers(vm.parseJsonAddress(j, ".credentialProtocol.issuers")),
+            revocations: ICredentialRevocations(vm.parseJsonAddress(j, ".credentialProtocol.revocations")),
+            issuerDid: vm.parseJsonString(j, ".credentialProtocol.issuerDid"),
+            entity: PoolCredentialRegistry.PathPolicy(
+                keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.corporateIdentitySchema"))),
+                screening,
+                walletControl | notExpired | entityActive
+            ),
+            person: PoolCredentialRegistry.PathPolicy(
+                keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.passportSchema"))),
+                screening,
+                walletControl | notExpired | over18 | sanctionsClean | notPep
+            ),
+            jurisdictions: _jurisdictions(),
+            investorClasses: uint8(1 << 1 | 1 << 2), // professional, institutional
+            maxValidity: POOL_MAX_VALIDITY,
+            screeningMaxAge: SCREENING_MAX_AGE,
+            rootFreshness: 0
+        });
+    }
+
+    /// The 30 states of the European Economic Area, Switzerland and the United Kingdom (ADR 0033).
+    function _jurisdictions() internal pure returns (bytes2[] memory js) {
+        bytes2[32] memory list = [
+            bytes2("AT"), "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV",
+            "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "IS", "LI", "NO", "CH", "GB"
+        ];
+        js = new bytes2[](list.length);
+        for (uint256 k = 0; k < list.length; ++k) {
+            js[k] = list[k];
+        }
+    }
+
+    function _onboardInfrastructure(string memory j, address adapter) internal {
+        IIdentityRegistryWriter r = IIdentityRegistryWriter(vm.parseJsonAddress(j, ".instruments.registry"));
+        vm.startBroadcast(vm.envUint("ACCESS_ISSUER_PK"));
+        uint40 until = uint40(block.timestamp) + INFRASTRUCTURE_GRANT;
+        uint32 contractHolder = r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT();
+        r.grant(adapter, contractHolder, 276, until, "ONB-0009", bytes32(0));
+        r.grant(PERMIT2, r.SETTLEMENT() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT(), 276, until, "ONB-0010", bytes32(0));
+        vm.stopBroadcast();
     }
 
     function _deployHook(address manager, address factory) internal returns (address) {
@@ -104,11 +193,16 @@ contract DeployVenue is Script {
         (address expectedHook, bytes32 salt) =
             HookMiner.find(CREATE2_DEPLOYER, flags, type(PermissionedComplianceHook).creationCode, hookArgs);
 
-        PermissionedComplianceHook hook = new PermissionedComplianceHook{salt: salt}(
-            IPoolManager(manager), IPermissionsAdapterFactory(factory)
+        // Called explicitly rather than through `new {salt}`: Forge routes a salted `new` through
+        // the deterministic deployer on the local node but not on a fork of the test network,
+        // where the hook would land at an address whose low bits do not carry its flags.
+        (bool ok, bytes memory ret) = CREATE2_DEPLOYER.call(
+            abi.encodePacked(salt, type(PermissionedComplianceHook).creationCode, hookArgs)
         );
-        require(address(hook) == expectedHook, "hook address mismatch");
-        return address(hook);
+        require(ok && ret.length == 20, "hook deployment failed");
+        address hook = address(bytes20(ret));
+        require(hook == expectedHook, "hook address mismatch");
+        return hook;
     }
 
     function _deployPositionManager(address manager, address weth, address factory) internal returns (address) {
@@ -126,19 +220,11 @@ contract DeployVenue is Script {
         return deployCode("PermissionedPositionManager.sol:PermissionedPositionManager", args);
     }
 
-    function _configureChecker(ERC7943AllowlistChecker checker, address asset, string memory j) internal {
-        // Eligible holders may swap. Providing liquidity also needs the venue's approval,
-        // which investors A and C hold and investor B does not.
-        checker.registerAsset(asset);
-        checker.setLiquidityRestricted(asset, true);
-        checker.setLiquidityApproved(asset, vm.parseJsonAddress(j, ".parties.investorA"), true);
-        checker.setLiquidityApproved(asset, vm.parseJsonAddress(j, ".parties.investorC"), true);
-    }
-
     function _record(Venue memory v) internal {
         console2.log("poolManager    :", v.manager);
         console2.log("adapterFactory :", v.factory);
         console2.log("checker        :", v.checker);
+        console2.log("credential gate:", v.gate);
         console2.log("hook           :", v.hook);
         console2.log("router         :", v.router);
         console2.log("positionManager:", v.posm);
@@ -150,10 +236,11 @@ contract DeployVenue is Script {
         vm.serializeAddress(obj, "permit2", PERMIT2);
         vm.serializeAddress(obj, "adapterFactory", v.factory);
         vm.serializeAddress(obj, "allowlistChecker", v.checker);
+        vm.serializeAddress(obj, "credentialGate", v.gate);
         vm.serializeAddress(obj, "hook", v.hook);
         vm.serializeAddress(obj, "router", v.router);
         vm.serializeAddress(obj, "positionManager", v.posm);
         string memory out = vm.serializeAddress(obj, "permissionsAdapter", v.adapter);
-        vm.writeJson(out, "ops/addresses.json", ".venue");
+        vm.writeJson(out, Manifest.path(), ".venue");
     }
 }

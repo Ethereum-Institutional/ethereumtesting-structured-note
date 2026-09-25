@@ -6,15 +6,16 @@ import {IdentityRegistry} from "../src/IdentityRegistry.sol";
 import {Instruments} from "./Instruments.sol";
 
 /**
- * Deploys the instruments, onboards the local cast, and opens their deposit accounts.
+ * Deploys the instruments, onboards the cast, and opens their deposit accounts.
  *
- * Run from instruments/ after the venue stack, whose manifest it extends. Onboarding here is the
- * Access Issuer writing grants directly, standing in for the presentation and verification that
- * precede a grant in operation. Investor C is onboarded for the cash leg only, without the
- * Regulation S flag, so it can hold the deposit but not the note. Investor D is never onboarded.
+ * Run from instruments/ after script/00_DeployBase.s.sol, whose manifest it extends, and before
+ * the venue, which wraps the deposit. Onboarding here is the Access Issuer writing grants
+ * directly, standing in for the presentation and verification that precede a grant in operation.
+ * Investor C is onboarded for the cash leg only, without the Regulation S flag, so it can hold
+ * the deposit but not the note. Investor D is never onboarded. The Deposit Agent holds the
+ * deposit as the pool's liquidity provider. Custody accounts are onboarded when they are opened.
  */
 contract DeployInstruments is Script {
-    string constant MANIFEST = "../ops/addresses.json";
     uint40 constant MAX_VALIDITY = 365 days;
     uint40 constant GRANT_VALIDITY = 180 days;
 
@@ -25,7 +26,7 @@ contract DeployInstruments is Script {
         address issuer = vm.addr(deployerPk);
         address agent = vm.addr(vm.envUint("AGENT_PK"));
         address depositAgent = vm.addr(depositAgentPk);
-        string memory j = vm.readFile(MANIFEST);
+        string memory j = vm.readFile(_manifest());
 
         vm.startBroadcast(deployerPk);
         Instruments.Deployed memory d = Instruments.deploy(
@@ -50,18 +51,14 @@ contract DeployInstruments is Script {
         IdentityRegistry r = d.registry;
         uint32 holder = r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR();
         uint32 noteHolder = holder | r.REG_S();
-        uint32 custody = r.CONTRACT_ACCOUNT();
 
+        // Each grant cites the onboarding record it was written from, by reference.
         vm.startBroadcast(accessIssuerPk);
-        _grant(r, issuer, noteHolder, "Issuer inventory");
-        _grant(r, vm.parseJsonAddress(j, ".parties.investorA"), noteHolder | r.PROFESSIONAL(), "investor A");
-        _grant(r, vm.parseJsonAddress(j, ".parties.investorB"), noteHolder, "investor B");
-        _grant(r, vm.parseJsonAddress(j, ".parties.investorC"), holder, "investor C");
-        if (vm.keyExistsJson(j, ".custody.accounts")) {
-            _grant(r, vm.parseJsonAddress(j, '.custody.accounts["CLIENT-A"]'), noteHolder | custody, "CLIENT-A");
-            _grant(r, vm.parseJsonAddress(j, '.custody.accounts["CLIENT-B"]'), noteHolder | custody, "CLIENT-B");
-            _grant(r, vm.parseJsonAddress(j, '.custody.accounts["CLIENT-C"]'), holder | custody, "CLIENT-C");
-        }
+        _grant(r, issuer, noteHolder, "ONB-0001");
+        _grant(r, vm.parseJsonAddress(j, ".parties.investorA"), noteHolder | r.PROFESSIONAL(), "ONB-0002");
+        _grant(r, vm.parseJsonAddress(j, ".parties.investorB"), noteHolder, "ONB-0003");
+        _grant(r, vm.parseJsonAddress(j, ".parties.investorC"), holder, "ONB-0004");
+        _grant(r, depositAgent, holder, "ONB-0005");
         vm.stopBroadcast();
 
         // Opening balances on the cash leg, each against its own booking.
@@ -92,8 +89,12 @@ contract DeployInstruments is Script {
         return vm.envBytes32(key);
     }
 
-    function _grant(IdentityRegistry r, address account, uint32 flags, string memory ref) private {
-        r.grant(account, flags, 276, uint40(block.timestamp) + GRANT_VALIDITY, keccak256(bytes(ref)), bytes32(0));
+    function _grant(IdentityRegistry r, address account, uint32 flags, bytes32 ref) private {
+        r.grant(account, flags, 276, uint40(block.timestamp) + GRANT_VALIDITY, ref, bytes32(0));
+    }
+
+    function _manifest() private view returns (string memory) {
+        return string.concat("../", vm.envOr("MANIFEST", string("ops/addresses.json")));
     }
 
     function _record(Instruments.Deployed memory d, address accessIssuer, address depositAgent) private {
@@ -103,12 +104,12 @@ contract DeployInstruments is Script {
         vm.serializeAddress(o, "depositGate", address(d.depositGate));
         vm.serializeAddress(o, "note", address(d.note));
         vm.serializeAddress(o, "deposit", address(d.deposit));
-        vm.writeJson(vm.serializeAddress(o, "gateway", address(d.gateway)), MANIFEST, ".instruments");
+        vm.writeJson(vm.serializeAddress(o, "gateway", address(d.gateway)), _manifest(), ".instruments");
 
-        vm.writeJson(_token("note", address(d.note), d.note.symbol(), 0), MANIFEST, ".assets.note");
-        vm.writeJson(_token("deposit", address(d.deposit), d.deposit.symbol(), 2), MANIFEST, ".assets.deposit");
-        vm.writeJson(vm.toString(accessIssuer), MANIFEST, ".parties.accessIssuer");
-        vm.writeJson(vm.toString(depositAgent), MANIFEST, ".parties.depositAgent");
+        vm.writeJson(_token("note", address(d.note), d.note.symbol(), 0), _manifest(), ".assets.note");
+        vm.writeJson(_token("deposit", address(d.deposit), d.deposit.symbol(), 2), _manifest(), ".assets.deposit");
+        vm.writeJson(vm.toString(accessIssuer), _manifest(), ".parties.accessIssuer");
+        vm.writeJson(vm.toString(depositAgent), _manifest(), ".parties.depositAgent");
     }
 
     function _token(string memory key, address token, string memory symbol, uint256 decimals)

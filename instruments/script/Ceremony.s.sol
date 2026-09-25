@@ -34,7 +34,6 @@ interface IWalletFactory {
  * The ceremony ends with the deployer's renunciation. Run from instruments/ after IssueNote.
  */
 contract Ceremony is Script {
-    string constant MANIFEST = "../ops/addresses.json";
     string constant MNEMONIC = "test test test test test test test test test test test junk";
 
     address constant WALLET_SINGLETON = 0x41675C099F32341bf84BFc5382aF534df5C7461a;
@@ -69,7 +68,7 @@ contract Ceremony is Script {
     }
 
     function _load() private view returns (Instruments.Deployed memory d, Lifecycle.Issued memory l) {
-        string memory j = vm.readFile(MANIFEST);
+        string memory j = vm.readFile(_manifest());
         d.registry = IdentityRegistry(vm.parseJsonAddress(j, ".instruments.registry"));
         d.note = StructuredNote(vm.parseJsonAddress(j, ".instruments.note"));
         d.deposit = TokenizedDeposit(vm.parseJsonAddress(j, ".instruments.deposit"));
@@ -91,7 +90,18 @@ contract Ceremony is Script {
             minInstitutions: 2,
             minSignatures: 4,
             tier2Delay: LOCAL_TIER2_DELAY,
-            recoveryDelay: LOCAL_RECOVERY_DELAY
+            recoveryDelay: LOCAL_RECOVERY_DELAY,
+            venue: _venue()
+        });
+    }
+
+    /// The venue, handed over in the same ceremony.
+    function _venue() private view returns (Governance.Venue memory) {
+        string memory j = vm.readFile(_manifest());
+        return Governance.Venue({
+            checker: vm.parseJsonAddress(j, ".venue.allowlistChecker"),
+            adapter: vm.parseJsonAddress(j, ".venue.permissionsAdapter"),
+            credentialGate: vm.parseJsonAddress(j, ".venue.credentialGate")
         });
     }
 
@@ -109,7 +119,7 @@ contract Ceremony is Script {
         vm.serializeUint(o, "tier2Delay", LOCAL_TIER2_DELAY);
         vm.serializeUint(o, "recoveryDelay", LOCAL_RECOVERY_DELAY);
         vm.serializeUint(o, "targetTier2Delay", TARGET_TIER2_DELAY);
-        vm.writeJson(vm.serializeUint(o, "targetRecoveryDelay", TARGET_RECOVERY_DELAY), MANIFEST, ".governance");
+        vm.writeJson(vm.serializeUint(o, "targetRecoveryDelay", TARGET_RECOVERY_DELAY), _manifest(), ".governance");
     }
 
     /// A 2-of-3 wallet whose signers are the mnemonic's keys from `firstIndex`.
@@ -130,5 +140,9 @@ contract Ceremony is Script {
             address(0)
         );
         return IWalletFactory(WALLET_FACTORY).createProxyWithNonce(WALLET_SINGLETON, setup, salt);
+    }
+
+    function _manifest() private view returns (string memory) {
+        return string.concat("../", vm.envOr("MANIFEST", string("ops/addresses.json")));
     }
 }

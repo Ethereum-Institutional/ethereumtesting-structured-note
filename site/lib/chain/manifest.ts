@@ -23,6 +23,7 @@ export type Manifest = {
     permit2: Address;
     adapterFactory: Address;
     allowlistChecker: Address;
+    credentialGate: Address;
     hook: Address;
     router: Address;
     positionManager: Address;
@@ -39,6 +40,16 @@ export type Manifest = {
     hook: Address;
   };
   lens?: { stateView: Address };
+  network?: { local: boolean; poolManager: Address; weth: Address };
+  /** The credential protocol's on-chain registries (ADR 0028), and the configured issuer. */
+  credentialProtocol?: {
+    issuers: Address;
+    revocations: Address;
+    issuerDid: string;
+    corporateIdentitySchema: string;
+    passportSchema: string;
+    screeningSchema: string;
+  };
   custody?: { custodian: Address; factory: Address; accounts: Record<string, Address> };
   instruments?: {
     registry: Address;
@@ -96,7 +107,7 @@ export function parseManifest(json: string): Manifest {
   const m = JSON.parse(json) as Manifest;
   if (typeof need(m, "chainId") !== "number") throw new ManifestError("manifest chainId is not a number");
   for (const k of [
-    "poolManager", "permit2", "adapterFactory", "allowlistChecker",
+    "poolManager", "permit2", "adapterFactory", "allowlistChecker", "credentialGate",
     "hook", "router", "positionManager", "permissionsAdapter",
   ]) {
     needAddress(m, `venue.${k}`);
@@ -149,6 +160,7 @@ export function addressBook(m: Manifest): Map<string, { key: string; label: stri
     permit2: "Permit2",
     adapterFactory: "Adapter factory",
     allowlistChecker: "Checker",
+    credentialGate: "Pool credential gate",
     hook: "Compliance hook",
     router: "Router",
     positionManager: "Position manager",
@@ -157,6 +169,8 @@ export function addressBook(m: Manifest): Map<string, { key: string; label: stri
   };
   for (const [key, label] of Object.entries(venue)) put(m.venue[key as keyof Manifest["venue"]], `venue.${key}`, label);
   put(m.lens?.stateView, "lens.stateView", "State lens");
+  put(m.credentialProtocol?.issuers, "credentialProtocol.issuers", "Credential issuer registry");
+  put(m.credentialProtocol?.revocations, "credentialProtocol.revocations", "Credential revocation registry");
   if (m.instruments) {
     put(m.instruments.registry, "instruments.registry", "Identity Registry");
     put(m.instruments.noteGate, "instruments.noteGate", "Note gate");

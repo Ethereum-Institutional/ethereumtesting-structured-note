@@ -57,7 +57,8 @@ export type ArgSpec =
   | "kind"
   | "accounts"
   | { amountIn: string }
-  | "calls";
+  | "calls"
+  | "attestation";
 
 export type Entry = { signature: string; meaning: string; tone: Tone; args: ArgSpec[] };
 
@@ -87,28 +88,42 @@ const ADAPTED_TOKEN: Entry[] = [
   { signature: "function upgradeToAndCall(address newImplementation, bytes data)", meaning: "Upgraded the instrument's implementation", tone: "control", args: ["account", "plan"] },
 ];
 
+/** Two-step ownership, on the venue's checker and the permissions adapter. */
+const OWNABLE: Entry[] = [
+  { signature: "function transferOwnership(address newOwner)", meaning: "Offered ownership to a new owner, pending acceptance", tone: "control", args: ["account"] },
+  { signature: "function acceptOwnership()", meaning: "Accepted ownership", tone: "control", args: [] },
+];
+
 /** Contract kinds, each with the calls the tape knows for it. */
 export const REGISTRY: Record<string, Entry[]> = {
-  restrictedAsset: [
-    { signature: "function setEligible(address account, bool eligible)", meaning: "Set an account's eligibility to hold the asset", tone: "onboard", args: ["account", "flag"] },
-    { signature: "function mint(address to, uint256 amount)", meaning: "Issued units", tone: "onboard", args: ["account", "amount"] },
-    { signature: "function pause()", meaning: "Paused the asset: all transfers and trading halted", tone: "control", args: [] },
-    { signature: "function unpause()", meaning: "Unpaused the asset", tone: "control", args: [] },
-    { signature: "function setFrozenTokens(address account, uint256 amount)", meaning: "Set the frozen part of a holding", tone: "control", args: ["account", "amount"] },
-    { signature: "function forcedTransfer(address from, address to, uint256 amount)", meaning: "Forced a transfer without the holder's signature", tone: "control", args: ["account", "account", "amount"] },
-    { signature: "function transfer(address to, uint256 amount)", meaning: "Transferred units", tone: "trade", args: ["account", "amount"] },
-    { signature: "function approve(address spender, uint256 amount)", meaning: "Set an allowance on the asset", tone: "ops", args: ["account", "amount"] },
-  ],
-  cash: [
-    { signature: "function mint(address to, uint256 amount)", meaning: "Issued test cash", tone: "ops", args: ["account", "amount"] },
-    { signature: "function transfer(address to, uint256 amount)", meaning: "Transferred cash", tone: "trade", args: ["account", "amount"] },
-    { signature: "function approve(address spender, uint256 amount)", meaning: "Set an allowance on cash", tone: "ops", args: ["account", "amount"] },
+  paymentToken: [
+    { signature: "function mint(address to, uint256 amount)", meaning: "Issued the payment token (local stand-in only)", tone: "ops", args: ["account", "amount"] },
+    { signature: "function transfer(address to, uint256 amount)", meaning: "Transferred the payment token", tone: "trade", args: ["account", "amount"] },
+    { signature: "function approve(address spender, uint256 amount)", meaning: "Set an allowance on the payment token", tone: "ops", args: ["account", "amount"] },
   ],
   checker: [
     { signature: "function registerAsset(address token)", meaning: "Registered an asset with the checker", tone: "ops", args: ["account"] },
     { signature: "function unregisterAsset(address token)", meaning: "Removed an asset from the checker", tone: "control", args: ["account"] },
     { signature: "function setLiquidityRestricted(address token, bool restricted)", meaning: "Set whether providing liquidity needs venue approval", tone: "control", args: ["account", "flag"] },
     { signature: "function setLiquidityApproved(address token, address account, bool approved)", meaning: "Set an account's approval to provide liquidity", tone: "control", args: ["account", "account", "flag"] },
+    { signature: "function setCredentialGate(address token, address gate)", meaning: "Set the credential gate an account must also pass for this asset", tone: "control", args: ["account", "account"] },
+    ...OWNABLE,
+  ],
+  credentialGate: [
+    ...ROLES,
+    { signature: "function grant((address account, uint8 path, bytes32 primaryCredential, bytes32 screeningCredential, bytes32 primarySchema, bytes32 screeningSchema, uint32 checks, bytes2 jurisdiction, uint8 investorClass, uint40 screenedAt, uint40 credentialExpiry, bytes32 evidence) a)", meaning: "Admitted an account to the pool from a presentation verified off-chain", tone: "onboard", args: ["attestation"] },
+    { signature: "function revoke(address account)", meaning: "Revoked an account's pool access", tone: "control", args: ["account"] },
+    { signature: "function withdraw(address account, string reason)", meaning: "Withdrew an account's pool access under supervisory authority, with a written reason", tone: "control", args: ["account", "text"] },
+    { signature: "function void(address account)", meaning: "Voided a pool grant whose credential the protocol has revoked", tone: "control", args: ["account"] },
+    { signature: "function suspendIssuer()", meaning: "Suspended the pool's credential gate: the protocol deactivated its issuer", tone: "control", args: [] },
+  ],
+  issuerRegistry: [
+    { signature: "function registerIssuer(string did, bytes mlDsaPubkey, bytes mlKemPubkey, address chainOperator)", meaning: "Registered a credential issuer with the protocol", tone: "onboard", args: ["text", "plan", "plan", "account"] },
+    { signature: "function deactivateIssuer(string did)", meaning: "Deactivated a credential issuer in the protocol", tone: "control", args: ["text"] },
+  ],
+  revocationRegistry: [
+    { signature: "function revoke(string did, bytes32 cid)", meaning: "The issuer revoked a credential in the protocol", tone: "control", args: ["text", "ref"] },
+    { signature: "function updateRoot(string did, bytes32 root)", meaning: "The issuer published a revocation root", tone: "ops", args: ["text", "ref"] },
   ],
   adapter: [
     { signature: "function updateAllowedWrapper(address wrapper, bool allowed)", meaning: "Allowed or refused a wrapper (router or position manager) on the adapter", tone: "control", args: ["account", "flag"] },
@@ -116,6 +131,7 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function updateSwappingEnabled(bool enabled)", meaning: "Switched trading of the asset on or off", tone: "control", args: ["flag"] },
     { signature: "function updateAllowListChecker(address checker)", meaning: "Replaced the adapter's checker", tone: "control", args: ["account"] },
     { signature: "function depositForVerification(uint256 amount)", meaning: "Placed a balance in the adapter for verification", tone: "ops", args: ["number"] },
+    ...OWNABLE,
   ],
   adapterFactory: [
     { signature: "function createPermissionsAdapter(address token, address owner, address checker)", meaning: "Wrapped an asset in a permissions adapter", tone: "ops", args: ["account", "account", "account"] },
@@ -176,6 +192,14 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function proposeSetMaxValidity(uint40 maxValidity, string reason)", meaning: "Tier 2 proposal: set the longest a grant may run, in seconds", tone: "control", args: ["number", "text"] },
     { signature: "function proposeReplaceServicingWallet(address newWallet, string reason)", meaning: "Tier 2 proposal: replace the Agent's servicing wallet", tone: "control", args: ["account", "text"] },
     { signature: "function proposeReplaceInstitution(address oldWallet, address newWallet, string reason)", meaning: "Recovery proposal: replace an institution's wallet", tone: "control", args: ["account", "account", "text"] },
+    { signature: "function withdrawPoolAccess(address account, string reason)", meaning: "Tier 1: withdrew an account's pool access under supervisory authority", tone: "control", args: ["account", "text"] },
+    { signature: "function setVenueSwapping(bool enabled)", meaning: "Servicing: switched swapping in the conversion pool on or off", tone: "control", args: ["flag"] },
+    { signature: "function acceptVenueOwnership()", meaning: "Took ownership of the venue's checker and adapter", tone: "control", args: [] },
+    { signature: "function proposeSetCredentialGate(address gate, string reason)", meaning: "Tier 2 proposal: point the pool at a new credential gate", tone: "control", args: ["account", "text"] },
+    { signature: "function proposeSetLiquidityProvider(address account, bool approved, string reason)", meaning: "Tier 2 proposal: approve or remove a liquidity provider", tone: "control", args: ["account", "flag", "text"] },
+    { signature: "function proposeSetVenueWrapper(address wrapper, bool allowed, string reason)", meaning: "Tier 2 proposal: allow or refuse a router or position manager on the adapter", tone: "control", args: ["account", "flag", "text"] },
+    { signature: "function proposeSetVenueHook(address hook, bool allowed, string reason)", meaning: "Tier 2 proposal: allow or refuse a hook on the adapter", tone: "control", args: ["account", "flag", "text"] },
+    { signature: "function proposeSetPoolAttester(address attester, bool appointed, string reason)", meaning: "Tier 2 proposal: appoint or remove a pool attester", tone: "control", args: ["account", "flag", "text"] },
     { signature: "function approve(uint256 id)", meaning: "Approved a Tier 2 proposal", tone: "control", args: ["number"] },
     { signature: "function execute(uint256 id)", meaning: "Executed a Tier 2 proposal after its delay", tone: "control", args: ["number"] },
     { signature: "function cancel(uint256 id)", meaning: "Cancelled a Tier 2 proposal", tone: "control", args: ["number"] },
@@ -197,9 +221,11 @@ export const REGISTRY: Record<string, Entry[]> = {
 
 /** Which registry kind each manifest key is. Assets not listed here are unrecognised. */
 const KIND_OF_KEY: Record<string, string> = {
-  "assets.venueAsset": "restrictedAsset",
-  "assets.cash": "cash",
+  "assets.paymentToken": "paymentToken",
   "venue.allowlistChecker": "checker",
+  "venue.credentialGate": "credentialGate",
+  "credentialProtocol.issuers": "issuerRegistry",
+  "credentialProtocol.revocations": "revocationRegistry",
   "venue.permissionsAdapter": "adapter",
   "venue.adapterFactory": "adapterFactory",
   "venue.router": "router",
@@ -363,6 +389,7 @@ export class Tape {
       return t ? this.amount(value as bigint, t.address) : `${(value as bigint).toString()} base units`;
     }
     if (spec === "grantFlags") return grantFlags(Number(value));
+    if (spec === "attestation") return this.attestation(value as Attestation);
     if (spec === "levels") return `[${(value as bigint[]).map(String).join(", ")}]`;
     if (spec === "outcome") return outcome(value as Record<string, unknown>);
     if (spec === "signature") return `«signature, ${((value as Hex).length - 2) / 2} bytes»`;
@@ -381,6 +408,22 @@ export class Tape {
       return `${this.label(k.currency0)} / ${this.label(k.currency1)}, fee ${k.fee}, spacing ${k.tickSpacing}, hook ${this.label(k.hooks)}`;
     }
     return `[${(value as unknown[]).length} calls]`;
+  }
+
+  /** A pool admission, in the words of the policy it was checked against (ADR 0034). */
+  private attestation(a: Attestation): string {
+    const path = a.path === 1 ? "entity" : a.path === 2 ? "natural person" : `path ${a.path}`;
+    const jurisdiction = Buffer.from(a.jurisdiction.slice(2), "hex").toString("latin1");
+    const investorClass = INVESTOR_CLASSES[a.investorClass] ?? `class ${a.investorClass}`;
+    return [
+      `${this.label(a.account)}, ${path}`,
+      `jurisdiction ${jurisdiction}`,
+      investorClass,
+      `checks ${checks(a.checks)}`,
+      `screened ${new Date(a.screenedAt * 1000).toISOString()}`,
+      `credential valid to ${new Date(a.credentialExpiry * 1000).toISOString()}`,
+      `credentials ${a.primaryCredential}, ${a.screeningCredential}`,
+    ].join("; ");
   }
 
   /** Formatted in the token's own decimals, or as a raw integer when the token is not known. */
@@ -404,6 +447,34 @@ export class Tape {
   watched(): Address[] {
     return [...this.book.entries()].filter(([, v]) => !v.key.startsWith("parties.")).map(([a]) => getAddress(a));
   }
+}
+
+type Attestation = {
+  account: Address;
+  path: number;
+  primaryCredential: Hex;
+  screeningCredential: Hex;
+  checks: number;
+  jurisdiction: Hex;
+  investorClass: number;
+  screenedAt: number;
+  credentialExpiry: number;
+};
+
+/** The screening schema's investor classes, in its order. */
+const INVESTOR_CLASSES = ["sophisticated", "professional", "institutional", "retail"];
+
+/** The pool gate's check bits, by name. Unknown bits are shown, not dropped. */
+const CHECKS: Array<[number, string]> = [
+  [1 << 0, "wallet control"], [1 << 1, "not expired"], [1 << 2, "entity active"], [1 << 3, "over 18"],
+  [1 << 4, "sanctions clean"], [1 << 5, "not politically exposed"],
+];
+
+export function checks(bits: number): string {
+  const names = CHECKS.filter(([bit]) => bits & bit).map(([, n]) => n);
+  const rest = bits & ~CHECKS.reduce((m, [bit]) => m | bit, 0);
+  if (rest) names.push(`0x${rest.toString(16)}`);
+  return names.length ? names.join(", ") : "none";
 }
 
 /** A determination's outcome, in cents per Calculation Amount. */
@@ -438,6 +509,7 @@ const ROLE_NAMES = new Map<string, string>([
   ...[
     "MINTER_ROLE", "BURNER_ROLE", "PAUSER_ROLE", "ENFORCER_ROLE", "ERC20ENFORCER_ROLE", "SNAPSHOOTER_ROLE",
     "DOCUMENT_ROLE", "EXTRA_INFORMATION_ROLE", "FORCED_TRANSFER_ROLE", "PROXY_UPGRADE_ROLE", "DEPOSIT_AGENT_ROLE", "SUPERVISOR_ROLE",
+    "ATTESTER_ROLE",
   ].map((r) => [keccak256(toBytes(r)), r] as [string, string]),
 ]);
 

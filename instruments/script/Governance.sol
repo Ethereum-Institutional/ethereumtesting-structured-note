@@ -5,6 +5,15 @@ import {GovernanceController} from "../src/GovernanceController.sol";
 import {Instruments} from "./Instruments.sol";
 import {Lifecycle} from "./Lifecycle.sol";
 
+interface IOwnable2Step {
+    function transferOwnership(address newOwner) external;
+}
+
+interface IRoleAdmin {
+    function grantRole(bytes32 role, address account) external;
+    function renounceRole(bytes32 role, address account) external;
+}
+
 /**
  * The governance ceremony: every privileged role moved to its final holder, and the deployer's
  * renunciation as the last act (ADR 0025). Used by the ceremony script and the tests alike.
@@ -19,6 +28,9 @@ import {Lifecycle} from "./Lifecycle.sol";
  * - **Paying Agent:** the note's burn and pause for redemptions (Wave 3), and forced transfer on
  *   the deposit, which it uses only when the controller reverses a distribution.
  * - **Deposit Agent** and **gateway:** unchanged from Wave 2.
+ * - **Venue** (ADR 0039), where there is one: the controller owns the checker and the deposit's
+ *   permissions adapter and holds the pool credential gate's admin and supervisor roles. The
+ *   Access Issuer keeps the gate's attester role.
  * - **No one:** the note's snapshot and terms roles, so the record-date engine and the terms are
  *   fixed for the life of the note.
  * - **Deployer and the interim Agent key:** nothing.
@@ -34,9 +46,18 @@ library Governance {
         uint256 minSignatures;
         uint48 tier2Delay;
         uint48 recoveryDelay;
+        Venue venue;
+    }
+
+    /// @dev The venue's contracts, owned by the deployer until the ceremony. All zero: no venue.
+    struct Venue {
+        address checker;
+        address adapter;
+        address credentialGate;
     }
 
     bytes32 internal constant ADMIN = 0x00;
+    bytes32 internal constant SUPERVISOR_ROLE = keccak256("SUPERVISOR_ROLE");
 
     function ceremony(Instruments.Deployed memory d, Lifecycle.Issued memory l, Config memory c)
         internal
@@ -54,7 +75,10 @@ library Governance {
                 minInstitutions: c.minInstitutions,
                 minSignatures: c.minSignatures,
                 tier2Delay: c.tier2Delay,
-                recoveryDelay: c.recoveryDelay
+                recoveryDelay: c.recoveryDelay,
+                checker: c.venue.checker,
+                adapter: c.venue.adapter,
+                credentialGate: c.venue.credentialGate
             })
         );
         address controller = address(g);
@@ -101,11 +125,21 @@ library Governance {
         // Deposit gateway.
         d.gateway.grantRole(ADMIN, controller);
 
+        // Venue.
+        if (c.venue.checker != address(0)) {
+            IOwnable2Step(c.venue.checker).transferOwnership(controller);
+            IOwnable2Step(c.venue.adapter).transferOwnership(controller);
+            g.acceptVenueOwnership();
+            IRoleAdmin(c.venue.credentialGate).grantRole(ADMIN, controller);
+            IRoleAdmin(c.venue.credentialGate).grantRole(SUPERVISOR_ROLE, controller);
+        }
+
         // The deployer's renunciation, last.
         d.note.renounceRole(ADMIN, c.deployer);
         d.deposit.renounceRole(ADMIN, c.deployer);
         d.registry.renounceRole(ADMIN, c.deployer);
         l.payingAgent.renounceRole(ADMIN, c.deployer);
         d.gateway.renounceRole(ADMIN, c.deployer);
+        if (c.venue.checker != address(0)) IRoleAdmin(c.venue.credentialGate).renounceRole(ADMIN, c.deployer);
     }
 }

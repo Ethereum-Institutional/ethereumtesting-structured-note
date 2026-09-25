@@ -2,6 +2,8 @@
 pragma solidity 0.8.34;
 
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ICMTATConstructor} from "debt-standard/interfaces/technical/ICMTATConstructor.sol";
 import {IERC1643CMTAT} from "debt-standard/interfaces/tokenization/draft-IERC1643CMTAT.sol";
@@ -122,5 +124,56 @@ contract MockWallet {
             }
         }
         return ret;
+    }
+}
+
+/// Stand-ins for the venue's contracts, which are in the other compilation unit. Each records
+/// what the controller asked of it, under the same ownership model as the real contract.
+contract MockVenueChecker is Ownable2Step {
+    mapping(address token => address) public credentialGate;
+    mapping(address token => mapping(address account => bool)) public liquidityApproved;
+
+    constructor(address owner_) Ownable(owner_) {}
+
+    function setCredentialGate(address token, address gate) external onlyOwner {
+        credentialGate[token] = gate;
+    }
+
+    function setLiquidityApproved(address token, address account, bool approved) external onlyOwner {
+        liquidityApproved[token][account] = approved;
+    }
+}
+
+contract MockVenueAdapter is Ownable2Step {
+    bool public swappingEnabled = true;
+    mapping(address => bool) public allowedWrappers;
+    mapping(address => bool) public allowedHooks;
+
+    constructor(address owner_) Ownable(owner_) {}
+
+    function updateSwappingEnabled(bool enabled) external onlyOwner {
+        swappingEnabled = enabled;
+    }
+
+    function updateAllowedWrapper(address wrapper, bool allowed) external onlyOwner {
+        allowedWrappers[wrapper] = allowed;
+    }
+
+    function updateAllowedHook(address hook, bool allowed) external onlyOwner {
+        allowedHooks[hook] = allowed;
+    }
+}
+
+contract MockCredentialGate is AccessControl {
+    bytes32 public constant ATTESTER_ROLE = keccak256("ATTESTER_ROLE");
+    bytes32 public constant SUPERVISOR_ROLE = keccak256("SUPERVISOR_ROLE");
+    mapping(address account => string) public withdrawnFor;
+
+    constructor(address admin) {
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+    }
+
+    function withdraw(address account, string calldata reason) external onlyRole(SUPERVISOR_ROLE) {
+        withdrawnFor[account] = reason;
     }
 }

@@ -32,7 +32,6 @@ interface IDeposit {
  * Run from instruments/ after DeployInstruments. Extends the manifest under `lifecycle`.
  */
 contract IssueNote is Script {
-    string constant MANIFEST = "../ops/addresses.json";
     uint256 constant QUARTER = 91 days;
     uint256 constant ISSUED_UNITS = 100;
 
@@ -42,7 +41,7 @@ contract IssueNote is Script {
         address issuer = vm.addr(issuerPk);
         address agent = vm.addr(agentPk);
         address calculationAgent = vm.addr(vm.envUint("CALCULATION_AGENT_PK"));
-        string memory j = vm.readFile(MANIFEST);
+        string memory j = vm.readFile(_manifest());
         Instruments.Deployed memory d = _deployed(j);
 
         vm.startBroadcast(issuerPk);
@@ -58,9 +57,9 @@ contract IssueNote is Script {
         uint32 contractFlags = r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT();
         uint40 until = uint40(block.timestamp + 365 days);
         vm.startBroadcast(vm.envUint("ACCESS_ISSUER_PK"));
-        r.grant(address(l.payingAgent), contractFlags, 276, until, keccak256("Paying Agent"), 0);
-        r.grant(address(l.settlement), r.SETTLEMENT() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT(), 276, until, keccak256("DvP settlement"), 0);
-        r.grant(agent, r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR(), 276, until, keccak256("Agent"), 0);
+        r.grant(address(l.payingAgent), contractFlags, 276, until, "ONB-0006", 0);
+        r.grant(address(l.settlement), r.SETTLEMENT() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT(), 276, until, "ONB-0007", 0);
+        r.grant(agent, r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR(), 276, until, "ONB-0008", 0);
         vm.stopBroadcast();
 
         vm.startBroadcast(vm.envUint("DEPOSIT_AGENT_PK"));
@@ -133,7 +132,11 @@ contract IssueNote is Script {
         vm.serializeAddress(o, "determinations", address(l.determinations));
         vm.serializeAddress(o, "recordDates", address(l.recordDates));
         vm.serializeAddress(o, "payingAgent", address(l.payingAgent));
-        vm.writeJson(vm.serializeAddress(o, "settlement", address(l.settlement)), MANIFEST, ".lifecycle");
-        vm.writeJson(vm.toString(calculationAgent), MANIFEST, ".parties.calculationAgent");
+        vm.writeJson(vm.serializeAddress(o, "settlement", address(l.settlement)), _manifest(), ".lifecycle");
+        vm.writeJson(vm.toString(calculationAgent), _manifest(), ".parties.calculationAgent");
+    }
+
+    function _manifest() private view returns (string memory) {
+        return string.concat("../", vm.envOr("MANIFEST", string("ops/addresses.json")));
     }
 }

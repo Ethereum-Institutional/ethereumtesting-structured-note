@@ -22,3 +22,7 @@ __pycache__/
 
 # network keys and API tokens (ops/keys.env is the published local-node set, and is tracked)
 ops/keys.*.env
+# public-network identifiers (ADR 0029); only the template is committed
+ops/networks/*.json
+!ops/networks/*.example.json
+ops/addresses.*.json

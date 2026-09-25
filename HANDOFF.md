@@ -152,10 +152,9 @@ credential platform by its contracts.
 
 ## 4. Deliberately open
 
-- **Credential platform.** Three routes documented with strengths and costs. The deciding input is
-  expected to be distribution, not technology. Verify the current status of the commercial
-  compliance engines and of any revision to the incumbent securities-identity standard before
-  deciding; that space moves quickly.
+- ~~**Credential platform.**~~ **Selected by the owner for the pool, ADR 0028,** without the check
+  of the commercial engines this item asked for. The Identity Registry keeps registrar onboarding
+  until a separate decision moves it onto the protocol.
 - ~~**What "multi-signature" actually is.**~~ **Decided by ADR 0016:** one established
   multi-signature wallet per institution; the controller counts institution wallets and sums their
   thresholds for Tier 2, and Tier 1 is the Agent's own wallet.
@@ -390,7 +389,66 @@ clause, so a changed answer changes terms or one line, and the vector grid is re
 - **Phones.** The overview's tables stack below 640px; diagrams and the responsibilities matrix
   scroll with a cue. Any copy of the overview published before 24 September has the old layout.
 
-**Then, in order.** Wave 5, FX pool, then freeze the venue's surface. The final freeze of the
+**Wave 5, the conversion pool. Built 25 September 2026 on `wave/5-conversion-pool`.** Decisions
+are ADRs 0027 to 0041.
+
+- **Production presentation** (ADR 0027): the deposit is Euro Tokenized Deposit, `EURTD`; the note
+  defaults to EUR Worst-of Autocallable Note, `EURWAN`, pending naming sign-off. Off the local node
+  every name, symbol and term sheet value must be set or `DeployInstruments` stops. The router is
+  `PermissionedSwapRouter`; no deployed source calls itself simulated or a stand-in.
+- **Credential protocol selected** (ADR 0028) and named by capacity (ADR 0029). Its identifiers
+  for the test network are in `ops/networks/base-sepolia.json`, which is not committed; the
+  template beside it is.
+- **Pool credential gate** (`contracts/PoolCredentialRegistry.sol`, 10,553 bytes; ADRs 0030 to
+  0037). The Access Issuer attests after off-chain verification; at grant the contract checks the
+  configured issuer is active, neither credential is revoked, and the attested schema, checks,
+  jurisdiction (EEA, CH, GB), investor class (professional, institutional) and 30-day screening
+  meet the fixed policy; grants run at most 90 days. Anyone voids a revoked credential's grant or
+  suspends the gate once the issuer is deactivated; the controller withdraws with a reason. The
+  swap path reads two storage slots and never calls the protocol.
+- **Checker** requires both the deposit's ERC-7943 eligibility and the credential grant (ADR 0031).
+- **Pool** (ADR 0038): the payment token against the deposit at par, fee 0.05%, spacing 10, one
+  position from 0.995 to 1.005 by the Deposit Agent, the only liquidity provider.
+- **Governed** (ADR 0039): the ceremony hands the checker and adapter to the controller, which
+  gains typed venue acts. The controller is 16,815 bytes. **This changes the frozen instruments'
+  surface**, as does a comment-only change to the deposit; both are listed in
+  `instruments/surface/rc1-changes.md`.
+- **Deploy order changed**: base (payment token, protocol), instruments, venue, activation, lens,
+  custody, issuance, ceremony (`ops/README.md`). `deploy-stack.sh` now force-builds both units first,
+  because an incremental build deployed a stale checker during mutation testing.
+- **Protocol code locally** (ADR 0040): `ops/setup-credential-protocol.sh` installs the live
+  registry implementations at their canonical addresses, checked by hash. The vendor's own
+  deployment record lists older implementations.
+- **Fork dry run** (ADR 0041): `ops/dry-run-fork.sh` deploys the whole stack against a fork of the
+  test network's real contracts and runs the venue tests. Its four findings are in ADR 0041.
+- **Tests.** Venue: 46 (17 pool, 6 custody, 23 gate unit tests), and 23 against the fork.
+  Instruments: 115, and 4 on the real wallets. Site: 29 unit and 2 chain tests; the tape knows every
+  Wave 5 call. Seven deliberate errors in the gate, one in the checker and four in the controller's
+  venue acts were each caught.
+
+**For review, taken during the build.**
+
+- **Force-closing a liquidity position is not a controller act** (ADR 0039): proceeds the provider
+  could not receive would sit with the controller as a claim nothing can move.
+- **Custody accounts' registry grants and pool admission** now happen in the custody script, and
+  references are neutral (`SEG-0001`, `ONB-0001`, `CRD-0001`).
+- **The payment token cannot be minted on a fork**; the dry run writes balances to its storage and
+  reads them back.
+
+**Open, from Wave 5.**
+
+- **Test credentials** (ADR 0041): the vendor must issue test KYB/KYC credentials from the
+  configured issuer to our participants, or register a test issuer for us. Only passport-backed
+  credentials can be issued on the test network today. Start now.
+- **S-36 must be narrowed for the person path** (ADR 0034): attested residence jurisdiction and
+  investor class are in the grant transaction's input.
+- **Contract-signer wallet control** (ADR 0036) is in the protocol's code but not its documents;
+  confirm with the vendor.
+- **The local node's published keys carry EIP-7702 delegations on the test network.** A live
+  deployment needs a key per capacity (Wave 6).
+- The Base Sepolia revocation root is about 40 days old; freshness is off (ADR 0035).
+
+**Then, in order.** Freeze the venue's surface. The final freeze of the
 instruments once C1 to C10 and naming are confirmed. Wave 6, hardening and deployment.
 
 Two gates sit outside engineering and should start now: the **independent audit** and **token
