@@ -323,6 +323,55 @@ the spike's default on nine items, and **Twin Win applicable** (C5), illustrativ
 100% down, capped at 150%, which the local issuance now uses. Each item is a parameter or a
 clause, so a changed answer changes terms or one line, and the vector grid is regenerated.
 
+**Wave 4, governance ceremony. Done, 25 September 2026.** Decisions are ADRs 0019 to 0026.
+
+- **Release candidate frozen** (ADR 0026): `instruments/surface/rc1.json` defines the surface (15
+  sources, 10 deployable contracts' runtime code, compiler settings, the debt standard's pin),
+  tagged `instruments-surface-rc1`. `python3 ops/surface.py check instruments/surface/rc1.json`
+  confirms a tree matches. **The final freeze follows confirmation of C1 to C10 and naming
+  sign-off**; any change to a surface file before then is listed, with its reason, in the diff put
+  to review. The venue's surface is frozen separately after Wave 5.
+
+- **Governance controller** (13,199 bytes). Typed acts only, no calldata (ADR 0021). Tier 1 by the
+  Agent's governance wallet alone: register correction and supervisory withdrawal, each with a
+  reason. Tier 2 by two of three institutions whose wallets together require four signatures
+  (ADR 0022), after a delay, thresholds checked again at execution: upgrade, gate replacement,
+  notional amendment, reversal and restatement, registrar appointment, validity window, and
+  replacing the servicing wallet as one act. Recovery replaces an institution's wallet with every
+  other institution's approval and the longer delay; the old wallet can veto (ADR 0019).
+- **Paying Agent** gains coupon reversal, holder by holder against the original credit by a
+  reason-carrying forced transfer on the deposit, and restatement against a corrected Record Time
+  (ADR 0014). The worked example of the wrong Record Time runs end to end in the tests.
+- **Ceremony** (`script/Governance.sol`, `script/Ceremony.s.sol`) moves every role to its final
+  holder and ends with the deployer's renunciation, verified under test and on the local chain.
+- **Real wallets locally** (ADR 0024): `ops/setup-multisig.sh` installs the wallet's released code
+  at its canonical addresses, checked by hash; the ceremony creates four 2-of-3 wallets whose
+  signers are mnemonic indices 10 to 21, now funded by the local node. A fork-profile suite drives
+  Tier 1 and Tier 2 through them.
+- **Delays** are one hour and four hours locally, recorded beside the 72-hour and 14-day targets
+  in the manifest (ADR 0023).
+- **Tape** knows every controller act and shows a wallet transaction as the act it carried.
+- **Tests:** 107 in the instruments unit, 4 against the real wallets; four deliberate controller
+  errors were each caught.
+
+**For review, taken during the build.**
+
+- **Notional amendment is Tier 2** (ADR 0025). After the ceremony the note's mint and burn sit
+  with the controller and, for redemptions only, the Paying Agent. Initial issuance happens before
+  the ceremony.
+- **Only coupons can be reversed** (ADR 0014). A mistaken redemption is corrected by amending the
+  notional and paying through a new distribution.
+- **Terms and the record-date engine are fixed for the note's life.** No one holds the note's
+  terms or snapshot roles after the ceremony, and the controller has no act that grants them.
+- **The gateway's and the Deposit Agent's roles are fixed.** The controller holds the gateway's
+  admin role so that no one else does, but has no act that uses it.
+- **Register correction is stopped by the transfer stop.** Forced transfers are ordinary
+  transfers to the record-date engine (ADR 0010), so a Tier 1 correction cannot run between a
+  possible redemption's Record Time and its determination.
+- **The venue is not yet governed.** The venue checker and the adapter are still owned by the
+  deployer key. Wave 5 pairs the pool with the deposit and puts the venue under the controller.
+- **The third institution** is a placeholder wallet until it is named by capacity.
+
 **Open items carried from the spikes and phase 0b (24 September 2026).**
 
 - **Branch.** `spike/eip170` and `wave/1-plumbing` are merged to `main`, which is pushed to
@@ -341,8 +390,8 @@ clause, so a changed answer changes terms or one line, and the vector grid is re
 - **Phones.** The overview's tables stack below 640px; diagrams and the responsibilities matrix
   scroll with a cue. Any copy of the overview published before 24 September has the old layout.
 
-**Then, in order.** Wave 4, ceremony, then **freeze and tag the contract surface**.
-Wave 5, FX pool. Wave 6, hardening and deployment.
+**Then, in order.** Wave 5, FX pool, then freeze the venue's surface. The final freeze of the
+instruments once C1 to C10 and naming are confirmed. Wave 6, hardening and deployment.
 
 Two gates sit outside engineering and should start now: the **independent audit** and **token
 naming sign-off**. Neither blocks building; both block executing.

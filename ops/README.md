@@ -7,6 +7,7 @@
 | `build.sh` | Builds both compilation units and fails if any deployable contract exceeds EIP-170. |
 | `anvil.sh` | Starts the local chain. The standard EIP-170 limit is enforced. |
 | `setup-permit2.sh` | Installs canonical Permit2 bytecode at its canonical address. |
+| `setup-multisig.sh` | Installs the multi-signature wallet's released code at its canonical addresses, refusing any file whose hash has changed (ADR 0024). |
 | `keys.env` | Local node default accounts, mapped to capacities. `source` it. |
 | `addresses.json` | Every deployed address. Written by the deploy scripts, read by the tests. Not committed. |
 
@@ -17,7 +18,7 @@ two disagree, the script is right and this table is to be corrected.
 
 | Step | Script | Why it comes here |
 |---|---|---|
-| Permit2 | `setup-permit2.sh` | The router and position manager take it as a constructor argument |
+| Permit2, wallets | `setup-permit2.sh`, `setup-multisig.sh` | The router and position manager take Permit2 as a constructor argument; the ceremony creates wallets from the canonical factory |
 | Stand-ins | `script/00_DeployStandIns.s.sol` | The venue wraps an asset that must already exist. Starts the manifest |
 | Venue | `script/01_DeployVenue.s.sol` | Creates the adapter, which the Issuer then onboards as a holder |
 | Activation | `script/02_ActivateVenue.s.sol` | Verification needs the adapter to hold a balance. Opens and seeds the pool |
@@ -25,6 +26,7 @@ two disagree, the script is right and this table is to be corrected.
 | Custody | `script/04_DeployCustody.s.sol` | Client accounts approve the router and position manager |
 | Instruments | `instruments/script/DeployInstruments.s.sol` | Onboards the custody accounts to the registry, so it comes after them. Extends the manifest |
 | Issuance | `instruments/script/IssueNote.s.sol` | Fixes illustrative terms, dated from the chain's own clock; attaches the lifecycle; places units by DvP |
+| Ceremony | `instruments/script/Ceremony.s.sol` | Creates the four wallets, deploys the controller, moves every role, and ends with the deployer's renunciation, so it must come last |
 
 On the public test network the core pool manager and Permit2 are already deployed: pass
 `POOL_MANAGER` to the venue script, and skip `setup-permit2.sh`.

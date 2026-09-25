@@ -63,7 +63,7 @@ Each test states a control and shows a transaction succeeding or failing for the
 
 ## What the instruments tests show
 
-`cd instruments && forge test --force` runs 88. Spike 2's conformance suite runs against both the note
+`cd instruments && forge test --force` runs 107. Spike 2's conformance suite runs against both the note
 and the deposit: views that never revert under any gate failure, forced transfer only under its
 own role and never to an ineligible account, the written reason carried whole, and an admin that
 holds no role it was not granted. Against the registry: grants lapse at expiry, revocation is
@@ -78,6 +78,14 @@ so on) were each caught by that test. Also: a disagreeing or wrongly signed dete
 refused, the Record Time inclusive, transfers stopped at a possible redemption until it is
 determined, an event that closes only when every unit is paid, a held payment claimed after
 re-onboarding, and DvP refusing an ineligible counterparty with nothing moved.
+
+Against governance: Tier 1 only by the Agent's governance wallet, with its reason; Tier 2 refusing
+one institution, four signatures in one firm, and two institutions with weak wallets; thresholds
+checked again at execution; recovery needing every other institution and the longer delay, and
+vetoed by a wallet that still works; the worked example of the wrong Record Time reversed and
+restated; and the deployer holding nothing after the ceremony. Four deliberate errors in the
+controller were each caught. `FOUNDRY_PROFILE=fork forge test` repeats Tier 1 and Tier 2 through
+the real multi-signature wallets on the local stack.
 
 ## Contract size
 
