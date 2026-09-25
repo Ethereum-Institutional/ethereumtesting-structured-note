@@ -92,3 +92,35 @@ contract MockGate {
     function transferred(address, address f, address t, uint256 v) external view { transferred(f, t, v); }
     function supportsInterface(bytes4) external pure returns (bool) { return true; }
 }
+
+/// Stand-in for an institution's multi-signature wallet (ADR 0024): reports a threshold and
+/// executes calls for its owner. The integration test uses the real wallet.
+contract MockWallet {
+    uint256 public threshold;
+    address private immutable _owner;
+
+    constructor(uint256 threshold_) {
+        threshold = threshold_;
+        _owner = msg.sender;
+    }
+
+    function getThreshold() external view returns (uint256) {
+        return threshold;
+    }
+
+    function setThreshold(uint256 t) external {
+        require(msg.sender == _owner, "not owner");
+        threshold = t;
+    }
+
+    function exec(address target, bytes calldata data) external returns (bytes memory) {
+        require(msg.sender == _owner, "not owner");
+        (bool ok, bytes memory ret) = target.call(data);
+        if (!ok) {
+            assembly {
+                revert(add(ret, 0x20), mload(ret))
+            }
+        }
+        return ret;
+    }
+}
