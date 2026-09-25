@@ -68,6 +68,7 @@ contract PoolCredentialRegistryTest is Test {
             path: PoolCredentialRegistry.Path.Person,
             primaryCredential: keccak256("passport credential"),
             screeningCredential: keccak256("screening credential"),
+            walletCredential: keccak256("wallet-control credential"),
             primarySchema: PERSON_SCHEMA,
             screeningSchema: SCREENING_SCHEMA,
             checks: 1 | 2 | 8 | 16 | 32,
@@ -131,6 +132,29 @@ contract PoolCredentialRegistryTest is Test {
         );
         a.screeningSchema = SCREENING_SCHEMA;
         _expectRefused(a, abi.encodeWithSelector(PoolCredentialRegistry.SchemaNotAccepted.selector, SCREENING_SCHEMA));
+    }
+
+    /// The wallet binding is a credential too: a grant needs one, and it must not be revoked.
+    function test_walletCredential_requiredAndNotRevoked() public {
+        PoolCredentialRegistry.Attestation memory a = _entity();
+        a.walletCredential = bytes32(0);
+        _expectRefused(a, abi.encodeWithSelector(PoolCredentialRegistry.NoWalletCredential.selector));
+        a = _entity();
+        protocol.setRevoked(DID, a.walletCredential, true);
+        _expectRefused(a, abi.encodeWithSelector(PoolCredentialRegistry.CredentialRevoked.selector, a.walletCredential));
+        protocol.setRevoked(DID, a.walletCredential, false);
+        _grant(a);
+    }
+
+    /// Revoking the wallet binding voids the grant, by anyone's call (ADR 0043).
+    function test_walletRevocation_voidsTheGrant() public {
+        PoolCredentialRegistry.Attestation memory a = _entity();
+        _grant(a);
+        protocol.setRevoked(DID, a.walletCredential, true);
+        vm.expectEmit(address(gate));
+        emit PoolCredentialRegistry.AccessVoided(holder, a.walletCredential);
+        gate.void(holder);
+        assertFalse(gate.isAllowed(holder));
     }
 
     /// Revoking the one corporate identity credential voids the entity's grant.
@@ -369,7 +393,7 @@ contract PoolCredentialRegistryTest is Test {
         vm.record();
         _grant(_person());
         (, bytes32[] memory writes) = vm.accesses(address(gate));
-        assertEq(writes.length, 4, "packed expiry and path, two credential ids, evidence");
+        assertEq(writes.length, 5, "packed expiry and path, three credential ids, evidence");
     }
 
     /// The gate never reverts on the swap path, whatever the account.

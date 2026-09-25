@@ -14,20 +14,21 @@ import {ICredentialIssuers, ICredentialRevocations} from "./interfaces/ICredenti
  *   credential protocol's verifier, including proof that the wallet is the holder's, and submits
  *   an attestation. The signature check is off-chain; this contract trusts the attester's reading
  *   of the credential and never claims otherwise.
- * - **Checked at grant.** The configured issuer must be active in the protocol, neither credential
- *   may be revoked, and the attested schema, checks, jurisdiction, investor class and screening
+ * - **Checked at grant.** The configured issuer must be active in the protocol, none of the
+ *   holder's credentials may be revoked (its primary credential, its screening, and the
+ *   wallet-control credential binding the wallet to the holder, ADR 0043), and the attested schema, checks, jurisdiction, investor class and screening
  *   time must meet the policy. A mismatch reverts and names itself.
  * - **Bounded.** A grant expires at the earlier of the credential's own expiry and the maximum
  *   validity from the time of grant.
  * - **Revocable at once.** The attester revokes; the supervisor withdraws with a written reason;
- *   anyone may void a grant whose credential the protocol has revoked, and anyone may suspend the
+ *   anyone may void a grant any of whose credentials the protocol has revoked, and anyone may suspend the
  *   gate once the protocol deactivates its issuer. Suspension is permanent: recovery is a new gate.
  * - **One question on the swap path.** {isAllowed} reads the grant's expiry and the suspension
  *   flag and never reverts. It makes no call to the protocol.
  * - **Fixed policy.** Every parameter is set at construction and never changes (ADR 0032).
  *
- * Stores no attribute value: only the path, the two credential identifiers, the expiry and a hash
- * of the evidence the attester keeps.
+ * Stores no attribute value: only the path, the credential identifiers, the expiry and a hash of
+ * the evidence the attester keeps.
  */
 contract PoolCredentialRegistry is AccessControl {
     bytes32 public constant ATTESTER_ROLE = keccak256("ATTESTER_ROLE");
@@ -88,6 +89,7 @@ contract PoolCredentialRegistry is AccessControl {
         Path path;
         bytes32 primaryCredential;
         bytes32 screeningCredential;
+        bytes32 walletCredential; // the wallet-control credential binding `account` to the holder
         bytes32 primarySchema;
         bytes32 screeningSchema;
         uint32 checks;
@@ -103,6 +105,7 @@ contract PoolCredentialRegistry is AccessControl {
         Path path;
         bytes32 primaryCredential;
         bytes32 screeningCredential;
+        bytes32 walletCredential;
         bytes32 evidence;
     }
 
@@ -135,6 +138,7 @@ contract PoolCredentialRegistry is AccessControl {
         Path path,
         bytes32 indexed primaryCredential,
         bytes32 screeningCredential,
+        bytes32 walletCredential,
         uint40 expiresAt,
         bytes32 evidence
     );
@@ -157,6 +161,7 @@ contract PoolCredentialRegistry is AccessControl {
     error InvestorClassNotAllowed(uint8 investorClass);
     error ScreeningTooOld(uint40 screenedAt);
     error CredentialExpired(uint40 expiry);
+    error NoWalletCredential();
     error NoGrant(address account);
     error NotVoidable(address account);
     error IssuerStillActive();
@@ -217,6 +222,7 @@ contract PoolCredentialRegistry is AccessControl {
     /// @notice Writes, or renews, the account's grant from a verified presentation.
     function grant(Attestation calldata a) external onlyRole(ATTESTER_ROLE) returns (uint40 expiresAt) {
         if (a.account == address(0)) revert InvalidAccount();
+        if (a.walletCredential == bytes32(0)) revert NoWalletCredential();
         if (issuerSuspended) revert IssuerIsSuspended();
         expiresAt = _checkAttestation(a);
 
@@ -224,12 +230,16 @@ contract PoolCredentialRegistry is AccessControl {
         if (!ISSUERS.isActive(did)) revert IssuerNotActive();
         if (REVOCATIONS.isRevoked(did, a.primaryCredential)) revert CredentialRevoked(a.primaryCredential);
         if (REVOCATIONS.isRevoked(did, a.screeningCredential)) revert CredentialRevoked(a.screeningCredential);
+        if (REVOCATIONS.isRevoked(did, a.walletCredential)) revert CredentialRevoked(a.walletCredential);
         if (ROOT_FRESHNESS != 0 && !REVOCATIONS.isRootRecent(did, REVOCATIONS.currentRoot(did), ROOT_FRESHNESS)) {
             revert RootNotRecent();
         }
 
-        _grants[a.account] = Grant(expiresAt, a.path, a.primaryCredential, a.screeningCredential, a.evidence);
-        emit AccessGranted(a.account, a.path, a.primaryCredential, a.screeningCredential, expiresAt, a.evidence);
+        _grants[a.account] =
+            Grant(expiresAt, a.path, a.primaryCredential, a.screeningCredential, a.walletCredential, a.evidence);
+        emit AccessGranted(
+            a.account, a.path, a.primaryCredential, a.screeningCredential, a.walletCredential, expiresAt, a.evidence
+        );
     }
 
     /// @notice The attester removes a grant, for example when a presentation is superseded.
@@ -253,6 +263,7 @@ contract PoolCredentialRegistry is AccessControl {
         bytes32 revoked;
         if (REVOCATIONS.isRevoked(did, g.primaryCredential)) revoked = g.primaryCredential;
         else if (REVOCATIONS.isRevoked(did, g.screeningCredential)) revoked = g.screeningCredential;
+        else if (REVOCATIONS.isRevoked(did, g.walletCredential)) revoked = g.walletCredential;
         else revert NotVoidable(account);
         delete _grants[account];
         emit AccessVoided(account, revoked);

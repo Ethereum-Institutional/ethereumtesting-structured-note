@@ -52,13 +52,15 @@ contract DeployInstruments is Script {
         uint32 holder = r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR();
         uint32 noteHolder = holder | r.REG_S();
 
-        // Each grant cites the onboarding record it was written from, by reference.
+        // A participant admitted from a credential presentation is onboarded from the same one: the
+        // grant cites its primary credential and the verification's evidence, as the pool grant
+        // does (ADR 0044). Investor C and the Issuer are onboarded by the registrar's own record.
         vm.startBroadcast(accessIssuerPk);
-        _grant(r, issuer, noteHolder, "ONB-0001");
-        _grant(r, vm.parseJsonAddress(j, ".parties.investorA"), noteHolder | r.PROFESSIONAL(), "ONB-0002");
-        _grant(r, vm.parseJsonAddress(j, ".parties.investorB"), noteHolder, "ONB-0003");
-        _grant(r, vm.parseJsonAddress(j, ".parties.investorC"), holder, "ONB-0004");
-        _grant(r, depositAgent, holder, "ONB-0005");
+        _grant(r, issuer, noteHolder, "ONB-0001", bytes32(0));
+        _grant(r, vm.parseJsonAddress(j, ".parties.investorA"), noteHolder | r.PROFESSIONAL(), _cred("CRD-0002"), _evid("CRD-0002"));
+        _grant(r, vm.parseJsonAddress(j, ".parties.investorB"), noteHolder, _cred("CRD-0003"), _evid("CRD-0003"));
+        _grant(r, vm.parseJsonAddress(j, ".parties.investorC"), holder, "ONB-0004", bytes32(0));
+        _grant(r, depositAgent, holder, _cred("CRD-0001"), _evid("CRD-0001"));
         vm.stopBroadcast();
 
         // Opening balances on the cash leg, each against its own booking.
@@ -89,8 +91,17 @@ contract DeployInstruments is Script {
         return vm.envBytes32(key);
     }
 
-    function _grant(IdentityRegistry r, address account, uint32 flags, bytes32 ref) private {
-        r.grant(account, flags, 276, uint40(block.timestamp) + GRANT_VALIDITY, ref, bytes32(0));
+    function _grant(IdentityRegistry r, address account, uint32 flags, bytes32 ref, bytes32 commitment) private {
+        r.grant(account, flags, 276, uint40(block.timestamp) + GRANT_VALIDITY, ref, commitment);
+    }
+
+    /// The identifiers script/Admission.sol derives for the same presentation.
+    function _cred(string memory ref) private pure returns (bytes32) {
+        return keccak256(abi.encodePacked(ref, "/primary"));
+    }
+
+    function _evid(string memory ref) private pure returns (bytes32) {
+        return keccak256(abi.encodePacked(ref, "/evidence"));
     }
 
     function _manifest() private view returns (string memory) {

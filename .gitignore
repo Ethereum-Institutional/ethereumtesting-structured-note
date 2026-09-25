@@ -26,3 +26,6 @@ ops/keys.*.env
 ops/networks/*.json
 !ops/networks/*.example.json
 ops/addresses.*.json
+# verified presentations carry issuer and holder identifiers (ADR 0029); only the template is committed
+ops/attestations/*.json
+!ops/attestations/example.json

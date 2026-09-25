@@ -31,5 +31,5 @@ contract already signs.
 - We are ahead of the protocol's documented support; this must be confirmed with the vendor before live testing.
 - **Follow-up, 25 September 2026:** the owner is building a wallet-control credential in the
   protocol, linked to a corporate identity or a natural person. When it exists, the attester can
-  check it instead of a bare signature, and whether the gate should also check its revocation
-  on-chain, as a third credential, is a decision for then.
+  check it instead of a bare signature. **Decided by ADR 0043:** the gate checks its revocation
+  on-chain, as a third credential; ADR 0042 sets which chains a signature may come from.

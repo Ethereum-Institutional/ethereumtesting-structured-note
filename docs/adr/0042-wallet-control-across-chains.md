@@ -1,6 +1,6 @@
 # 0042. Wallet control is accepted from any EVM chain for ordinary wallets, and from the pool's chain for contract wallets
 
-- **Status:** Accepted for ordinary wallets (owner, 25 September 2026); Proposed for contract wallets
+- **Status:** Accepted (owner, 25 September 2026)
 - **Date:** 25 September 2026
 
 ## Context
@@ -39,8 +39,9 @@ signature checked on one chain proves nothing on another.
 - The check is the attester's, off-chain; the gate records no chain.
 - An EOA with an EIP-7702 delegation is still controlled by its key and is treated as an ordinary
   wallet; the delegation is not a reason to refuse it.
-- The contract-wallet rule is **Proposed** until the owner confirms it. Until then, custody
-  accounts (ADR 0036) are admitted only with a credential naming the pool's chain.
+- Contract wallets are handled chain by chain, confirmed by the owner: a custody account
+  (ADR 0036) is admitted to a pool only with a credential naming that pool's chain, and a pool on
+  another chain needs its own credential.
 - The Access Issuer must verify presentations against issuer keys pinned in the verifier's trust
   configuration, not read from the protocol's registry: a registrar can rotate an issuer's
   registry key (ADR 0028).

@@ -242,9 +242,9 @@ test("a failed task does not stop the queue", async () => {
 
 test("a pool admission reads as the policy it was checked against", () => {
   const input = call(
-    "function grant((address account, uint8 path, bytes32 primaryCredential, bytes32 screeningCredential, bytes32 primarySchema, bytes32 screeningSchema, uint32 checks, bytes2 jurisdiction, uint8 investorClass, uint40 screenedAt, uint40 credentialExpiry, bytes32 evidence))",
+    "function grant((address account, uint8 path, bytes32 primaryCredential, bytes32 screeningCredential, bytes32 walletCredential, bytes32 primarySchema, bytes32 screeningSchema, uint32 checks, bytes2 jurisdiction, uint8 investorClass, uint40 screenedAt, uint40 credentialExpiry, bytes32 evidence))",
     [{
-      account: A(3), path: 1, primaryCredential: `0x${"11".repeat(32)}`, screeningCredential: `0x${"22".repeat(32)}`,
+      account: A(3), path: 1, primaryCredential: `0x${"11".repeat(32)}`, screeningCredential: `0x${"22".repeat(32)}`, walletCredential: `0x${"66".repeat(32)}`,
       primarySchema: `0x${"33".repeat(32)}`, screeningSchema: `0x${"44".repeat(32)}`, checks: 7, jurisdiction: "0x4c55",
       investorClass: 2, screenedAt: 1_790_000_000, credentialExpiry: 1_820_000_000, evidence: `0x${"55".repeat(32)}`,
     }],

@@ -132,6 +132,7 @@ abstract contract VenueTestBase is Test {
             path: PoolCredentialRegistry.Path.Entity,
             primaryCredential: credential,
             screeningCredential: credential,
+            walletCredential: keccak256(abi.encodePacked(account, "/wallet")),
             primarySchema: entity,
             screeningSchema: entity,
             checks: 1 | 2 | 4 | 16,

@@ -417,6 +417,11 @@ are ADRs 0027 to 0041.
   inside it, screened at issuance, and the gate refuses a separate screening credential on that
   path. The configured issuer is now a bank issuer on the protocol's new pair of registries,
   named in the network file; the fork dry run passes against it.
+- **The wallet binding is a third credential** (ADR 0043), accepted from any EVM chain for an
+  ordinary wallet and from the pool's chain for a contract wallet (ADR 0042). **One presentation
+  writes both grants** (ADR 0044): `script/Attest.s.sol` reads the verifier's result
+  (`ops/attestations/example.json` shows the shape; real files are not committed), makes the Access
+  Issuer's checks, and writes the pool grant and the Identity Registry grant.
 - **Checker** requires both the deposit's ERC-7943 eligibility and the credential grant (ADR 0031).
 - **Pool** (ADR 0038): the payment token against the deposit at par, fee 0.05%, spacing 10, one
   position from 0.995 to 1.005 by the Deposit Agent, the only liquidity provider.

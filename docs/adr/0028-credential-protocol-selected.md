@@ -49,3 +49,5 @@ the frozen instruments small (ADR 0026) and tests the protocol where the owner a
   the network file (ADR 0029). The protocol's `REGISTRAR_ROLE` is global over every issuer, so a
   registrar outside the protocol operator can re-key or deactivate any issuer, this pool's
   included; delegating it needs registrar scoping in the protocol first.
+- **Extended by ADR 0044:** the Identity Registry grant is now written from the same verified
+  presentation as the pool grant.

@@ -78,8 +78,8 @@ every refusal has a positive control. They run against the deployed stack, after
 
 `test/PoolCredentialRegistry.t.sol` tests the credential gate alone, against a stand-in for the
 protocol, with no chain: each policy parameter refused and then met, bounded expiry, revocation by
-each route, a swap-path read of two storage slots that never calls the protocol and never reverts,
-and no attribute value stored. Seven deliberate errors in the gate and one in the checker were
+each route, the wallet-control credential required and voidable, a swap-path read of two storage slots that never calls the protocol and never reverts,
+and no attribute value stored. Ten deliberate errors in the gate and one in the checker were
 each caught. The venue tests pass unchanged against a fork of the test network
 (`ops/dry-run-fork.sh`).
 

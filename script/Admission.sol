@@ -9,8 +9,9 @@ import {PoolCredentialRegistry} from "../contracts/PoolCredentialRegistry.sol";
  * day before, the credential valid for a year. The identifiers are references derived from
  * `ref`, not credentials.
  *
- * An entity presents one credential, its corporate identity, which carries its screening
- * (ADR 0033): the same identifier and schema fill both places, screened when it was issued.
+ * An entity presents its corporate identity, which carries its screening (ADR 0033): the same
+ * identifier and schema fill both places, screened when it was issued. Every holder also presents
+ * the wallet-control credential binding the wallet to it (ADR 0043).
  */
 library Admission {
     uint32 internal constant ENTITY_CHECKS = 1 | 2 | 4 | 16; // wallet control, not expired, active, sanctions clean
@@ -52,6 +53,7 @@ library Admission {
             path: isEntity ? PoolCredentialRegistry.Path.Entity : PoolCredentialRegistry.Path.Person,
             primaryCredential: keccak256(abi.encodePacked(ref, "/primary")),
             screeningCredential: keccak256(abi.encodePacked(ref, "/screening")),
+            walletCredential: keccak256(abi.encodePacked(ref, "/wallet")),
             primarySchema: primarySchema,
             screeningSchema: screeningSchema,
             checks: isEntity ? ENTITY_CHECKS : PERSON_CHECKS,

@@ -73,11 +73,14 @@ contract DeployCustody is Script {
         vm.startBroadcast(vm.envUint("ACCESS_ISSUER_PK"));
         uint32 holder = r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT();
         uint40 until = uint40(block.timestamp) + GRANT_VALIDITY;
-        r.grant(accts[0], holder | r.REG_S(), 276, until, "ONB-0011", bytes32(0));
-        r.grant(accts[1], holder | r.REG_S(), 276, until, "ONB-0012", bytes32(0));
+        // SEG-0001 and SEG-0002 are onboarded and admitted from one presentation each (ADR 0044).
+        PoolCredentialRegistry.Attestation memory a1 = Admission.entity(accts[0], entity, "DE", 2, "CRD-0011");
+        PoolCredentialRegistry.Attestation memory a2 = Admission.entity(accts[1], entity, "DE", 2, "CRD-0012");
+        r.grant(accts[0], holder | r.REG_S(), 276, until, a1.primaryCredential, a1.evidence);
+        r.grant(accts[1], holder | r.REG_S(), 276, until, a2.primaryCredential, a2.evidence);
         r.grant(accts[2], holder, 276, until, "ONB-0013", bytes32(0));
-        gate.grant(Admission.entity(accts[0], entity, "DE", 2, "CRD-0011"));
-        gate.grant(Admission.entity(accts[1], entity, "DE", 2, "CRD-0012"));
+        gate.grant(a1);
+        gate.grant(a2);
         vm.stopBroadcast();
     }
 
