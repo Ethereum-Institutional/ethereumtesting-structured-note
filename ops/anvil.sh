@@ -9,8 +9,10 @@ LOG="${LOG:-/tmp/anvil-local.log}"
 
 pkill -f "anvil --chain-id 31337" 2>/dev/null || true
 sleep 1
+# 22 funded accounts: the ten capacities, and twelve wallet signers from index 10 (Ceremony).
 nohup anvil \
   --chain-id 31337 \
+  --accounts 22 \
   --block-time 1 \
   --silent > "$LOG" 2>&1 &
 

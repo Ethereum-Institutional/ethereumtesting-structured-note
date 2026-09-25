@@ -17,8 +17,9 @@ FS="--rpc-url $RPC --broadcast"
 
 step() { printf '\n\033[1m── %s\033[0m\n' "$1"; }
 
-step "Permit2 at its canonical address"
+step "Permit2 and the multi-signature wallet at their canonical addresses"
 RPC="$RPC" ./ops/setup-permit2.sh
+RPC="$RPC" ./ops/setup-multisig.sh
 
 step "stand-in asset and cash leg"
 forge script script/00_DeployStandIns.s.sol:DeployStandIns $FS >/dev/null
@@ -38,3 +39,6 @@ step "instruments: registry, gates, note, deposit, gateway  (solc 0.8.34)"
 
 step "issuance: terms fixed, lifecycle attached, units placed by DvP"
 ( cd instruments && forge script script/IssueNote.s.sol:IssueNote $FS >/dev/null )
+
+step "governance ceremony: wallets, controller, roles moved, deployer renounces"
+( cd instruments && forge script script/Ceremony.s.sol:Ceremony $FS >/dev/null )

@@ -23,3 +23,25 @@ remappings = [
   "@openzeppelin/contracts/=lib/debt-standard/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/",
   "forge-std/=../lib/forge-std/src/",
 ]
+
+# Tests against the running local stack: ./ops/reset.sh, then
+#   FOUNDRY_PROFILE=fork forge test --fork-url http://127.0.0.1:8545
+[profile.fork]
+src = "src"
+test = "test-fork"
+out = "out"
+libs = ["lib"]
+allow_paths = ["../lib/forge-std"]
+solc_version = "0.8.34"
+evm_version = "cancun"
+via_ir = false
+optimizer = true
+optimizer_runs = 200
+bytecode_hash = "none"
+fs_permissions = [{ access = "read", path = "../ops" }]
+remappings = [
+  "debt-standard/=lib/debt-standard/contracts/",
+  "@openzeppelin/contracts-upgradeable/=lib/debt-standard/lib/openzeppelin-contracts-upgradeable/contracts/",
+  "@openzeppelin/contracts/=lib/debt-standard/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/",
+  "forge-std/=../lib/forge-std/src/",
+]
