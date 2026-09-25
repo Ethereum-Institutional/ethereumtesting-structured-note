@@ -49,3 +49,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0039](0039-venue-under-the-controller.md) | The venue is governed through typed controller acts | Accepted (Wave 5) |
 | [0040](0040-protocol-code-locally.md) | The local stack installs the protocol's released registry code at its canonical addresses | Accepted (Wave 5) |
 | [0041](0041-fork-dry-run-first.md) | Wave 5 is built locally and dry-run against a fork of the test network; the live deployment waits | Accepted (Wave 5) |
+| [0042](0042-wallet-control-across-chains.md) | Wallet control is accepted from any EVM chain for ordinary wallets, and from the pool's chain for contract wallets | Accepted for ordinary wallets; Proposed for contract wallets |
