@@ -67,7 +67,24 @@ async function newRequest(origin: string, step: Step) {
 }
 
 export async function startAdmission(r: Registrant, origin: string): Promise<Admission> {
-  const { request, url } = await newRequest(origin, "officer");
+  let request: VerifierRequest, url: string;
+  try {
+    ({ request, url } = await newRequest(origin, "officer"));
+  } catch (e) {
+    // Recorded, so the participant sees why rather than a server error.
+    const failed: Admission = {
+      id: `adm_${randomBytes(9).toString("base64url")}`,
+      registrantId: r.id,
+      route: "holder-wallet",
+      status: "failed",
+      createdAt: now(),
+      officerRequestId: null,
+      walletRequestId: null,
+      data: { error: (e as Error).message },
+    };
+    await getStore().putAdmission(failed);
+    throw e;
+  }
   const a: Admission = {
     id: `adm_${randomBytes(9).toString("base64url")}`,
     registrantId: r.id,

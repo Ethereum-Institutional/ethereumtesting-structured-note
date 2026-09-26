@@ -76,16 +76,16 @@ export async function decideAction(f: FormData) {
 export async function startAdmissionAction() {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  await startAdmission(who, await siteOrigin());
-  revalidatePath("/admit");
+  const origin = await siteOrigin();
+  await recorded(() => startAdmission(who, origin), "/admit");
 }
 
 export async function renewAdmissionAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
   const a = await getStore().admissionById(field(f, "id"));
-  if (a && a.registrantId === who.id) await renewRequest(a, await siteOrigin());
-  revalidatePath("/admit");
+  const origin = await siteOrigin();
+  if (a && a.registrantId === who.id) await recorded(() => renewRequest(a, origin), "/admit");
 }
 
 export async function decideAdmissionAction(f: FormData) {
@@ -135,8 +135,7 @@ export async function requestSelfCustodyAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
   const type = field(f, "addressType") === "smart_contract" ? "smart_contract" : "eoa";
-  await requestSelfCustody(who, { kycReference: field(f, "kycReference").trim(), walletAddress: field(f, "walletAddress").trim(), addressType: type });
-  revalidatePath("/admit");
+  await recorded(() => requestSelfCustody(who, { kycReference: field(f, "kycReference").trim(), walletAddress: field(f, "walletAddress").trim(), addressType: type }), "/admit");
 }
 
 export async function submitSignatureAction(f: FormData) {
@@ -148,6 +147,5 @@ export async function submitSignatureAction(f: FormData) {
 export async function renewChallengeAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  await renewSelfCustodyChallenge(who, field(f, "id"));
-  revalidatePath("/admit");
+  await recorded(() => renewSelfCustodyChallenge(who, field(f, "id")), "/admit");
 }

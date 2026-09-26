@@ -84,6 +84,8 @@ export type ProtocolConfig = {
   /** Where each corporation publishes its corporate identity, by DID. */
   corporateIssuers: Record<string, string>;
   callbackUrl: string;
+  /** The service key, when the verifier is the bank's own backend and requires it (ADR 0055). */
+  verifierKey?: string;
 };
 
 const need = (env: NodeJS.ProcessEnv, k: string) => {
@@ -110,7 +112,27 @@ export function protocolConfig(origin: string, env: NodeJS.ProcessEnv = process.
     schemas,
     corporateIssuers: JSON.parse(need(env, "ADMISSION_CORPORATE_ISSUERS")),
     callbackUrl: `${origin}/api/admission/callback`,
+    verifierKey: verifierKeyFor(need(env, "CREDENTIAL_VERIFIER_URL"), env),
   };
+}
+
+/**
+ * The key is sent only to the backend it was issued by: the bank's service key goes to the
+ * verifier only when the verifier is the bank's own host.
+ */
+function verifierKeyFor(verifierUrl: string, env: NodeJS.ProcessEnv): string | undefined {
+  const key = env.BANK_ISSUER_API_KEY?.trim();
+  const bank = env.BANK_ISSUER_URL?.trim();
+  if (!key || !bank) return undefined;
+  try {
+    return new URL(verifierUrl).origin === new URL(bank).origin ? key : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function verifierHeaders(c: ProtocolConfig): Record<string, string> {
+  return { "content-type": "application/json", ...(c.verifierKey ? { authorization: `Bearer ${c.verifierKey}` } : {}) };
 }
 
 /** What every route needs: the one configured issuer and the schema identifiers. */
@@ -168,11 +190,14 @@ export function requestSignatureValid(request: VerifierRequest, publicKey: Uint8
 export async function lodge(c: ProtocolConfig, request: VerifierRequest): Promise<string> {
   const res = await fetch(`${c.verifierUrl}/v1/verifier-request`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: verifierHeaders(c),
     body: JSON.stringify({ request }),
     signal: AbortSignal.timeout(20_000),
   });
-  if (!res.ok) throw new Error(`the verifier refused the request: HTTP ${res.status}`);
+  if (!res.ok) {
+    const e = (await res.json().catch(() => null)) as any;
+    throw new Error(`the verifier refused the request: HTTP ${res.status}${e?.error?.code ? ` ${e.error.code}` : ""}`);
+  }
   return `${c.verifierUrl}/v1/verifier-request/${request.requestId}`;
 }
 
@@ -180,7 +205,7 @@ export async function lodge(c: ProtocolConfig, request: VerifierRequest): Promis
 export async function verdictFor(c: ProtocolConfig, presentation: Presentation): Promise<Verdict> {
   const res = await fetch(`${c.verifierUrl}/v1/verify`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: verifierHeaders(c),
     body: JSON.stringify({
       v: 1,
       challengeContext: { requestId: presentation.verifierRequest?.requestId ?? "", issuedAt: 0, expiresAt: 0 },

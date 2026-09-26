@@ -53,6 +53,9 @@ const server = createServer(async (req, res) => {
   let body = "";
   for await (const chunk of req) body += chunk;
   const send = (code: number, v: unknown) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(v)); };
+  if (req.method === "POST" && req.url === "/v1/verifier-request" && req.headers.authorization !== "Bearer sk_test_integrationsecret") {
+    return send(401, { error: { code: "unauthenticated", message: "unauthenticated" } });
+  }
   if (req.method === "POST" && req.url === "/v1/verifier-request") {
     const { request } = JSON.parse(body);
     lodged.set(request.requestId, request);
