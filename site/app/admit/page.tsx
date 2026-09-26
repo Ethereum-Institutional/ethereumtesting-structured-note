@@ -11,6 +11,7 @@ import {
   submitSignatureAction,
 } from "../actions";
 import { SignWallet } from "./SignWallet";
+import { AutoRefresh } from "../AutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function Admit() {
 
   return (
     <div className="wrap">
-      {open && a.status !== "awaiting-signature" && <meta httpEquiv="refresh" content="5" />}
+      {open && a.status !== "awaiting-signature" && <AutoRefresh />}
       <Bar who={who} operator={isOperator(who.email)} />
       <header className="masthead" style={{ paddingBottom: "1rem" }}>
         <p className="eyebrow">Conversion pool</p>

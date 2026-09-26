@@ -135,9 +135,13 @@ export default async function Operator() {
 
       <h2 id="admissions">Pool admissions</h2>
       <div className="table-wrap panel">
-        <table>
+        <table style={{ whiteSpace: "nowrap" }}>
           <thead>
-            <tr><th>Started</th><th>Route</th><th>Status</th><th>Corporation</th><th>Officer</th><th>Wallet</th><th>Jurisdiction, class</th><th>Pool grant to</th><th>Detail</th><th /></tr>
+            <tr>
+              <th>Started</th><th>Route</th><th>Status</th><th>Corporation</th><th>Officer</th><th>Wallet</th>
+              <th>Wallet type</th><th>Jurisdiction</th><th>Class</th><th>Pool grant to</th><th>Pool grant</th>
+              <th>Registry grant</th><th>Trading approvals</th><th>Problem</th><th />
+            </tr>
           </thead>
           <tbody>
             {admissions.map((a) => {
@@ -145,24 +149,24 @@ export default async function Operator() {
               const s = d.assessment?.ok ? d.assessment.summary : null;
               const w = d.written as { chainId?: number; poolGrantTx?: string; registryGrantTx?: string; readyTx?: string; poolGrantExpiresAt?: number } | undefined;
               const problem = d.assessment && !d.assessment.ok ? d.assessment.problems.join(" ") : w ? "" : d.error ?? "";
-              const who = s?.corporation ?? d.record?.legalName ?? "";
-              const expiry = w?.poolGrantExpiresAt ?? null;
+              const tx = (hash: string | undefined) =>
+                hash ? <Linked href={explorerTx(w?.chainId, hash)}>{`${hash.slice(0, 10)}…`}</Linked> : "";
               return (
                 <tr key={a.id}>
                   <td>{when(a.createdAt)}</td>
                   <td>{a.route}</td>
                   <td><span className={`pill ${a.status === "ready" ? "pending" : a.status === "admitted" ? "approved" : ""}`}>{a.status}</span></td>
-                  <td>{who}</td>
+                  <td>{s?.corporation ?? d.record?.legalName ?? ""}</td>
                   <td>{s?.officerDid ? `${s.role}, ${s.officerDid}` : ""}</td>
-                  <td>{s ? <><Linked href={explorerAddress(w?.chainId, s.wallet)}>{s.wallet}</Linked> ({s.walletType})</> : ""}</td>
-                  <td>{s ? `${s.jurisdiction}, ${s.investorClass}` : ""}</td>
-                  <td>{expiry ? when(new Date(expiry * 1000).toISOString()) : ""}</td>
-                  <td style={{ maxWidth: 320, wordBreak: "break-word" }}>
-                    {w?.poolGrantTx && <><Linked href={explorerTx(w.chainId, w.poolGrantTx)}>pool grant</Linked>{" "}</>}
-                    {w?.registryGrantTx && <><Linked href={explorerTx(w.chainId, w.registryGrantTx)}>registry grant</Linked>{" "}</>}
-                    {w?.readyTx && <Linked href={explorerTx(w.chainId, w.readyTx)}>trading approvals</Linked>}
-                    {problem}
-                  </td>
+                  <td>{s ? <Linked href={explorerAddress(w?.chainId, s.wallet)}>{s.wallet}</Linked> : d.request?.walletAddress ?? ""}</td>
+                  <td>{s?.walletType ?? d.request?.addressType ?? ""}</td>
+                  <td>{s?.jurisdiction ?? d.record?.jurisdiction ?? ""}</td>
+                  <td>{s?.investorClass ?? ""}</td>
+                  <td>{w?.poolGrantExpiresAt ? when(new Date(w.poolGrantExpiresAt * 1000).toISOString()) : ""}</td>
+                  <td>{tx(w?.poolGrantTx)}</td>
+                  <td>{tx(w?.registryGrantTx)}</td>
+                  <td>{tx(w?.readyTx)}</td>
+                  <td style={{ whiteSpace: "normal", minWidth: 280 }}>{problem}</td>
                   <td>
                     {a.status === "ready" && (
                       <>
