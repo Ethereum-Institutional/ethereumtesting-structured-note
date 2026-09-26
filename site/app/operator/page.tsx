@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { currentOperator } from "@/lib/access";
 import { getStore, type Registrant } from "@/lib/store";
+import { explorerAddress, explorerTx } from "@/lib/explorer";
 import { admitCustodiedAction, decideAction, decideAdmissionAction, reviewSelfCustodyAction } from "../actions";
 import { Bar } from "../Bar";
 
@@ -23,6 +24,11 @@ function BankRecordFields() {
       </label>
     </>
   );
+}
+
+/** A value that opens in the chain's explorer where there is one. */
+function Linked({ href, children }: { href: string | null; children: React.ReactNode }) {
+  return href ? <a href={href} target="_blank" rel="noreferrer">{children}</a> : <>{children}</>;
 }
 
 const when = (iso: string | null) => (iso ? iso.slice(0, 16).replace("T", " ") + " UTC" : "");
@@ -131,14 +137,16 @@ export default async function Operator() {
       <div className="table-wrap panel">
         <table>
           <thead>
-            <tr><th>Started</th><th>Route</th><th>Status</th><th>Corporation</th><th>Officer</th><th>Wallet</th><th>Jurisdiction, class</th><th>Grant to</th><th>Detail</th><th /></tr>
+            <tr><th>Started</th><th>Route</th><th>Status</th><th>Corporation</th><th>Officer</th><th>Wallet</th><th>Jurisdiction, class</th><th>Pool grant to</th><th>Detail</th><th /></tr>
           </thead>
           <tbody>
             {admissions.map((a) => {
               const d = a.data as Record<string, any>;
               const s = d.assessment?.ok ? d.assessment.summary : null;
-              const detail = d.assessment && !d.assessment.ok ? d.assessment.problems.join(" ") : d.written ? `pool ${d.written.poolGrantTx}, registry ${d.written.registryGrantTx}` : d.error ?? "";
+              const w = d.written as { chainId?: number; poolGrantTx?: string; registryGrantTx?: string; readyTx?: string; poolGrantExpiresAt?: number } | undefined;
+              const problem = d.assessment && !d.assessment.ok ? d.assessment.problems.join(" ") : w ? "" : d.error ?? "";
               const who = s?.corporation ?? d.record?.legalName ?? "";
+              const expiry = w?.poolGrantExpiresAt ?? null;
               return (
                 <tr key={a.id}>
                   <td>{when(a.createdAt)}</td>
@@ -146,10 +154,15 @@ export default async function Operator() {
                   <td><span className={`pill ${a.status === "ready" ? "pending" : a.status === "admitted" ? "approved" : ""}`}>{a.status}</span></td>
                   <td>{who}</td>
                   <td>{s?.officerDid ? `${s.role}, ${s.officerDid}` : ""}</td>
-                  <td>{s ? `${s.wallet} (${s.walletType})` : ""}</td>
+                  <td>{s ? <><Linked href={explorerAddress(w?.chainId, s.wallet)}>{s.wallet}</Linked> ({s.walletType})</> : ""}</td>
                   <td>{s ? `${s.jurisdiction}, ${s.investorClass}` : ""}</td>
-                  <td>{s ? when(new Date(s.expiresAt * 1000).toISOString()) : ""}</td>
-                  <td style={{ maxWidth: 320, wordBreak: "break-word" }}>{detail}</td>
+                  <td>{expiry ? when(new Date(expiry * 1000).toISOString()) : ""}</td>
+                  <td style={{ maxWidth: 320, wordBreak: "break-word" }}>
+                    {w?.poolGrantTx && <><Linked href={explorerTx(w.chainId, w.poolGrantTx)}>pool grant</Linked>{" "}</>}
+                    {w?.registryGrantTx && <><Linked href={explorerTx(w.chainId, w.registryGrantTx)}>registry grant</Linked>{" "}</>}
+                    {w?.readyTx && <Linked href={explorerTx(w.chainId, w.readyTx)}>trading approvals</Linked>}
+                    {problem}
+                  </td>
                   <td>
                     {a.status === "ready" && (
                       <>

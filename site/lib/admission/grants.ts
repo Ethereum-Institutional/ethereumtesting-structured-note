@@ -51,7 +51,14 @@ function deployment() {
   return { chain, rpc, gate, registry };
 }
 
-export type Written = { chainId: number; poolGrantTx: Hex; registryGrantTx: Hex };
+export type Written = {
+  chainId: number;
+  poolGrantTx: Hex;
+  registryGrantTx: Hex;
+  /** When each grant lapses, as written: the gate bounds the pool grant by its own maximum. */
+  poolGrantExpiresAt: number;
+  registryGrantExpiresAt: number;
+};
 
 export async function writeGrants(issuerDid: string, a: Attestation, r: RegistryGrant): Promise<Written> {
   const d = deployment();
@@ -65,7 +72,7 @@ export async function writeGrants(issuerDid: string, a: Attestation, r: Registry
   const registryArgs = [r.account, registryFlags(r), r.jurisdiction, r.expiresAt, r.credentialRef, r.commitment] as const;
 
   // Simulated first: a refusal names its reason and sends nothing.
-  await s.publicClient.simulateContract({ address: d.gate, abi: GATE, functionName: "grant", args: [tuple], account: from });
+  const simulated = await s.publicClient.simulateContract({ address: d.gate, abi: GATE, functionName: "grant", args: [tuple], account: from });
   const poolGrantTx = await s.send("accessIssuer", { address: d.gate, abi: GATE, functionName: "grant", args: [tuple] });
   await succeeded(s.publicClient, poolGrantTx, "pool grant");
 
@@ -73,7 +80,13 @@ export async function writeGrants(issuerDid: string, a: Attestation, r: Registry
   const registryGrantTx = await s.send("accessIssuer", { address: d.registry, abi: REGISTRY, functionName: "grant", args: registryArgs });
   await succeeded(s.publicClient, registryGrantTx, "registry grant");
 
-  return { chainId: d.chain.id, poolGrantTx, registryGrantTx };
+  return {
+    chainId: d.chain.id,
+    poolGrantTx,
+    registryGrantTx,
+    poolGrantExpiresAt: Number(simulated.result),
+    registryGrantExpiresAt: r.expiresAt,
+  };
 }
 
 async function succeeded(client: ReturnType<typeof signers>["publicClient"], hash: Hex, what: string) {
