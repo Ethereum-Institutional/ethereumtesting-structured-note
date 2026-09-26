@@ -122,7 +122,10 @@ contract Attest is Script {
         p.corporateSchema = keccak256(bytes(vm.parseJsonString(f, ".corporateIdentity.schemaUri")));
         p.evidence = vm.parseJsonBytes32(f, ".verificationRecordSha256");
         p.jurisdiction = bytes2(bytes(vm.parseJsonString(f, ".corporateIdentity.jurisdiction")));
-        p.investorClass = _class(vm.parseJsonString(f, ".corporateIdentity.investorClass"));
+        // Institutional by policy when the credential carries no class (ADR 0053).
+        p.investorClass = vm.keyExistsJson(f, ".corporateIdentity.investorClass")
+            ? _class(vm.parseJsonString(f, ".corporateIdentity.investorClass"))
+            : 2;
         p.issuedAt = uint40(vm.parseJsonUint(f, ".corporateIdentity.issuedAt"));
         // A grant rests on every credential presented, so it ends with the first to expire; the
         // officer credential's validity is the bank's refresh period (ADR 0052).

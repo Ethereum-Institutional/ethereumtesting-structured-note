@@ -71,6 +71,7 @@ export const CHECK_SANCTIONS_CLEAN = 16;
 
 /** The screening schema's investor classes, in its order (ADR 0033). */
 export const INVESTOR_CLASSES = ["sophisticated", "professional", "institutional", "retail"];
+const INSTITUTIONAL = 2;
 
 /** ISO 3166-1 numeric for the pool's allowlist, as the Identity Registry records jurisdiction. */
 export const NUMERIC: Record<string, number> = {
@@ -151,8 +152,10 @@ export function assess(
   if (!slot || cc.claims[slot] !== oh.sub) fail(`the corporate identity does not name the officer as ${role || "an officer"}`);
   const jurisdiction = typeof cc.claims.jurisdiction === "string" ? cc.claims.jurisdiction : "";
   if (!(jurisdiction in NUMERIC)) fail(`the corporation's jurisdiction is outside the pool's allowlist (${jurisdiction || "none"})`);
-  const investorClass = INVESTOR_CLASSES.indexOf(String(cc.claims.investorClass ?? ""));
-  if (investorClass < 0) fail(`the corporate identity carries no recognised investor class (${String(cc.claims.investorClass ?? "none")})`);
+  // Institutional by policy when the credential carries no class; the bank's KYB classifies its
+  // clients (ADR 0053). A class it does carry is used, and must be one the schema knows.
+  const investorClass = cc.claims.investorClass == null ? INSTITUTIONAL : INVESTOR_CLASSES.indexOf(String(cc.claims.investorClass));
+  if (investorClass < 0) fail(`the corporate identity carries no recognised investor class (${String(cc.claims.investorClass)})`);
 
   // Identifiers, and the lifetime: the grant ends with the first credential to expire (ADR 0052).
   const primary = bytes32(ch.cid);

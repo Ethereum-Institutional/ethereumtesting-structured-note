@@ -132,6 +132,14 @@ test("a good officer admission becomes one attestation and one registry grant", 
   assert.equal(a.summary.corporation, "Test Institution One");
 });
 
+test("an entity with no investor class is institutional by policy (ADR 0053)", () => {
+  const doc = corporate();
+  delete doc.credential.claims.investorClass;
+  const a = assess(config, officer(), wallet(), doc, 84532, NOW);
+  assert.ok(a.ok, JSON.stringify(!a.ok && a.problems));
+  if (a.ok) assert.equal(a.attestation.investorClass, 2);
+});
+
 test("the grant ends with the first credential to expire", () => {
   const a = assess(config, officer({ exp: NOW + 30 * 86_400 }), wallet(), corporate(), 84532, NOW);
   assert.ok(a.ok);
@@ -156,7 +164,7 @@ const refusals: Array<[string, () => ReturnType<typeof assess>, RegExp]> = [
   ["an officer not on the roster", () => assess(config, officer(), wallet(), corporate({ ceoOfficerDid: "did:example:another" }), 84532, NOW), /does not name the officer as CEO/],
   ["another corporation's identity", () => assess(config, officer({}, { corporationDid: "did:example:other-corp" }), wallet(), corporate(), 84532, NOW), /not the corporation the officer acts for/],
   ["a jurisdiction outside the allowlist", () => assess(config, officer(), wallet(), corporate({ jurisdiction: "US" }), 84532, NOW), /outside the pool's allowlist \(US\)/],
-  ["no investor class", () => assess(config, officer(), wallet(), corporate({ investorClass: undefined }), 84532, NOW), /no recognised investor class/],
+  ["an unknown investor class", () => assess(config, officer(), wallet(), corporate({ investorClass: "family office" }), 84532, NOW), /no recognised investor class/],
   ["an expired credential", () => assess(config, officer(), wallet({ exp: NOW }), corporate(), 84532, NOW), /has expired/],
 ];
 for (const [name, run, pattern] of refusals) {
