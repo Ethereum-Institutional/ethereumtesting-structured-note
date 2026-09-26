@@ -237,3 +237,25 @@ for (const [name, input, pattern] of bankRefusals) {
     assert.ok(!a.ok && a.problems.some((p) => pattern.test(p)), JSON.stringify(a));
   });
 }
+
+// --- the bank's typed data ---
+
+import { normaliseTypedData } from "./bank.ts";
+import { hashTypedData } from "viem";
+
+test("the bank's decimal-string integers are signed as the numbers they are", () => {
+  const td = {
+    types: { EIP712Domain: [], Attestation: [{ name: "issuedAt", type: "uint64" }, { name: "who", type: "string" }] },
+    primaryType: "Attestation",
+    domain: { name: "Bank", version: "1", chainId: "84532" },
+    message: { issuedAt: "1790355225", who: "123" },
+  };
+  const n = normaliseTypedData(td);
+  assert.equal(n.domain.chainId, 84532);
+  assert.equal(n.message.issuedAt, 1790355225);
+  assert.equal(n.message.who, "123", "a string field stays a string");
+  assert.equal(td.domain.chainId, "84532", "the original is not changed");
+  const { EIP712Domain: _d, ...types } = n.types;
+  const expected = hashTypedData({ domain: { name: "Bank", version: "1", chainId: 84532 }, types, primaryType: "Attestation", message: { issuedAt: 1790355225n, who: "123" } });
+  assert.equal(hashTypedData({ domain: n.domain, types, primaryType: "Attestation", message: n.message }), expected);
+});

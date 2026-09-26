@@ -84,18 +84,20 @@ const server = createServer(async (req, res) => {
     const typedData = {
       types: {
         EIP712Domain: [{ name: "name", type: "string" }, { name: "version", type: "string" }, { name: "chainId", type: "uint256" }],
-        WalletAttestation: [{ name: "holderDid", type: "string" }, { name: "walletAddress", type: "address" }, { name: "chain", type: "string" }, { name: "nonce", type: "string" }, { name: "purpose", type: "string" }],
+        WalletAttestation: [{ name: "holderDid", type: "string" }, { name: "walletAddress", type: "address" }, { name: "chain", type: "string" }, { name: "nonce", type: "string" }, { name: "purpose", type: "string" }, { name: "issuedAt", type: "uint64" }],
       },
       primaryType: "WalletAttestation",
-      domain: { name: "Wallet attestation", version: "1", chainId: Number(b.chain.split(":")[1]) },
-      message: { holderDid: b.holderDid, walletAddress: b.walletAddress, chain: b.chain, nonce: challengeId, purpose: b.purpose },
+      // As the bank sends it: the chain id as a decimal string, read as decimal by the bank's library.
+      domain: { name: "Wallet attestation", version: "1", chainId: b.chain.split(":")[1] },
+      message: { holderDid: b.holderDid, walletAddress: b.walletAddress, chain: b.chain, nonce: challengeId, purpose: b.purpose, issuedAt: String(NOW) },
     };
     challenges.set(challengeId, typedData);
     return send(200, { v: 1, challengeId, typedData, expiresAt: NOW + 600 });
   }
   if (req.method === "POST" && req.url === "/v1/wallet-attestation/eth/complete") {
     const b = JSON.parse(body);
-    const td = challenges.get(b.challengeId) as any;
+    const stored = challenges.get(b.challengeId) as any;
+    const td = { ...stored, domain: { ...stored.domain, chainId: BigInt(stored.domain.chainId) }, message: { ...stored.message, issuedAt: BigInt(stored.message.issuedAt) } };
     const { EIP712Domain: _d, ...types } = td.types;
     let ok = false;
     if (b.addressType === "eoa") {

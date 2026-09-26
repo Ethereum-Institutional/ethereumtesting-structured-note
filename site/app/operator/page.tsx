@@ -97,12 +97,13 @@ export default async function Operator() {
       <h2 id="self-custody">Self-custody requests</h2>
       <div className="table-wrap panel">
         <table>
-          <thead><tr><th>Requested by</th><th>Client reference</th><th>Wallet</th><th>Review</th></tr></thead>
+          <thead><tr><th>Requested</th><th>Requested by</th><th>Client reference</th><th>Wallet</th><th>Review</th></tr></thead>
           <tbody>
             {admissions.filter((a) => a.route === "self-custody" && a.status === "awaiting-bank-review").map((a) => {
               const r = (a.data as Record<string, any>).request;
               return (
                 <tr key={a.id}>
+                  <td>{when(a.createdAt)}</td>
                   <td>{r.requestedBy}, {r.organisation}</td>
                   <td>{r.kycReference}</td>
                   <td>{r.walletAddress} ({r.addressType})</td>
@@ -130,7 +131,7 @@ export default async function Operator() {
       <div className="table-wrap panel">
         <table>
           <thead>
-            <tr><th>Route</th><th>Status</th><th>Corporation</th><th>Officer</th><th>Wallet</th><th>Jurisdiction, class</th><th>Grant to</th><th>Detail</th><th /></tr>
+            <tr><th>Started</th><th>Route</th><th>Status</th><th>Corporation</th><th>Officer</th><th>Wallet</th><th>Jurisdiction, class</th><th>Grant to</th><th>Detail</th><th /></tr>
           </thead>
           <tbody>
             {admissions.map((a) => {
@@ -140,6 +141,7 @@ export default async function Operator() {
               const who = s?.corporation ?? d.record?.legalName ?? "";
               return (
                 <tr key={a.id}>
+                  <td>{when(a.createdAt)}</td>
                   <td>{a.route}</td>
                   <td><span className={`pill ${a.status === "ready" ? "pending" : a.status === "admitted" ? "approved" : ""}`}>{a.status}</span></td>
                   <td>{who}</td>

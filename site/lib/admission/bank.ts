@@ -78,8 +78,32 @@ export async function corporateIdentityFor(b: BankConfig, kycReference: string, 
 
 export type WalletChallenge = { challengeId: string; typedData: Record<string, any>; expiresAt: number };
 
-export function startWalletAttestation(b: BankConfig, holderDid: string, chain: string, walletAddress: string, purpose: string) {
-  return call<WalletChallenge>(b, "/v1/wallet-attestation/eth/initiate", { v: 1, holderDid, chain, walletAddress, purpose });
+/**
+ * The bank's typed data with every integer as a number. The bank sends some as decimal strings
+ * (the domain's chainId, "84532"); its own library reads those as decimal, but viem does not, so
+ * signing them as sent produces a signature over a different digest, which the bank then refuses.
+ * Numbers give the same digest under both.
+ */
+export function normaliseTypedData(td: Record<string, any>): Record<string, any> {
+  const asNumber = (v: unknown) => {
+    if (typeof v !== "string" || !/^\d+$/.test(v)) return v;
+    const n = Number(v);
+    if (!Number.isSafeInteger(n)) throw new Error(`an integer in the typed data is too large to sign safely: ${v}`);
+    return n;
+  };
+  const out = structuredClone(td);
+  if (out.domain && "chainId" in out.domain) out.domain.chainId = asNumber(out.domain.chainId);
+  for (const field of out.types?.[out.primaryType] ?? []) {
+    if (/^u?int\d*$/.test(field.type) && out.message && field.name in out.message) {
+      out.message[field.name] = asNumber(out.message[field.name]);
+    }
+  }
+  return out;
+}
+
+export async function startWalletAttestation(b: BankConfig, holderDid: string, chain: string, walletAddress: string, purpose: string) {
+  const c = await call<WalletChallenge>(b, "/v1/wallet-attestation/eth/initiate", { v: 1, holderDid, chain, walletAddress, purpose });
+  return { ...c, typedData: normaliseTypedData(c.typedData) };
 }
 
 export type WalletAttested = { credentialId: Hex; walletAddress: string; attestationMethod: "EIP-712" | "EIP-1271"; attestedAt: number };
