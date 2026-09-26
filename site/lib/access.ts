@@ -3,6 +3,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { getStore, type Registrant } from "./store";
 import { sendMail } from "./mail";
+import { emailList as list, isOperator, normaliseEmail } from "./operators";
+
+export { isOperator, normaliseEmail };
 
 /**
  * Registration and access.
@@ -30,19 +33,10 @@ const COOKIE = process.env.NODE_ENV === "production" ? "__Host-session" : "sessi
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const now = () => new Date().toISOString();
 
-export function normaliseEmail(raw: string): string {
-  return raw.trim().toLowerCase();
-}
-
 export function validEmail(email: string): boolean {
   return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
 }
 
-const list = (v: string | undefined) => (v ?? "").split(",").map(normaliseEmail).filter(Boolean);
-
-export function isOperator(email: string): boolean {
-  return list(process.env.OPERATOR_EMAILS).includes(email);
-}
 
 /** Exact domain match on the part after the last "@"; subdomains do not match. */
 export function autoApproved(email: string): boolean {

@@ -29,6 +29,28 @@ page.
 | `OPERATOR_EMAILS` | yes | Comma-separated. Who may approve and revoke. Explicit list; no default, no domain rule |
 | `AUTO_APPROVE_DOMAINS` | no | Comma-separated domains whose addresses are approved on verification. Reading access only; exact match, subdomains excluded |
 
+### Pool admission (ADRs 0045 to 0052)
+
+A signed-in participant's officer opens `/admit` and scans two QR codes with the holder wallet:
+the officer credential, then the wallet-control credential. The site signs each request as the
+Access Issuer, receives each presentation at `/api/admission/callback`, gets the verdict from the
+protocol's hosted verifier, fetches the corporation's corporate identity, and assesses the three
+(`lib/admission/assess.ts`). An operator approves on `/operator`, and the site writes the pool
+grant and the Identity Registry grant. Every presentation, verdict and document is kept with the
+admission; their hash is the evidence in both grants.
+
+| Variable | Purpose |
+|---|---|
+| `CREDENTIAL_VERIFIER_URL` | The protocol's hosted verifier |
+| `ADMISSION_VERIFIER_DID`, `ADMISSION_VERIFIER_NAME` | The Access Issuer as a verifier, as registered with the protocol |
+| `ADMISSION_VERIFIER_SEED` | 32-byte seed of its ML-DSA-65 key. Sensitive |
+| `ADMISSION_VERIFIER_INLINE_KEY` | `1` to put the public key in each request instead of relying on the protocol's verifier registry |
+| `ADMISSION_ISSUER_DID`, `ADMISSION_ISSUER_PUBKEY` | The configured issuer and its pinned ML-DSA-65 public key (ADR 0042) |
+| `ADMISSION_SCHEMAS` | JSON: `officer`, `walletControl`, `corporateIdentity` schema URIs |
+| `ADMISSION_CORPORATE_ISSUERS` | JSON: corporation DID to the base address of its issuer backend, for discovery |
+| `MANIFEST_JSON`, `RPC_URL` | The deployment grants are written to |
+| `SIGNER_KEYS` | JSON: `accessIssuer` to the Access Issuer's chain key. Sensitive; a key management service before anything real (ADR 0048) |
+
 In development, mail is written to the server log and the store is `site/.data/store.json`.
 
 ## Commands
@@ -38,6 +60,8 @@ npm install
 OPERATOR_EMAILS=operator@example.org AUTO_APPROVE_DOMAINS=approved.example npm run dev > /tmp/site-dev.log 2>&1 &
 rm -rf .data && npm run e2e          # 31 end-to-end checks against the dev server
 npm run build && npm run typecheck
+npm test                                                   # chain library and admission unit tests
+../ops/reset.sh && npm run test:admission                  # the admission flow against the local chain
 ```
 
 The overview is copied from `docs/solution-overview.html` at build time, so the repository keeps

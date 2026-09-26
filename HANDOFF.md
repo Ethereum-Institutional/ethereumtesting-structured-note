@@ -422,6 +422,14 @@ are ADRs 0027 to 0041.
   writes both grants** (ADR 0044): `script/Attest.s.sol` reads the verifier's result
   (`ops/attestations/example.json` shows the shape; real files are not committed), makes the Access
   Issuer's checks, and writes the pool grant and the Identity Registry grant.
+- **Admission by QR** (ADRs 0045 to 0052, site `/admit`): an officer scans two codes with the
+  holder wallet, the officer credential then the wallet-control credential issued to that officer;
+  the site verifies each through the protocol's hosted verifier, fetches the corporation's
+  corporate identity, checks the chain wallet, officer, corporation, corporate identity, and an
+  operator approves before the site writes both grants. The bank, as the one configured issuer,
+  verifies officers and issues all four credentials; the officer's credential is the grant's
+  fourth. An integration deployment on the test network (ADR 0051) uses keys from
+  `ops/new-network-keys.sh` and `ops/deploy-network.sh`; it is not the PoC execution.
 - **Checker** requires both the deposit's ERC-7943 eligibility and the credential grant (ADR 0031).
 - **Pool** (ADR 0038): the payment token against the deposit at par, fee 0.05%, spacing 10, one
   position from 0.995 to 1.005 by the Deposit Agent, the only liquidity provider.

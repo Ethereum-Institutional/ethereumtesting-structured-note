@@ -2,7 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { confirm, decide, register, requestSignIn, signOut } from "@/lib/access";
+import { confirm, currentOperator, currentRegistrant, decide, register, requestSignIn, signOut } from "@/lib/access";
+import { decideAdmission, renewRequest, startAdmission } from "@/lib/admission/service";
+import { getStore } from "@/lib/store";
 import { MailUnavailable } from "@/lib/mail";
 import { siteOrigin } from "@/lib/origin";
 
@@ -46,4 +48,31 @@ export async function decideAction(f: FormData) {
   if (d !== "approve" && d !== "revoke") throw new Error("Unknown decision.");
   await decide(field(f, "id"), d, await siteOrigin());
   revalidatePath("/operator");
+}
+
+export async function startAdmissionAction() {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
+  await startAdmission(who, await siteOrigin());
+  revalidatePath("/admit");
+}
+
+export async function renewAdmissionAction(f: FormData) {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
+  const a = await getStore().admissionById(field(f, "id"));
+  if (a && a.registrantId === who.id) await renewRequest(a, await siteOrigin());
+  revalidatePath("/admit");
+}
+
+export async function decideAdmissionAction(f: FormData) {
+  const op = await currentOperator();
+  if (!op) throw new Error("Not permitted.");
+  const d = field(f, "decision");
+  if (d !== "approve" && d !== "decline") throw new Error("Unknown decision.");
+  try {
+    await decideAdmission(field(f, "id"), d, op);
+  } finally {
+    revalidatePath("/operator");
+  }
 }
