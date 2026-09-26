@@ -17,6 +17,12 @@ import { loadManifest } from "../chain/manifest.ts";
 import { getStore, type Admission, type Registrant } from "../store.ts";
 import { emailList, isOperator } from "../operators.ts";
 import { sendMail } from "../mail.ts";
+import { assessBankAdmission, type BankAdmissionInput, type BankRecord } from "./assess.ts";
+import { bankConfig, completeWalletAttestation, corporateIdentityFor, startWalletAttestation, type WalletChallenge } from "./bank.ts";
+import { openCustodyAccount, readyToTrade, signAsCustodyAccount } from "./custody.ts";
+import { policyConfig } from "./protocol.ts";
+import type { Address, Hex } from "viem";
+
 
 /**
  * Admission to the conversion pool (ADRs 0045 to 0048, 0052).
@@ -65,6 +71,7 @@ export async function startAdmission(r: Registrant, origin: string): Promise<Adm
   const a: Admission = {
     id: `adm_${randomBytes(9).toString("base64url")}`,
     registrantId: r.id,
+    route: "holder-wallet",
     status: "awaiting-officer",
     createdAt: now(),
     officerRequestId: request.requestId,
@@ -185,4 +192,170 @@ function extract(body: unknown): Presentation | null {
   const o = body as Record<string, unknown>;
   const p = (o.presentation && typeof o.presentation === "object" ? o.presentation : o) as Presentation;
   return p && typeof p === "object" && p.header && Array.isArray(p.disclosed) ? p : null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The bank's routes (ADR 0054)
+// ---------------------------------------------------------------------------------------------
+
+
+const PURPOSE = "Admission to the conversion pool";
+
+/**
+ * Route 1, custodied: the bank's staff admit a client on its instruction. The custodian opens a
+ * custody account; the account signs the wallet-control message; the bank mints the wallet
+ * credential; both grants are written and the account is made ready to trade. One action.
+ */
+export async function admitCustodied(
+  staff: Registrant,
+  input: { kycReference: string; instructionRef: string; clientRef: string; record: Omit<BankRecord, "kycReference"> },
+): Promise<Admission> {
+  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  const store = getStore();
+  const policy = policyConfig();
+  const bank = bankConfig();
+  const chainId = loadManifest().chainId;
+  const record: BankRecord = { ...input.record, kycReference: input.kycReference };
+  const a: Admission = {
+    id: `adm_${randomBytes(9).toString("base64url")}`,
+    registrantId: staff.id,
+    route: "custodied",
+    status: "failed",
+    createdAt: now(),
+    officerRequestId: null,
+    walletRequestId: null,
+    data: { record, instructionRef: input.instructionRef, clientRef: input.clientRef, reviewedBy: staff.email, error: "writing" },
+  };
+  await store.putAdmission(a);
+  try {
+    const corporate = await corporateIdentityFor(bank, input.kycReference, policy.schemas.corporateIdentity, nowSec());
+    const account = await openCustodyAccount(input.clientRef);
+    const challenge = await startWalletAttestation(bank, corporate.subjectDid, `eip155:${chainId}`, account, PURPOSE);
+    const signature = await signAsCustodyAccount(challenge.typedData);
+    const wallet = await completeWalletAttestation(bank, challenge.challengeId, account, "smart_contract", signature);
+    const admission: BankAdmissionInput = {
+      route: "custodied",
+      record,
+      corporateIdentity: corporate,
+      wallet: { credentialId: wallet.credentialId, address: account, addressType: "smart_contract", chain: `eip155:${chainId}` },
+      instructionRef: input.instructionRef,
+      reviewedBy: staff.email,
+    };
+    const assessment = assessBankAdmission(policy, admission, chainId, nowSec());
+    const data = { ...a.data, admission, walletAttestation: { challenge, signature, wallet }, assessment };
+    if (!assessment.ok) {
+      await store.updateAdmission({ ...a, status: "refused", data: { ...data, error: undefined } }, "failed");
+      return (await store.admissionById(a.id))!;
+    }
+    const written = await writeGrants(policy.issuerDid, assessment.attestation, assessment.registry);
+    const readyTx = await readyToTrade(account);
+    await store.updateAdmission({ ...a, status: "admitted", data: { ...data, written: { ...written, readyTx }, error: undefined } }, "failed");
+    await store.audit({ at: now(), actor: staff.email, action: `admitted custody account ${account} for ${record.legalName}`, subject: a.id });
+  } catch (e) {
+    await store.updateAdmission({ ...a, data: { ...a.data, error: (e as Error).message } }, "failed");
+    throw e;
+  }
+  return (await store.admissionById(a.id))!;
+}
+
+/** Route 2, step 1: a signed-in client asks for its own wallet to be admitted under its bank KYB. */
+export async function requestSelfCustody(
+  client: Registrant,
+  input: { kycReference: string; walletAddress: string; addressType: "eoa" | "smart_contract" },
+): Promise<Admission> {
+  const a: Admission = {
+    id: `adm_${randomBytes(9).toString("base64url")}`,
+    registrantId: client.id,
+    route: "self-custody",
+    status: "awaiting-bank-review",
+    createdAt: now(),
+    officerRequestId: null,
+    walletRequestId: null,
+    data: { request: { ...input, requestedBy: client.email, organisation: client.organisation } },
+  };
+  await getStore().putAdmission(a);
+  await getStore().audit({ at: now(), actor: client.email, action: "asked for a self-custody wallet to be admitted", subject: a.id });
+  return a;
+}
+
+/**
+ * Route 2, step 2: the bank's staff confirm the request is from the client they know, and state
+ * the client's details from their file. Only then is a wallet challenge issued, so the bank never
+ * mints a credential for a wallet it has not matched to a client.
+ */
+export async function reviewSelfCustody(
+  staff: Registrant,
+  id: string,
+  outcome: "approve" | "decline",
+  record?: Omit<BankRecord, "kycReference">,
+): Promise<void> {
+  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.route !== "self-custody" || a.status !== "awaiting-bank-review") throw new Error("That request is not awaiting review.");
+  const d = a.data as Record<string, any>;
+  if (outcome === "decline") {
+    await store.updateAdmission({ ...a, status: "declined", data: { ...d, reviewedBy: staff.email } }, a.status);
+    await store.audit({ at: now(), actor: staff.email, action: "declined a self-custody request", subject: a.id });
+    return;
+  }
+  const policy = policyConfig();
+  const bank = bankConfig();
+  const chainId = loadManifest().chainId;
+  const corporate = await corporateIdentityFor(bank, d.request.kycReference, policy.schemas.corporateIdentity, nowSec());
+  const challenge = await startWalletAttestation(bank, corporate.subjectDid, `eip155:${chainId}`, d.request.walletAddress, PURPOSE);
+  await store.updateAdmission(
+    { ...a, status: "awaiting-signature", data: { ...d, record: { ...record!, kycReference: d.request.kycReference }, corporate, challenge, reviewedBy: staff.email } },
+    a.status,
+  );
+  await store.audit({ at: now(), actor: staff.email, action: "approved a self-custody request; awaiting the wallet's signature", subject: a.id });
+}
+
+/** A fresh challenge, when the client did not sign the last one in time. */
+export async function renewSelfCustodyChallenge(client: Registrant, id: string): Promise<void> {
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.registrantId !== client.id || a.status !== "awaiting-signature") return;
+  const d = a.data as Record<string, any>;
+  const challenge = await startWalletAttestation(bankConfig(), d.corporate.subjectDid, `eip155:${loadManifest().chainId}`, d.request.walletAddress, PURPOSE);
+  await store.updateAdmission({ ...a, data: { ...d, challenge } }, a.status);
+}
+
+/** Route 2, step 3: the client's one signature. The bank mints the wallet credential; grants follow. */
+export async function submitSelfCustodySignature(client: Registrant, id: string, signature: Hex): Promise<Admission> {
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.registrantId !== client.id || a.status !== "awaiting-signature") throw new Error("That admission is not awaiting a signature.");
+  const d = a.data as Record<string, any>;
+  const policy = policyConfig();
+  const chainId = loadManifest().chainId;
+  const challenge = d.challenge as WalletChallenge;
+  const walletAddress = d.request.walletAddress as Address;
+  if (!(await store.updateAdmission({ ...a, status: "failed", data: { ...d, error: "writing" } }, "awaiting-signature"))) {
+    throw new Error("That signature was submitted already.");
+  }
+  try {
+    const wallet = await completeWalletAttestation(bankConfig(), challenge.challengeId, walletAddress, d.request.addressType, signature);
+    const admission: BankAdmissionInput = {
+      route: "self-custody",
+      record: d.record,
+      corporateIdentity: d.corporate,
+      wallet: { credentialId: wallet.credentialId, address: walletAddress, addressType: d.request.addressType, chain: `eip155:${chainId}` },
+      instructionRef: a.id,
+      reviewedBy: d.reviewedBy,
+    };
+    const assessment = assessBankAdmission(policy, admission, chainId, nowSec());
+    const data = { ...d, admission, walletAttestation: { challenge, signature, wallet }, assessment, error: undefined };
+    if (!assessment.ok) {
+      await store.updateAdmission({ ...a, status: "refused", data }, "failed");
+    } else {
+      const written = await writeGrants(policy.issuerDid, assessment.attestation, assessment.registry);
+      await store.updateAdmission({ ...a, status: "admitted", data: { ...data, written } }, "failed");
+      await store.audit({ at: now(), actor: client.email, action: `admitted self-custody wallet ${walletAddress}`, subject: a.id });
+    }
+  } catch (e) {
+    await store.updateAdmission({ ...a, status: "failed", data: { ...d, error: (e as Error).message } }, "failed");
+    throw e;
+  }
+  return (await store.admissionById(a.id))!;
 }

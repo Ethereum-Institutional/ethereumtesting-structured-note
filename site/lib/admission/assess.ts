@@ -209,3 +209,107 @@ export function assess(
   };
   return { ok: true, attestation, registry, summary };
 }
+
+// ---------------------------------------------------------------------------------------------
+// The bank's routes (ADR 0054): custodied, and self-custody through the bank
+// ---------------------------------------------------------------------------------------------
+
+/** What the bank states from its own KYB file about the client. */
+export type BankRecord = {
+  kycReference: string;
+  legalName: string;
+  jurisdiction: string; // ISO 3166-1 alpha-2
+  status: string; // "active"
+  screenedAt: number; // the bank's latest sanctions screening, Unix seconds
+  investorClass?: string; // institutional by policy when absent (ADR 0053)
+};
+
+export type BankAdmissionInput = {
+  route: "custodied" | "self-custody";
+  record: BankRecord;
+  corporateIdentity: { credentialId: string; subjectDid: string; schema: string; issuedAt: number; expiresAt: number };
+  wallet: { credentialId: string; address: string; addressType: "eoa" | "smart_contract"; chain: string };
+  /** The client's instruction or request, and who reviewed it at the bank. */
+  instructionRef: string;
+  reviewedBy: string;
+};
+
+export function bankEvidenceOf(i: BankAdmissionInput): Hex {
+  return `0x${createHash("sha256").update(canonicalString(i)).digest("hex")}`;
+}
+
+/**
+ * The bank's statement becomes the same two grants as the holder-wallet route. The credential
+ * identifiers make the grant revocable; the jurisdiction, status and screening are the bank's, from
+ * its records. The gate still checks the issuer is active, nothing is revoked, and the policy.
+ */
+export function assessBankAdmission(
+  c: Pick<ProtocolConfig, "schemas">,
+  i: BankAdmissionInput,
+  chainId: number,
+  nowSec: number,
+): Assessment {
+  const problems: string[] = [];
+  const fail = (m: string) => problems.push(m);
+  const r = i.record;
+
+  if (i.corporateIdentity.schema !== c.schemas.corporateIdentity) fail(`the credential found is not a corporate identity (${i.corporateIdentity.schema})`);
+  if (r.status !== "active") fail(`the bank records the client as ${r.status || "not active"}`);
+  if (!(r.jurisdiction in NUMERIC)) fail(`the client's jurisdiction is outside the pool's allowlist (${r.jurisdiction || "none"})`);
+  const investorClass = r.investorClass == null || r.investorClass === "" ? INSTITUTIONAL : INVESTOR_CLASSES.indexOf(r.investorClass);
+  if (investorClass < 0) fail(`unknown investor class (${r.investorClass})`);
+  if (!(r.screenedAt <= nowSec)) fail("the screening date is in the future");
+  if (!i.instructionRef.trim()) fail("the client's instruction reference is missing");
+  const address = isAddress(i.wallet.address) ? getAddress(i.wallet.address) : null;
+  if (!address) fail("the wallet address is not valid");
+  if (i.wallet.addressType === "smart_contract" && i.wallet.chain !== `eip155:${chainId}`) {
+    fail(`a contract wallet attested on ${i.wallet.chain} cannot be admitted on eip155:${chainId}`);
+  }
+  if (i.route === "custodied" && i.wallet.addressType !== "smart_contract") fail("a custodied admission is for the custody account, a contract wallet");
+  const primary = bytes32(i.corporateIdentity.credentialId);
+  const walletCid = bytes32(i.wallet.credentialId);
+  if (!primary || !walletCid) fail("a credential identifier is not 32 bytes");
+  if (!(i.corporateIdentity.expiresAt > nowSec)) fail("the corporate identity has expired");
+
+  if (problems.length || !address || !primary || !walletCid) return { ok: false, problems };
+
+  const schema = keccak256(toBytes(c.schemas.corporateIdentity));
+  const evidence = bankEvidenceOf(i);
+  const expiresAt = i.corporateIdentity.expiresAt;
+  const attestation: Attestation = {
+    account: address,
+    path: 1,
+    primaryCredential: primary,
+    screeningCredential: primary,
+    walletCredential: walletCid,
+    authorityCredential: `0x${"00".repeat(32)}` as Hex, // the bank's KYB establishes who may act (ADR 0054)
+    primarySchema: schema,
+    screeningSchema: schema,
+    checks: CHECK_WALLET_CONTROL | CHECK_NOT_EXPIRED | CHECK_ENTITY_ACTIVE | CHECK_SANCTIONS_CLEAN,
+    jurisdiction: `0x${Buffer.from(r.jurisdiction, "latin1").toString("hex")}` as Hex,
+    investorClass,
+    screenedAt: r.screenedAt,
+    credentialExpiry: expiresAt,
+    evidence,
+  };
+  const registry: RegistryGrant = {
+    account: address,
+    flags: { professional: investorClass === 1 || investorClass === 2, contractAccount: i.wallet.addressType === "smart_contract" },
+    jurisdiction: NUMERIC[r.jurisdiction],
+    expiresAt: Math.min(expiresAt, nowSec + REGISTRY_VALIDITY),
+    credentialRef: primary,
+    commitment: evidence,
+  };
+  const summary: Summary = {
+    corporation: r.legalName,
+    corporationDid: i.corporateIdentity.subjectDid,
+    officerDid: "",
+    role: i.route,
+    wallet: address,
+    walletType: i.wallet.addressType,
+    jurisdiction: r.jurisdiction,
+    investorClass: INVESTOR_CLASSES[investorClass],
+    expiresAt,
+  };
+  return { ok: true, attestation, registry, summary };
+}

@@ -82,6 +82,7 @@ contract PoolCredentialRegistry is AccessControl {
         uint40 maxValidity;
         uint40 screeningMaxAge;
         uint40 rootFreshness; // zero: not required
+        bool entityRequiresAuthority; // an entity must name the presenting officer's credential (ADR 0054)
     }
 
     /// @notice What the attester read from the holder's presentation.
@@ -119,6 +120,8 @@ contract PoolCredentialRegistry is AccessControl {
     uint40 public immutable MAX_VALIDITY;
     uint40 public immutable SCREENING_MAX_AGE;
     uint40 public immutable ROOT_FRESHNESS;
+    /// @notice Whether an entity's grant must name an officer credential (ADRs 0049, 0054).
+    bool public immutable ENTITY_REQUIRES_AUTHORITY;
 
     bytes32 private immutable ENTITY_PRIMARY_SCHEMA;
     bytes32 private immutable ENTITY_SCREENING_SCHEMA;
@@ -201,6 +204,7 @@ contract PoolCredentialRegistry is AccessControl {
         MAX_VALIDITY = c.maxValidity;
         SCREENING_MAX_AGE = c.screeningMaxAge;
         ROOT_FRESHNESS = c.rootFreshness;
+        ENTITY_REQUIRES_AUTHORITY = c.entityRequiresAuthority;
         ENTITY_PRIMARY_SCHEMA = c.entity.primarySchema;
         ENTITY_SCREENING_SCHEMA = c.entity.screeningSchema;
         ENTITY_CHECKS = c.entity.requiredChecks;
@@ -334,8 +338,11 @@ contract PoolCredentialRegistry is AccessControl {
         if (p.screeningSchema == p.primarySchema && a.screeningCredential != a.primaryCredential) {
             revert ScreeningNotInCredential(a.screeningCredential);
         }
-        // An entity is admitted on an officer's presentation (ADRs 0046, 0049); a person on its own.
-        if (a.path == Path.Entity && a.authorityCredential == bytes32(0)) revert AuthorityCredentialRequired();
+        // Where the gate's policy says so, an entity is admitted on an officer's credential (ADRs
+        // 0049, 0054); otherwise it may still name one. A person acts for itself.
+        if (a.path == Path.Entity && ENTITY_REQUIRES_AUTHORITY && a.authorityCredential == bytes32(0)) {
+            revert AuthorityCredentialRequired();
+        }
         if (a.path == Path.Person && a.authorityCredential != bytes32(0)) revert AuthorityCredentialNotExpected();
         uint32 missing = p.requiredChecks & ~a.checks;
         if (missing != 0) revert ChecksMissing(missing);

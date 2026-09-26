@@ -57,7 +57,8 @@ contract PoolCredentialRegistryTest is Test {
             investorClasses: uint8(1 << 1 | 1 << 2),
             maxValidity: 90 days,
             screeningMaxAge: 30 days,
-            rootFreshness: freshness
+            rootFreshness: freshness,
+            entityRequiresAuthority: true
         });
     }
 
@@ -157,6 +158,17 @@ contract PoolCredentialRegistryTest is Test {
         emit PoolCredentialRegistry.AccessVoided(holder, a.walletCredential);
         gate.void(holder);
         assertFalse(gate.isAllowed(holder));
+    }
+
+    /// Where the policy does not require an officer, an entity is admitted without one (ADR 0054).
+    function test_authorityCredential_optionalByPolicy() public {
+        PoolCredentialRegistry.Config memory c = _config(0);
+        c.entityRequiresAuthority = false;
+        gate = new PoolCredentialRegistry(c);
+        PoolCredentialRegistry.Attestation memory a = _entity();
+        a.authorityCredential = bytes32(0);
+        _grant(a);
+        assertTrue(gate.isAllowed(holder));
     }
 
     /// An entity needs the presenting officer's credential; a person presents for itself.

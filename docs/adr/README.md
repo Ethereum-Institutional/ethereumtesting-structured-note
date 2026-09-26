@@ -61,3 +61,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0051](0051-integration-deployment.md) | An integration deployment on the test network, separate from the PoC execution | Accepted |
 | [0052](0052-bank-verifies-officers.md) | The bank verifies the officer structure and issues officer credentials; changes wait for notice or the periodic refresh | Accepted |
 | [0053](0053-entities-institutional-by-policy.md) | Entities admitted on the bank's KYB are institutional by policy | Accepted |
+| [0054](0054-three-onboarding-routes.md) | Three routes into the pool: custodied by default, self-custody through the bank, and the holder wallet | Accepted |

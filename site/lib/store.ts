@@ -35,6 +35,8 @@ export type AuditEntry = { at: string; actor: string; action: string; subject: s
  * presentations and verdicts, the corporate identity and the assessment, whole, as evidence.
  */
 export type AdmissionStatus =
+  | "awaiting-bank-review"
+  | "awaiting-signature"
   | "awaiting-officer"
   | "awaiting-wallet"
   | "ready"
@@ -43,12 +45,17 @@ export type AdmissionStatus =
   | "declined"
   | "failed";
 
+/** How the participant came in (ADR 0054). */
+export type AdmissionRoute = "custodied" | "self-custody" | "holder-wallet";
+
 export type Admission = {
   id: string;
   registrantId: string;
+  route: AdmissionRoute;
   status: AdmissionStatus;
   createdAt: string;
-  officerRequestId: string;
+  /** The holder-wallet route's request identifiers; null on the bank's routes. */
+  officerRequestId: string | null;
   walletRequestId: string | null;
   data: Record<string, unknown>;
 };
@@ -117,9 +124,10 @@ create table if not exists sessions (
 create table if not exists admissions (
   id text primary key,
   registrant_id text not null references registrants(id),
+  route text not null,
   status text not null,
   created_at timestamptz not null,
-  officer_request_id text not null unique,
+  officer_request_id text unique,
   wallet_request_id text unique,
   data jsonb not null
 );
@@ -149,9 +157,10 @@ const toRegistrant = (r: Row): Registrant => ({
 const toAdmission = (r: Row): Admission => ({
   id: r.id as string,
   registrantId: r.registrant_id as string,
+  route: r.route as AdmissionRoute,
   status: r.status as AdmissionStatus,
   createdAt: iso(r.created_at)!,
-  officerRequestId: r.officer_request_id as string,
+  officerRequestId: (r.officer_request_id as string) ?? null,
   walletRequestId: (r.wallet_request_id as string) ?? null,
   data: (typeof r.data === "string" ? JSON.parse(r.data) : r.data) as Record<string, unknown>,
 });
@@ -246,8 +255,8 @@ function postgresStore(url: string): Store {
     },
     async putAdmission(a) {
       const s = await q();
-      await s`insert into admissions (id, registrant_id, status, created_at, officer_request_id, wallet_request_id, data)
-              values (${a.id}, ${a.registrantId}, ${a.status}, ${a.createdAt}, ${a.officerRequestId}, ${a.walletRequestId}, ${s.json(a.data as any)})`;
+      await s`insert into admissions (id, registrant_id, route, status, created_at, officer_request_id, wallet_request_id, data)
+              values (${a.id}, ${a.registrantId}, ${a.route}, ${a.status}, ${a.createdAt}, ${a.officerRequestId}, ${a.walletRequestId}, ${s.json(a.data as any)})`;
     },
     async admissionById(id) {
       const s = await q();

@@ -77,5 +77,11 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     });
   }
 
-  return { publicClient, send, resetNonces, address: (capacity: string) => account(capacity).address };
+  /** Signs EIP-712 typed data as a capacity, for a message the capacity attests off-chain. */
+  async function signTypedData(capacity: string, typedData: Record<string, any>): Promise<Hex> {
+    const { EIP712Domain: _domainTypes, ...types } = typedData.types ?? {};
+    return account(capacity).signTypedData({ domain: typedData.domain, types, primaryType: typedData.primaryType, message: typedData.message });
+  }
+
+  return { publicClient, send, signTypedData, resetNonces, address: (capacity: string) => account(capacity).address };
 }

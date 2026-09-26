@@ -29,15 +29,23 @@ page.
 | `OPERATOR_EMAILS` | yes | Comma-separated. Who may approve and revoke. Explicit list; no default, no domain rule |
 | `AUTO_APPROVE_DOMAINS` | no | Comma-separated domains whose addresses are approved on verification. Reading access only; exact match, subdomains excluded |
 
-### Pool admission (ADRs 0045 to 0052)
+### Pool admission (ADRs 0045 to 0054)
 
-A signed-in participant's officer opens `/admit` and scans two QR codes with the holder wallet:
-the officer credential, then the wallet-control credential. The site signs each request as the
-Access Issuer, receives each presentation at `/api/admission/callback`, gets the verdict from the
-protocol's hosted verifier, fetches the corporation's corporate identity, and assesses the three
-(`lib/admission/assess.ts`). An operator approves on `/operator`, and the site writes the pool
-grant and the Identity Registry grant. Every presentation, verdict and document is kept with the
-admission; their hash is the evidence in both grants.
+Three routes, one result: a pool grant and an Identity Registry grant, resting on the bank's KYB.
+
+1. **Custodied, the default.** Bank staff admit a client on its instruction at `/operator`: the
+   custodian opens a segregated custody account, the account signs the wallet-control message
+   (EIP-1271), the bank's issuer mints the wallet credential, both grants are written and the
+   account is approved to trade. One action; the client does nothing.
+2. **Self-custody through the bank.** At `/admit` the client names its wallet; bank staff confirm it
+   against their records; the client signs once, from a browser wallet or by pasting a signature
+   from any other signer; the bank mints the wallet credential and the grants follow.
+3. **Holder wallet.** At `/admit` an officer scans two QR codes with the holder wallet; the site
+   receives each presentation at `/api/admission/callback` and an operator approves.
+
+In routes 1 and 2 the client's jurisdiction, status and screening are the bank's statement from its
+file; the credential identifiers make the grant revocable. Every input is kept with the admission;
+their hash is the evidence in both grants.
 
 | Variable | Purpose |
 |---|---|
@@ -49,7 +57,8 @@ admission; their hash is the evidence in both grants.
 | `ADMISSION_SCHEMAS` | JSON: `officer`, `walletControl`, `corporateIdentity` schema URIs |
 | `ADMISSION_CORPORATE_ISSUERS` | JSON: corporation DID to the base address of its issuer backend, for discovery |
 | `MANIFEST_JSON`, `RPC_URL` | The deployment grants are written to |
-| `SIGNER_KEYS` | JSON: `accessIssuer` to the Access Issuer's chain key. Sensitive; a key management service before anything real (ADR 0048) |
+| `SIGNER_KEYS` | JSON: `accessIssuer` and `custodian` to their chain keys. Sensitive; a key management service before anything real (ADR 0048) |
+| `BANK_ISSUER_URL`, `BANK_ISSUER_TOKEN` | The bank's issuer backend and an operator session of its staff, for routes 1 and 2. The token is sensitive |
 
 In development, mail is written to the server log and the store is `site/.data/store.json`.
 

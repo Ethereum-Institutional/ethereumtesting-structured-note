@@ -3,7 +3,16 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { confirm, currentOperator, currentRegistrant, decide, register, requestSignIn, signOut } from "@/lib/access";
-import { decideAdmission, renewRequest, startAdmission } from "@/lib/admission/service";
+import {
+  admitCustodied,
+  decideAdmission,
+  renewRequest,
+  renewSelfCustodyChallenge,
+  requestSelfCustody,
+  reviewSelfCustody,
+  startAdmission,
+  submitSelfCustodySignature,
+} from "@/lib/admission/service";
 import { getStore } from "@/lib/store";
 import { MailUnavailable } from "@/lib/mail";
 import { siteOrigin } from "@/lib/origin";
@@ -75,4 +84,68 @@ export async function decideAdmissionAction(f: FormData) {
   } finally {
     revalidatePath("/operator");
   }
+}
+
+/** The bank's statement of a client's details, from its own file (ADR 0054). */
+function bankRecord(f: FormData) {
+  const screened = field(f, "screenedOn");
+  return {
+    legalName: field(f, "legalName").trim(),
+    jurisdiction: field(f, "jurisdiction").trim().toUpperCase(),
+    status: field(f, "status") || "active",
+    screenedAt: screened ? Math.floor(Date.parse(`${screened}T00:00:00Z`) / 1000) : Math.floor(Date.now() / 1000),
+    ...(field(f, "investorClass") ? { investorClass: field(f, "investorClass") } : {}),
+  };
+}
+
+export async function admitCustodiedAction(f: FormData) {
+  const op = await currentOperator();
+  if (!op) throw new Error("Not permitted.");
+  try {
+    await admitCustodied(op, {
+      kycReference: field(f, "kycReference").trim(),
+      instructionRef: field(f, "instructionRef").trim(),
+      clientRef: field(f, "clientRef").trim(),
+      record: bankRecord(f),
+    });
+  } finally {
+    revalidatePath("/operator");
+  }
+}
+
+export async function reviewSelfCustodyAction(f: FormData) {
+  const op = await currentOperator();
+  if (!op) throw new Error("Not permitted.");
+  const d = field(f, "decision");
+  if (d !== "approve" && d !== "decline") throw new Error("Unknown decision.");
+  try {
+    await reviewSelfCustody(op, field(f, "id"), d, d === "approve" ? bankRecord(f) : undefined);
+  } finally {
+    revalidatePath("/operator");
+  }
+}
+
+export async function requestSelfCustodyAction(f: FormData) {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
+  const type = field(f, "addressType") === "smart_contract" ? "smart_contract" : "eoa";
+  await requestSelfCustody(who, { kycReference: field(f, "kycReference").trim(), walletAddress: field(f, "walletAddress").trim(), addressType: type });
+  revalidatePath("/admit");
+}
+
+export async function submitSignatureAction(f: FormData) {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
+  try {
+    await submitSelfCustodySignature(who, field(f, "id"), field(f, "signature").trim() as `0x${string}`);
+  } finally {
+    revalidatePath("/admit");
+  }
+}
+
+export async function renewChallengeAction(f: FormData) {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
+  await renewSelfCustodyChallenge(who, field(f, "id"));
+  revalidatePath("/admit");
 }

@@ -190,3 +190,50 @@ test("the evidence hash changes with anything the admission rests on", () => {
   assert.notEqual(e1, e2);
   assert.match(e1, /^0x[0-9a-f]{64}$/);
 });
+
+// --- the bank's routes (ADR 0054) ---
+
+import { assessBankAdmission, type BankAdmissionInput } from "./assess.ts";
+
+const bankInput = (p: Partial<BankAdmissionInput> = {}, record: Partial<BankAdmissionInput["record"]> = {}, wallet: Partial<BankAdmissionInput["wallet"]> = {}): BankAdmissionInput => ({
+  route: "custodied",
+  record: { kycReference: "KYC-1", legalName: "Test Institution One", jurisdiction: "LU", status: "active", screenedAt: NOW - 3600, ...record },
+  corporateIdentity: { credentialId: cid("corporate identity"), subjectDid: CORP, schema: "schema:corporate/v1", issuedAt: NOW - 300 * 86_400, expiresAt: NOW + 60 * 86_400 },
+  wallet: { credentialId: cid("wallet"), address: WALLET, addressType: "smart_contract", chain: "eip155:84532", ...wallet },
+  instructionRef: "INS-1",
+  reviewedBy: "staff@bank.example",
+  ...p,
+});
+
+test("a custodied admission rests on the bank's record and the credential identifiers", () => {
+  const a = assessBankAdmission(config, bankInput(), 84532, NOW);
+  assert.ok(a.ok, JSON.stringify(!a.ok && a.problems));
+  if (!a.ok) return;
+  assert.equal(a.attestation.primaryCredential, cid("corporate identity"));
+  assert.equal(a.attestation.walletCredential, cid("wallet"));
+  assert.equal(a.attestation.authorityCredential, `0x${"00".repeat(32)}`, "no officer: the bank's KYB establishes authority");
+  assert.equal(a.attestation.screenedAt, NOW - 3600, "the bank's latest screening, not the credential's issue date");
+  assert.equal(a.attestation.investorClass, 2, "institutional by policy");
+  assert.ok(a.registry.flags.contractAccount);
+  assert.equal(a.attestation.credentialExpiry, NOW + 60 * 86_400);
+});
+
+test("a self-custody admission of an ordinary wallet attested on another EVM chain is accepted", () => {
+  assert.ok(assessBankAdmission(config, bankInput({ route: "self-custody" }, {}, { addressType: "eoa", chain: "eip155:1" }), 84532, NOW).ok);
+});
+
+const bankRefusals: Array<[string, BankAdmissionInput, RegExp]> = [
+  ["a custodied admission of an ordinary wallet", bankInput({}, {}, { addressType: "eoa" }), /for the custody account/],
+  ["a contract wallet attested on another chain", bankInput({ route: "self-custody" }, {}, { chain: "eip155:1" }), /contract wallet attested on eip155:1/],
+  ["a client the bank records as suspended", bankInput({}, { status: "suspended" }), /records the client as suspended/],
+  ["a jurisdiction outside the allowlist", bankInput({}, { jurisdiction: "US" }), /outside the pool's allowlist \(US\)/],
+  ["no instruction reference", bankInput({ instructionRef: " " }), /instruction reference is missing/],
+  ["an expired corporate identity", bankInput({ corporateIdentity: { credentialId: cid("c"), subjectDid: CORP, schema: "schema:corporate/v1", issuedAt: 0, expiresAt: NOW } }), /has expired/],
+  ["a credential of another schema", bankInput({ corporateIdentity: { credentialId: cid("c"), subjectDid: CORP, schema: "schema:passport/v1", issuedAt: 0, expiresAt: NOW + 1000 } }), /not a corporate identity/],
+];
+for (const [name, input, pattern] of bankRefusals) {
+  test(`bank route refused: ${name}`, () => {
+    const a = assessBankAdmission(config, input, 84532, NOW);
+    assert.ok(!a.ok && a.problems.some((p) => pattern.test(p)), JSON.stringify(a));
+  });
+}

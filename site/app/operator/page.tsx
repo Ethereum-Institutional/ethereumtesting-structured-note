@@ -1,10 +1,29 @@
 import { notFound } from "next/navigation";
 import { currentOperator } from "@/lib/access";
 import { getStore, type Registrant } from "@/lib/store";
-import { decideAction, decideAdmissionAction } from "../actions";
+import { admitCustodiedAction, decideAction, decideAdmissionAction, reviewSelfCustodyAction } from "../actions";
 import { Bar } from "../Bar";
 
 export const dynamic = "force-dynamic";
+
+/** What the bank states from its own file about the client (ADR 0054). */
+function BankRecordFields() {
+  return (
+    <>
+      <label>Legal name<input name="legalName" required maxLength={200} /></label>
+      <label>Jurisdiction (ISO code)<input name="jurisdiction" required pattern="[A-Za-z]{2}" maxLength={2} /></label>
+      <label>
+        Status
+        <select name="status" defaultValue="active"><option value="active">Active</option><option value="suspended">Suspended</option></select>
+      </label>
+      <label>Last sanctions screening<input name="screenedOn" type="date" /></label>
+      <label>
+        Investor class
+        <select name="investorClass" defaultValue=""><option value="">Institutional (by policy)</option><option value="professional">Professional</option></select>
+      </label>
+    </>
+  );
+}
 
 const when = (iso: string | null) => (iso ? iso.slice(0, 16).replace("T", " ") + " UTC" : "");
 
@@ -56,11 +75,62 @@ export default async function Operator() {
           </tbody>
         </table>
       </div>
+      <h2 id="custodied">Admit a custodied client</h2>
+      <section className="panel">
+        <p className="muted">
+          On the client's instruction: opens a segregated custody account, mints its wallet credential under the client's
+          existing corporate identity, writes both grants, and makes the account ready to trade.
+        </p>
+        <form action={admitCustodiedAction} className="cols">
+          <div>
+            <label>Client reference (KYB file)<input name="kycReference" required maxLength={200} /></label>
+            <label>Custody account reference<input name="clientRef" required maxLength={64} /></label>
+            <label>Client instruction reference<input name="instructionRef" required maxLength={200} /></label>
+          </div>
+          <div>
+            <BankRecordFields />
+            <button type="submit">Admit</button>
+          </div>
+        </form>
+      </section>
+
+      <h2 id="self-custody">Self-custody requests</h2>
+      <div className="table-wrap panel">
+        <table>
+          <thead><tr><th>Requested by</th><th>Client reference</th><th>Wallet</th><th>Review</th></tr></thead>
+          <tbody>
+            {admissions.filter((a) => a.route === "self-custody" && a.status === "awaiting-bank-review").map((a) => {
+              const r = (a.data as Record<string, any>).request;
+              return (
+                <tr key={a.id}>
+                  <td>{r.requestedBy}, {r.organisation}</td>
+                  <td>{r.kycReference}</td>
+                  <td>{r.walletAddress} ({r.addressType})</td>
+                  <td>
+                    <form action={reviewSelfCustodyAction}>
+                      <input type="hidden" name="id" value={a.id} />
+                      <input type="hidden" name="decision" value="approve" />
+                      <BankRecordFields />
+                      <button type="submit" className="quiet">Confirm the client and ask for the signature</button>
+                    </form>
+                    <form action={reviewSelfCustodyAction}>
+                      <input type="hidden" name="id" value={a.id} />
+                      <input type="hidden" name="decision" value="decline" />
+                      <button type="submit" className="quiet">Decline</button>
+                    </form>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
       <h2 id="admissions">Pool admissions</h2>
       <div className="table-wrap panel">
         <table>
           <thead>
-            <tr><th>Status</th><th>Corporation</th><th>Officer</th><th>Wallet</th><th>Jurisdiction, class</th><th>Grant to</th><th>Detail</th><th /></tr>
+            <tr><th>Route</th><th>Status</th><th>Corporation</th><th>Officer</th><th>Wallet</th><th>Jurisdiction, class</th><th>Grant to</th><th>Detail</th><th /></tr>
           </thead>
           <tbody>
             {admissions.map((a) => {
@@ -69,9 +139,10 @@ export default async function Operator() {
               const detail = d.assessment && !d.assessment.ok ? d.assessment.problems.join(" ") : d.written ? `pool ${d.written.poolGrantTx}, registry ${d.written.registryGrantTx}` : d.error ?? "";
               return (
                 <tr key={a.id}>
+                  <td>{a.route}</td>
                   <td><span className={`pill ${a.status === "ready" ? "pending" : a.status === "admitted" ? "approved" : ""}`}>{a.status}</span></td>
                   <td>{s?.corporation ?? ""}</td>
-                  <td>{s ? `${s.role}, ${s.officerDid}` : ""}</td>
+                  <td>{s?.officerDid ? `${s.role}, ${s.officerDid}` : ""}</td>
                   <td>{s ? `${s.wallet} (${s.walletType})` : ""}</td>
                   <td>{s ? `${s.jurisdiction}, ${s.investorClass}` : ""}</td>
                   <td>{s ? when(new Date(s.expiresAt * 1000).toISOString()) : ""}</td>

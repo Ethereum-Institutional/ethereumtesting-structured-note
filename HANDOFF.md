@@ -422,7 +422,12 @@ are ADRs 0027 to 0041.
   writes both grants** (ADR 0044): `script/Attest.s.sol` reads the verifier's result
   (`ops/attestations/example.json` shows the shape; real files are not committed), makes the Access
   Issuer's checks, and writes the pool grant and the Identity Registry grant.
-- **Admission by QR** (ADRs 0045 to 0052, site `/admit`): an officer scans two codes with the
+- **Three onboarding routes** (ADR 0054), all ending in the same two grants: **custodied** (the
+  default: bank staff admit a client's custody account in one action, the account signing its own
+  wallet credential by EIP-1271), **self-custody through the bank** (the client signs once), and
+  the **holder wallet** below. Entities are institutional by policy (ADR 0053); the officer
+  credential is a gate policy, off by default.
+- **Admission by QR** (ADRs 0045 to 0052, site `/admit`, now route 3): an officer scans two codes with the
   holder wallet, the officer credential then the wallet-control credential issued to that officer;
   the site verifies each through the protocol's hosted verifier, fetches the corporation's
   corporate identity, checks the chain wallet, officer, corporation, corporate identity, and an

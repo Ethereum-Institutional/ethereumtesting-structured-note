@@ -157,7 +157,9 @@ contract DeployVenue is Script {
             investorClasses: uint8(1 << 1 | 1 << 2), // professional, institutional
             maxValidity: POOL_MAX_VALIDITY,
             screeningMaxAge: SCREENING_MAX_AGE,
-            rootFreshness: 0
+            rootFreshness: 0,
+            // The bank's KYB establishes who may act for an entity (ADR 0054).
+            entityRequiresAuthority: false
         });
     }
 

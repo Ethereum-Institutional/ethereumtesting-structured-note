@@ -113,6 +113,12 @@ export function protocolConfig(origin: string, env: NodeJS.ProcessEnv = process.
   };
 }
 
+/** What every route needs: the one configured issuer and the schema identifiers. */
+export function policyConfig(env: NodeJS.ProcessEnv = process.env): Pick<ProtocolConfig, "issuerDid" | "schemas"> {
+  const schemas = JSON.parse(need(env, "ADMISSION_SCHEMAS"));
+  return { issuerDid: need(env, "ADMISSION_ISSUER_DID"), schemas };
+}
+
 /** The claims each step asks the holder to disclose. */
 export const REQUIRED_CLAIMS: Record<Step, string[]> = {
   officer: ["corporationDid", "role"],
@@ -164,6 +170,7 @@ export async function lodge(c: ProtocolConfig, request: VerifierRequest): Promis
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ request }),
+    signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) throw new Error(`the verifier refused the request: HTTP ${res.status}`);
   return `${c.verifierUrl}/v1/verifier-request/${request.requestId}`;
@@ -179,6 +186,7 @@ export async function verdictFor(c: ProtocolConfig, presentation: Presentation):
       challengeContext: { requestId: presentation.verifierRequest?.requestId ?? "", issuedAt: 0, expiresAt: 0 },
       presentation,
     }),
+    signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) throw new Error(`the verifier did not answer: HTTP ${res.status}`);
   return (await res.json()) as Verdict;
@@ -188,7 +196,7 @@ export async function verdictFor(c: ProtocolConfig, presentation: Presentation):
 export async function corporateIdentity(c: ProtocolConfig, corporationDid: string): Promise<CorporateIdentityDocument> {
   const base = c.corporateIssuers[corporationDid];
   if (!base) throw new Error(`no discovery address is configured for ${corporationDid}`);
-  const res = await fetch(`${base.replace(/\/+$/, "")}/v1/issuer/corporate-identity`);
+  const res = await fetch(`${base.replace(/\/+$/, "")}/v1/issuer/corporate-identity`, { signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new Error(`${corporationDid} publishes no corporate identity: HTTP ${res.status}`);
   return (await res.json()) as CorporateIdentityDocument;
 }
