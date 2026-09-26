@@ -71,7 +71,7 @@ const server = createServer(async (req, res) => {
 
   // The bank's issuer operator API (ADR 0054), behind its bearer token.
   if (req.url?.startsWith("/v1/admin/") || req.url?.startsWith("/v1/wallet-attestation/")) {
-    if (req.headers.authorization !== "Bearer bank-operator-token") return send(401, { error: { message: "unauthorised" } });
+    if (req.headers.authorization !== "Bearer sk_test_integrationsecret") return send(401, { error: { code: "unauthenticated", message: "unauthenticated" } });
   }
   if (req.method === "GET" && req.url?.startsWith("/v1/admin/credentials")) {
     const q = new URL(req.url, "http://x").searchParams;
@@ -135,7 +135,7 @@ Object.assign(process.env, {
     custodian: "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
   }),
   BANK_ISSUER_URL: `http://127.0.0.1:${PORT}`,
-  BANK_ISSUER_TOKEN: "bank-operator-token",
+  BANK_ISSUER_API_KEY: "sk_test_integrationsecret",
 });
 const { getStore } = await import("../lib/store.ts");
 const service = await import("../lib/admission/service.ts");

@@ -58,7 +58,7 @@ their hash is the evidence in both grants.
 | `ADMISSION_CORPORATE_ISSUERS` | JSON: corporation DID to the base address of its issuer backend, for discovery |
 | `MANIFEST_JSON`, `RPC_URL` | The deployment grants are written to |
 | `SIGNER_KEYS` | JSON: `accessIssuer` and `custodian` to their chain keys. Sensitive; a key management service before anything real (ADR 0048) |
-| `BANK_ISSUER_URL`, `BANK_ISSUER_TOKEN` | The bank's issuer backend and an operator session of its staff, for routes 1 and 2. The token is sensitive |
+| `BANK_ISSUER_URL`, `BANK_ISSUER_API_KEY` | The bank's issuer backend (HTTPS) and the service key issued to this site, scopes `credentials:read`, `wallet-attestation:eth`, `verify-requests:create` (ADR 0055). The key is sensitive |
 
 In development, mail is written to the server log and the store is `site/.data/store.json`.
 

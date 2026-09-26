@@ -38,10 +38,10 @@ env = {
     "ADMISSION_VERIFIER_SEED": os.environ["ADMISSION_VERIFIER_SEED"],
     "ADMISSION_VERIFIER_INLINE_KEY": "1",  # self-signed: no registration with the protocol needed
 }
-for k in ("BANK_ISSUER_URL", "BANK_ISSUER_TOKEN"):
+for k in ("BANK_ISSUER_URL", "BANK_ISSUER_API_KEY"):
     if os.environ.get(k):
         env[k] = os.environ[k]
-missing = [k for k in ("BANK_ISSUER_URL", "BANK_ISSUER_TOKEN") if k not in env]
+missing = [k for k in ("BANK_ISSUER_URL", "BANK_ISSUER_API_KEY") if k not in env]
 for key, value in env.items():
     body = json.dumps({"key": key, "value": value, "type": "sensitive", "target": ["production"]}).encode()
     req = urllib.request.Request(
@@ -55,5 +55,15 @@ for key, value in env.items():
     except urllib.error.HTTPError as e:
         print(f"FAILED {key}: {json.loads(e.read()).get('error', {}).get('message')}")
 if missing:
-    print("not set yet (store the bank operator token first): " + ", ".join(missing))
+    print("not set yet (store the bank's service API key first): " + ", ".join(missing))
+
+# The staff session token this replaced (ADR 0055) is removed from the project.
+listing = urllib.request.Request(f"https://api.vercel.com/v10/projects/{project}/env?teamId={team}",
+                                 headers={"Authorization": f"Bearer {os.environ['VERCEL_TOKEN']}"})
+for e in json.loads(urllib.request.urlopen(listing).read()).get("envs", []):
+    if e.get("key") == "BANK_ISSUER_TOKEN":
+        urllib.request.urlopen(urllib.request.Request(
+            f"https://api.vercel.com/v9/projects/{project}/env/{e['id']}?teamId={team}", method="DELETE",
+            headers={"Authorization": f"Bearer {os.environ['VERCEL_TOKEN']}"})).read()
+        print("removed BANK_ISSUER_TOKEN")
 PY

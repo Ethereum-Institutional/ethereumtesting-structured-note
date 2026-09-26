@@ -5,27 +5,54 @@ import type { Hex } from "viem";
  * (ADR 0054): the corporate identity it issued to a client, found by the client's customer
  * reference, and wallet-control credentials it mints once a wallet has signed.
  *
- * BANK_ISSUER_URL is the backend; BANK_ISSUER_TOKEN an operator session of the issuer's own staff.
+ * BANK_ISSUER_URL is the backend (HTTPS only); BANK_ISSUER_API_KEY a service key issued to this
+ * site with the scopes it needs, credentials:read and wallet-attestation:eth (ADR 0055). The key
+ * is sent only in the Authorization header, never in a URL or a log line.
  */
 
-export type BankConfig = { url: string; token: string };
+export type BankConfig = { url: string; key: string };
 
 export function bankConfig(env: NodeJS.ProcessEnv = process.env): BankConfig {
   const url = env.BANK_ISSUER_URL?.trim().replace(/\/+$/, "");
-  const token = env.BANK_ISSUER_TOKEN?.trim();
-  if (!url || !token) throw new Error("BANK_ISSUER_URL and BANK_ISSUER_TOKEN are not set");
-  return { url, token };
+  const key = env.BANK_ISSUER_API_KEY?.trim();
+  if (!url || !key) throw new Error("BANK_ISSUER_URL and BANK_ISSUER_API_KEY are not set");
+  if (!url.startsWith("https://") && !/^http:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(url)) {
+    throw new Error("BANK_ISSUER_URL must be https: a key sent in plaintext is disclosed");
+  }
+  if (!/^sk_\S+$/.test(key)) throw new Error("BANK_ISSUER_API_KEY is not a service key (sk_...)");
+  return { url, key };
+}
+
+/** A refusal by the bank's API, with its code. 401 and 403 mean the key needs attention: never retried. */
+export class BankRefused extends Error {
+  readonly status: number;
+  readonly code: string;
+  constructor(message: string, status: number, code: string) {
+    super(message);
+    this.name = "BankRefused";
+    this.status = status;
+    this.code = code;
+  }
 }
 
 async function call<T>(b: BankConfig, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${b.url}${path}`, {
     method: body === undefined ? "GET" : "POST",
-    headers: { authorization: `Bearer ${b.token}`, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    headers: { authorization: `Bearer ${b.key}`, ...(body === undefined ? {} : { "content-type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(20_000), // a hung issuer must not hang the portal
   });
   const json = (await res.json().catch(() => null)) as any;
-  if (!res.ok) throw new Error(`the bank's issuer answered ${res.status}: ${json?.error?.message ?? "no detail"}`);
+  if (!res.ok) {
+    const code = String(json?.error?.code ?? "unknown");
+    const detail = String(json?.error?.message ?? "no detail");
+    const meaning =
+      res.status === 401 ? "the bank did not accept the site's API key; it needs replacing or rotating"
+      : code === "scope_forbidden" ? `the site's API key lacks the scope for ${path.split("?")[0]}`
+      : code === "service_key_forbidden" ? `${path.split("?")[0]} is for the bank's staff only`
+      : `the bank refused: ${detail}`;
+    throw new BankRefused(`${meaning} (${res.status} ${code})`, res.status, code);
+  }
   return json as T;
 }
 
