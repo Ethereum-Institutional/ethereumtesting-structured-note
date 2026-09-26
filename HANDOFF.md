@@ -455,6 +455,15 @@ are ADRs 0027 to 0041.
   Wave 5 call. Seven deliberate errors in the gate, one in the checker and four in the controller's
   venue acts were each caught.
 
+- **Integration deployment on Base Sepolia, 26 September 2026** (ADR 0051; not the PoC execution).
+  Keys in `ops/keys.base-sepolia-integration.env`, manifest in `ops/addresses.base-sepolia.json`,
+  both not committed. Deposit 0x5Ef2c420518135f8A6E6daB15dEAA63B44718957, note 0xc48Dc039b8fDBC283Ae37c3495C12b0bE5d179c7,
+  pool credential gate 0xb4eC55923689FE8dDf12926D392Dc9b8eC0661a9, Identity Registry 0x95dB878cd374b55ff672A3E597ab207fd8FCCA05,
+  controller 0xbC224b2F963162a5bD5bB9aF27916f39BCBEcA5f. The pool holds about 20 of each token (the faucet's limit);
+  the note carries the placeholder term sheet reference. The cast's own grants rest on reference
+  identifiers, not issued credentials; real admissions go through the site.
+  `ops/vercel-admission-env.sh` sets the site's admission settings from these files.
+
 **For review, taken during the build.**
 
 - **Force-closing a liquidity position is not a controller act** (ADR 0039): proceeds the provider
