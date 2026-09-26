@@ -137,11 +137,12 @@ export default async function Operator() {
               const d = a.data as Record<string, any>;
               const s = d.assessment?.ok ? d.assessment.summary : null;
               const detail = d.assessment && !d.assessment.ok ? d.assessment.problems.join(" ") : d.written ? `pool ${d.written.poolGrantTx}, registry ${d.written.registryGrantTx}` : d.error ?? "";
+              const who = s?.corporation ?? d.record?.legalName ?? "";
               return (
                 <tr key={a.id}>
                   <td>{a.route}</td>
                   <td><span className={`pill ${a.status === "ready" ? "pending" : a.status === "admitted" ? "approved" : ""}`}>{a.status}</span></td>
-                  <td>{s?.corporation ?? ""}</td>
+                  <td>{who}</td>
                   <td>{s?.officerDid ? `${s.role}, ${s.officerDid}` : ""}</td>
                   <td>{s ? `${s.wallet} (${s.walletType})` : ""}</td>
                   <td>{s ? `${s.jurisdiction}, ${s.investorClass}` : ""}</td>

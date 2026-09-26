@@ -302,8 +302,14 @@ export async function reviewSelfCustody(
   const policy = policyConfig();
   const bank = bankConfig();
   const chainId = loadManifest().chainId;
-  const corporate = await corporateIdentityFor(bank, d.request.kycReference, policy.schemas.corporateIdentity, nowSec());
-  const challenge = await startWalletAttestation(bank, corporate.subjectDid, `eip155:${chainId}`, d.request.walletAddress, PURPOSE);
+  let corporate, challenge;
+  try {
+    corporate = await corporateIdentityFor(bank, d.request.kycReference, policy.schemas.corporateIdentity, nowSec());
+    challenge = await startWalletAttestation(bank, corporate.subjectDid, `eip155:${chainId}`, d.request.walletAddress, PURPOSE);
+  } catch (e) {
+    await store.updateAdmission({ ...a, status: "refused", data: { ...d, reviewedBy: staff.email, error: (e as Error).message } }, a.status);
+    throw e;
+  }
   await store.updateAdmission(
     { ...a, status: "awaiting-signature", data: { ...d, record: { ...record!, kycReference: d.request.kycReference }, corporate, challenge, reviewedBy: staff.email } },
     a.status,

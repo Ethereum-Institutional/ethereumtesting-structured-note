@@ -19,6 +19,20 @@ import { siteOrigin } from "@/lib/origin";
 
 export type FormState = { sent?: boolean; error?: string };
 
+/**
+ * An admission step that fails has already recorded why in the admission itself, where the page
+ * shows it. The failure is logged and the page re-rendered, rather than shown as a server error.
+ */
+async function recorded(run: () => Promise<unknown>, path: string) {
+  try {
+    await run();
+  } catch (e) {
+    console.error(e);
+  } finally {
+    revalidatePath(path);
+  }
+}
+
 const field = (f: FormData, k: string) => String(f.get(k) ?? "");
 
 async function guarded(run: (origin: string) => Promise<{ ok: boolean; error?: string }>): Promise<FormState> {
@@ -79,11 +93,7 @@ export async function decideAdmissionAction(f: FormData) {
   if (!op) throw new Error("Not permitted.");
   const d = field(f, "decision");
   if (d !== "approve" && d !== "decline") throw new Error("Unknown decision.");
-  try {
-    await decideAdmission(field(f, "id"), d, op);
-  } finally {
-    revalidatePath("/operator");
-  }
+  await recorded(() => decideAdmission(field(f, "id"), d, op), "/operator");
 }
 
 /** The bank's statement of a client's details, from its own file (ADR 0054). */
@@ -101,16 +111,16 @@ function bankRecord(f: FormData) {
 export async function admitCustodiedAction(f: FormData) {
   const op = await currentOperator();
   if (!op) throw new Error("Not permitted.");
-  try {
-    await admitCustodied(op, {
-      kycReference: field(f, "kycReference").trim(),
-      instructionRef: field(f, "instructionRef").trim(),
-      clientRef: field(f, "clientRef").trim(),
-      record: bankRecord(f),
-    });
-  } finally {
-    revalidatePath("/operator");
-  }
+  await recorded(
+    () =>
+      admitCustodied(op, {
+        kycReference: field(f, "kycReference").trim(),
+        instructionRef: field(f, "instructionRef").trim(),
+        clientRef: field(f, "clientRef").trim(),
+        record: bankRecord(f),
+      }),
+    "/operator",
+  );
 }
 
 export async function reviewSelfCustodyAction(f: FormData) {
@@ -118,11 +128,7 @@ export async function reviewSelfCustodyAction(f: FormData) {
   if (!op) throw new Error("Not permitted.");
   const d = field(f, "decision");
   if (d !== "approve" && d !== "decline") throw new Error("Unknown decision.");
-  try {
-    await reviewSelfCustody(op, field(f, "id"), d, d === "approve" ? bankRecord(f) : undefined);
-  } finally {
-    revalidatePath("/operator");
-  }
+  await recorded(() => reviewSelfCustody(op, field(f, "id"), d, d === "approve" ? bankRecord(f) : undefined), "/operator");
 }
 
 export async function requestSelfCustodyAction(f: FormData) {
@@ -136,11 +142,7 @@ export async function requestSelfCustodyAction(f: FormData) {
 export async function submitSignatureAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  try {
-    await submitSelfCustodySignature(who, field(f, "id"), field(f, "signature").trim() as `0x${string}`);
-  } finally {
-    revalidatePath("/admit");
-  }
+  await recorded(() => submitSelfCustodySignature(who, field(f, "id"), field(f, "signature").trim() as `0x${string}`), "/admit");
 }
 
 export async function renewChallengeAction(f: FormData) {
