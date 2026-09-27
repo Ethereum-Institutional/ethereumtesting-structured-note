@@ -36,3 +36,4 @@ bank never reviews an unproven address.
 
 - A confirmed KYB is held with the admission; a lapsed challenge is simply issued again.
 - Supersedes the wallet-first ordering of the self-custody route in ADR 0054.
+- The client reference is no longer asked of the client: see ADR 0057.

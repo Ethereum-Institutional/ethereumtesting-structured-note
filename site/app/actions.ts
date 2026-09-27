@@ -102,6 +102,7 @@ function bankRecord(f: FormData) {
   const screened = field(f, "screenedOn");
   return {
     legalName: field(f, "legalName").trim(),
+    kycReference: field(f, "kycReference").trim(),
     jurisdiction: field(f, "jurisdiction").trim().toUpperCase(),
     status: field(f, "status") || "active",
     screenedAt: screened ? Math.floor(Date.parse(`${screened}T00:00:00Z`) / 1000) : Math.floor(Date.now() / 1000),
@@ -135,7 +136,7 @@ export async function reviewSelfCustodyAction(f: FormData) {
 export async function requestSelfCustodyAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  await recorded(() => requestSelfCustody(who, { kycReference: field(f, "kycReference").trim() }), "/admit");
+  await recorded(() => requestSelfCustody(who), "/admit");
 }
 
 export async function bindWalletAction(f: FormData) {

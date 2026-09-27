@@ -78,7 +78,7 @@ const server = createServer(async (req, res) => {
   }
   if (req.method === "GET" && req.url?.startsWith("/v1/admin/credentials")) {
     const q = new URL(req.url, "http://x").searchParams;
-    const known = q.get("kycReference") === "KYC-TI1";
+    const known = !q.has("kycReference") || q.get("kycReference") === "KYC-TI1";
     return send(200, { v: 1, credentials: known ? [{ credentialId: cid("bank corporate identity"), schema: SCHEMAS.corporateIdentity, subjectDid: CORP, state: "anchored", issuedAt: NOW - 200 * 86_400, expiresAt: NOW + 165 * 86_400, kycReference: "KYC-TI1" }] : [] });
   }
   if (req.method === "POST" && req.url === "/v1/wallet-attestation/eth/initiate") {
@@ -234,20 +234,29 @@ test("route 1 refuses a client the bank has no corporate identity for, and only 
   await assert.rejects(service.admitCustodied(operator as any, { kycReference: "KYC-UNKNOWN", instructionRef: "x", clientRef: `U-${NOW}`, record: RECORD }), /no live corporate identity/);
 });
 
+test("the bank's staff choose a client from the bank's own list of corporate identities", async () => {
+  const bank = await import("../lib/admission/bank.ts");
+  const list = await bank.corporateIdentities(bank.bankConfig(), SCHEMAS.corporateIdentity, NOW);
+  assert.deepEqual(list.map((c) => c.kycReference), ["KYC-TI1"]);
+});
+
 test("route 2, self-custody: the bank confirms the KYB, then the client binds a wallet with one signature", async () => {
   const key = privateKeyToAccount(keccak256(toBytes(`self-custody wallet ${NOW}`)));
   const challengesBefore = challenges.size;
-  let a = await service.requestSelfCustody(registrant as any, { kycReference: "KYC-TI1" });
+  let a = await service.requestSelfCustody(registrant as any);
   assert.equal(a.status, "awaiting-bank-review");
 
   // Binding is closed until the bank has confirmed the KYB; nothing is challenged or minted.
   await assert.rejects(service.startWalletBinding(registrant as any, a.id, { walletAddress: key.address, addressType: "eoa" }), /not confirmed yet/);
   assert.equal(challenges.size, challengesBefore, "no challenge before the bank confirms");
 
-  await assert.rejects(service.reviewSelfCustody(registrant as any, a.id, "approve", RECORD), /Not permitted/);
-  await service.reviewSelfCustody(operator as any, a.id, "approve", RECORD);
+  await assert.rejects(service.reviewSelfCustody(registrant as any, a.id, "approve", { ...RECORD, kycReference: "KYC-TI1" }), /Not permitted/);
+  // The client names no reference: the bank's staff choose it, and an unknown one finds nothing.
+  await assert.rejects(service.reviewSelfCustody(operator as any, a.id, "approve", { ...RECORD, kycReference: "" }), /Choose the client's reference/);
+  await service.reviewSelfCustody(operator as any, a.id, "approve", { ...RECORD, kycReference: "KYC-TI1" });
   a = (await store.admissionById(a.id))!;
   assert.equal(a.status, "kyb-confirmed");
+  assert.equal((a.data as any).record.kycReference, "KYC-TI1");
   assert.equal(challenges.size, challengesBefore, "confirming the KYB issues no challenge either");
 
   // Another client cannot bind a wallet under this confirmation.
@@ -268,8 +277,9 @@ test("route 2, self-custody: the bank confirms the KYB, then the client binds a 
 
 test("route 2: a wrong signature fails the binding, and the client can bind again", async () => {
   const key = privateKeyToAccount(keccak256(toBytes(`second self-custody wallet ${NOW}`)));
-  let a = await service.requestSelfCustody(registrant as any, { kycReference: "KYC-TI1" });
-  await service.reviewSelfCustody(operator as any, a.id, "approve", RECORD);
+  let a = await service.requestSelfCustody(registrant as any);
+  assert.equal((a.data as any).request.knownReference, "KYC-TI1", "the reference confirmed last time is offered again");
+  await service.reviewSelfCustody(operator as any, a.id, "approve", { ...RECORD, kycReference: "KYC-TI1" });
   await service.startWalletBinding(registrant as any, a.id, { walletAddress: key.address, addressType: "eoa" });
   await assert.rejects(service.submitSelfCustodySignature(registrant as any, a.id, "0x1234"), /signature does not verify/);
   a = (await store.admissionById(a.id))!;

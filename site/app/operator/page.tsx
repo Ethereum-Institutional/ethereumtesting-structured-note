@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { currentOperator } from "@/lib/access";
 import { getStore, type Registrant } from "@/lib/store";
 import { explorerAddress, explorerTx } from "@/lib/explorer";
+import { bankConfig, corporateIdentities, type IssuedCredential } from "@/lib/admission/bank";
+import { policyConfig } from "@/lib/admission/protocol";
 import { admitCustodiedAction, decideAction, decideAdmissionAction, reviewSelfCustodyAction } from "../actions";
 import { Bar } from "../Bar";
 
@@ -26,6 +28,45 @@ function BankRecordFields() {
   );
 }
 
+type Clients = { list: IssuedCredential[] } | { error: string };
+
+/** The bank's clients with a live corporate identity, for its staff to choose from (ADR 0057). */
+async function bankClients(): Promise<Clients> {
+  try {
+    const list = await corporateIdentities(bankConfig(), policyConfig().schemas.corporateIdentity, Math.floor(Date.now() / 1000));
+    return { list };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+/** The client's reference at the bank: chosen from the bank's own list, typed only if the list is unavailable. */
+function ClientReference({ clients, known }: { clients: Clients; known?: string }) {
+  if ("error" in clients) {
+    return (
+      <label>
+        Client reference at the bank
+        <input name="kycReference" required maxLength={200} defaultValue={known} />
+        <span className="muted">The bank's client list is unavailable ({clients.error}).</span>
+      </label>
+    );
+  }
+  const day = (sec: number) => new Date(sec * 1000).toISOString().slice(0, 10);
+  return (
+    <label>
+      Client (corporate identity at the bank)
+      <select name="kycReference" required defaultValue={clients.list.some((c) => c.kycReference === known) ? known : ""}>
+        <option value="" disabled>Choose the client…</option>
+        {clients.list.map((c) => (
+          <option key={c.kycReference} value={c.kycReference}>
+            {c.kycReference}, issued {day(c.issuedAt)}, to {day(c.expiresAt)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 /** A value that opens in the chain's explorer where there is one. */
 function Linked({ href, children }: { href: string | null; children: React.ReactNode }) {
   return href ? <a href={href} target="_blank" rel="noreferrer">{children}</a> : <>{children}</>;
@@ -35,23 +76,28 @@ const when = (iso: string | null) => (iso ? iso.slice(0, 16).replace("T", " ") +
 
 function Decide({ r, self }: { r: Registrant; self: boolean }) {
   const act = (decision: "approve" | "revoke", label: string) => (
-    <form action={decideAction}>
+    <button type="submit" name="decision" value={decision} className="quiet">{label}</button>
+  );
+  const buttons =
+    r.status === "pending" ? <>{act("approve", "Approve")}{act("revoke", "Decline")}</>
+    : r.status === "approved" && !self ? act("revoke", "Revoke")
+    : r.status === "revoked" ? act("approve", "Reinstate")
+    : null;
+  if (!buttons) return null;
+  return (
+    <form action={decideAction} className="actions">
       <input type="hidden" name="id" value={r.id} />
-      <input type="hidden" name="decision" value={decision} />
-      <button type="submit" className="quiet">{label}</button>
+      {buttons}
     </form>
   );
-  if (r.status === "pending") return <>{act("approve", "Approve")} {act("revoke", "Decline")}</>;
-  if (r.status === "approved" && !self) return act("revoke", "Revoke");
-  if (r.status === "revoked") return act("approve", "Reinstate");
-  return null;
 }
 
 export default async function Operator() {
   const op = await currentOperator();
   if (!op) notFound();
   const store = getStore();
-  const [rows, log, admissions] = await Promise.all([store.listRegistrants(), store.auditLog(50), store.listAdmissions(30)]);
+  const [rows, log, admissions, clients] = await Promise.all([store.listRegistrants(), store.auditLog(50), store.listAdmissions(30), bankClients()]);
+  const queue = admissions.filter((a) => a.route === "self-custody" && a.status === "awaiting-bank-review");
   const order = { pending: 0, approved: 1, unverified: 2, revoked: 3 } as const;
   rows.sort((a, b) => order[a.status] - order[b.status]);
   return (
@@ -87,50 +133,39 @@ export default async function Operator() {
           On the client's instruction: opens a segregated custody account, mints its wallet credential under the client's
           existing corporate identity, writes both grants, and makes the account ready to trade.
         </p>
-        <form action={admitCustodiedAction} className="cols">
-          <div>
-            <label>Client reference (KYB file)<input name="kycReference" required maxLength={200} /></label>
+        <form action={admitCustodiedAction} className="stack">
+          <div className="fields">
+            <ClientReference clients={clients} />
             <label>Custody account reference<input name="clientRef" required maxLength={64} /></label>
             <label>Client instruction reference<input name="instructionRef" required maxLength={200} /></label>
-          </div>
-          <div>
             <BankRecordFields />
-            <button type="submit">Admit</button>
           </div>
+          <div className="actions"><button type="submit">Admit</button></div>
         </form>
       </section>
 
       <h2 id="self-custody">Self-custody requests</h2>
-      <div className="table-wrap panel">
-        <table>
-          <thead><tr><th>Requested</th><th>Requested by</th><th>Client reference</th><th>Confirm the client's KYB</th></tr></thead>
-          <tbody>
-            {admissions.filter((a) => a.route === "self-custody" && a.status === "awaiting-bank-review").map((a) => {
-              const r = (a.data as Record<string, any>).request;
-              return (
-                <tr key={a.id}>
-                  <td>{when(a.createdAt)}</td>
-                  <td>{r.requestedBy}, {r.organisation}</td>
-                  <td>{r.kycReference}</td>
-                  <td>
-                    <form action={reviewSelfCustodyAction}>
-                      <input type="hidden" name="id" value={a.id} />
-                      <input type="hidden" name="decision" value="approve" />
-                      <BankRecordFields />
-                      <button type="submit" className="quiet">Confirm the client's KYB</button>
-                    </form>
-                    <form action={reviewSelfCustodyAction}>
-                      <input type="hidden" name="id" value={a.id} />
-                      <input type="hidden" name="decision" value="decline" />
-                      <button type="submit" className="quiet">Decline</button>
-                    </form>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {queue.length === 0 && <p className="muted panel">No client is waiting for its KYB to be confirmed.</p>}
+      {queue.map((a) => {
+        const r = (a.data as Record<string, any>).request;
+        return (
+          <section className="panel" key={a.id}>
+            <p className="eyebrow">Requested {when(a.createdAt)}</p>
+            <h3 style={{ margin: "0.25rem 0 1rem" }}>{r.organisation} <span className="muted">({r.requestedBy})</span></h3>
+            <form action={reviewSelfCustodyAction} className="stack">
+              <input type="hidden" name="id" value={a.id} />
+              <div className="fields">
+                <ClientReference clients={clients} known={r.knownReference ?? r.kycReference} />
+                <BankRecordFields />
+              </div>
+              <div className="actions">
+                <button type="submit" name="decision" value="approve">Confirm the client's KYB</button>
+                <button type="submit" name="decision" value="decline" className="quiet" formNoValidate>Decline</button>
+              </div>
+            </form>
+          </section>
+        );
+      })}
 
       <h2 id="admissions">Pool admissions</h2>
       <div className="table-wrap panel">
@@ -168,18 +203,11 @@ export default async function Operator() {
                   <td style={{ whiteSpace: "normal", minWidth: 280 }}>{problem}</td>
                   <td>
                     {a.status === "ready" && (
-                      <>
-                        <form action={decideAdmissionAction}>
-                          <input type="hidden" name="id" value={a.id} />
-                          <input type="hidden" name="decision" value="approve" />
-                          <button type="submit" className="quiet">Approve and write grants</button>
-                        </form>{" "}
-                        <form action={decideAdmissionAction}>
-                          <input type="hidden" name="id" value={a.id} />
-                          <input type="hidden" name="decision" value="decline" />
-                          <button type="submit" className="quiet">Decline</button>
-                        </form>
-                      </>
+                      <form action={decideAdmissionAction} className="actions">
+                        <input type="hidden" name="id" value={a.id} />
+                        <button type="submit" name="decision" value="approve" className="quiet">Approve and write grants</button>
+                        <button type="submit" name="decision" value="decline" className="quiet">Decline</button>
+                      </form>
                     )}
                   </td>
                 </tr>

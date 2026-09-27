@@ -275,8 +275,14 @@ export async function admitCustodied(
   return (await store.admissionById(a.id))!;
 }
 
-/** Route 2, step 1: a signed-in client asks its bank to confirm its KYB (ADR 0056). No wallet yet. */
-export async function requestSelfCustody(client: Registrant, input: { kycReference: string }): Promise<Admission> {
+/**
+ * Route 2, step 1: a signed-in client asks its bank to confirm its KYB (ADR 0056). No wallet yet,
+ * and no reference either: the bank knows its own client (ADR 0057). The reference the bank
+ * confirmed last time is carried forward for its staff to reuse.
+ */
+export async function requestSelfCustody(client: Registrant): Promise<Admission> {
+  const previous = await getStore().latestAdmissionFor(client.id);
+  const knownReference = previous?.route === "self-custody" ? (previous.data as Record<string, any>).record?.kycReference : undefined;
   const a: Admission = {
     id: `adm_${randomBytes(9).toString("base64url")}`,
     registrantId: client.id,
@@ -285,7 +291,7 @@ export async function requestSelfCustody(client: Registrant, input: { kycReferen
     createdAt: now(),
     officerRequestId: null,
     walletRequestId: null,
-    data: { request: { ...input, requestedBy: client.email, organisation: client.organisation } },
+    data: { request: { requestedBy: client.email, organisation: client.organisation, ...(knownReference ? { knownReference } : {}) } },
   };
   await getStore().putAdmission(a);
   await getStore().audit({ at: now(), actor: client.email, action: "asked the bank to confirm its KYB for a self-custody wallet", subject: a.id });
@@ -293,15 +299,15 @@ export async function requestSelfCustody(client: Registrant, input: { kycReferen
 }
 
 /**
- * Route 2, step 2: the bank's staff confirm the request is from the client they know, find its
- * corporate identity, and state the client's details from their file. The client may then bind a
+ * Route 2, step 2: the bank's staff confirm the request is from the client they know, choose that
+ * client's reference, which finds its corporate identity, and state the client's details from their file. The client may then bind a
  * wallet, which needs no further review (ADR 0056).
  */
 export async function reviewSelfCustody(
   staff: Registrant,
   id: string,
   outcome: "approve" | "decline",
-  record?: Omit<BankRecord, "kycReference">,
+  record?: BankRecord,
 ): Promise<void> {
   if (!isOperator(staff.email)) throw new Error("Not permitted.");
   const store = getStore();
@@ -313,17 +319,18 @@ export async function reviewSelfCustody(
     await store.audit({ at: now(), actor: staff.email, action: "declined a self-custody request", subject: a.id });
     return;
   }
+  if (!record?.kycReference) throw new Error("Choose the client's reference at the bank.");
   const policy = policyConfig();
   const bank = bankConfig();
   let corporate;
   try {
-    corporate = await corporateIdentityFor(bank, d.request.kycReference, policy.schemas.corporateIdentity, nowSec());
+    corporate = await corporateIdentityFor(bank, record.kycReference, policy.schemas.corporateIdentity, nowSec());
   } catch (e) {
     await store.updateAdmission({ ...a, status: "refused", data: { ...d, reviewedBy: staff.email, error: (e as Error).message } }, a.status);
     throw e;
   }
   await store.updateAdmission(
-    { ...a, status: "kyb-confirmed", data: { ...d, record: { ...record!, kycReference: d.request.kycReference }, corporate, reviewedBy: staff.email, confirmedAt: now() } },
+    { ...a, status: "kyb-confirmed", data: { ...d, record, corporate, reviewedBy: staff.email, confirmedAt: now() } },
     a.status,
   );
   await store.audit({ at: now(), actor: staff.email, action: "confirmed a client's KYB for self-custody", subject: a.id });

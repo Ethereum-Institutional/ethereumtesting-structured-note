@@ -66,14 +66,21 @@ export type IssuedCredential = {
   kycReference?: string;
 };
 
+/** The bank's live corporate identities: the newest unexpired, unrevoked one for each client reference. */
+export async function corporateIdentities(b: BankConfig, schema: string, nowSec: number, kycReference?: string): Promise<IssuedCredential[]> {
+  const q = new URLSearchParams({ ...(kycReference ? { kycReference } : {}), schema, limit: "50" });
+  const { credentials } = await call<{ credentials: IssuedCredential[] }>(b, `/v1/admin/credentials?${q}`);
+  const live = credentials.filter((c) => c.schema === schema && Number(c.expiresAt) > nowSec && !/revoked/i.test(c.state) && c.kycReference);
+  live.sort((x, y) => Number(y.issuedAt) - Number(x.issuedAt));
+  const seen = new Set<string>();
+  return live.filter((c) => !seen.has(c.kycReference!) && seen.add(c.kycReference!));
+}
+
 /** The client's current corporate identity: the newest unexpired one issued under that reference. */
 export async function corporateIdentityFor(b: BankConfig, kycReference: string, schema: string, nowSec: number): Promise<IssuedCredential> {
-  const q = new URLSearchParams({ kycReference, schema, limit: "50" });
-  const { credentials } = await call<{ credentials: IssuedCredential[] }>(b, `/v1/admin/credentials?${q}`);
-  const live = credentials.filter((c) => c.schema === schema && Number(c.expiresAt) > nowSec && !/revoked/i.test(c.state));
-  live.sort((x, y) => Number(y.issuedAt) - Number(x.issuedAt));
-  if (!live.length) throw new Error(`the bank has no live corporate identity for customer ${kycReference}`);
-  return live[0];
+  const [current] = (await corporateIdentities(b, schema, nowSec, kycReference)).filter((c) => c.kycReference === kycReference);
+  if (!current) throw new Error(`the bank has no live corporate identity for customer ${kycReference}`);
+  return current;
 }
 
 export type WalletChallenge = { challengeId: string; typedData: Record<string, any>; expiresAt: number };

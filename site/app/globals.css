@@ -69,9 +69,9 @@ header.masthead { padding: clamp(3rem, 9vw, 6rem) 0 2.25rem; }
 .panel { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1.5rem; margin: 0 0 1.25rem; }
 .panel h2 { font-size: 1.0625rem; }
 
-form.stack { display: grid; gap: 0.9rem; }
+form.stack, fieldset.stack { display: grid; gap: 0.9rem; }
 label { display: grid; gap: 0.3rem; font-size: 0.8125rem; font-weight: 500; color: var(--fg2); }
-input[type="email"], input[type="text"] {
+input[type="email"], input[type="text"], input[type="date"], select {
   font: inherit; font-size: 0.9375rem; color: var(--fg); background: var(--bg);
   border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; width: 100%;
 }
@@ -133,5 +133,8 @@ th { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.12em; text
 .pill.pending { background: var(--accent-bg); color: var(--accent); }
 .pill.approved { background: var(--ok-bg); color: var(--ok); }
 .pill.revoked { background: var(--seal-bg); color: var(--seal); }
-td form { display: inline; }
+.fields { display: grid; gap: 0.9rem 1.25rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); align-items: start; }
+.actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+td .actions { flex-wrap: nowrap; }
+label .muted { font-weight: 400; font-size: 0.75rem; }
 footer { padding: 3rem 0 4rem; color: var(--fg3); font-size: 0.75rem; }

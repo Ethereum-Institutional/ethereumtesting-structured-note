@@ -60,6 +60,9 @@ export default async function Admit() {
         <section className="panel">
           <p><strong>{STATUS[a.status]}</strong> {a.status === "refused" && problems(d)} {a.status === "failed" && d.error}</p>
           {a.status === "admitted" && <p className="muted">{d.assessment?.summary?.wallet} may now convert in the pool.</p>}
+          {d.record?.kycReference && a.route === "self-custody" && (
+            <p className="muted">Your bank's reference for you: {d.record.kycReference}{d.record.legalName ? `, ${d.record.legalName}` : ""}.</p>
+          )}
           {a.status === "kyb-confirmed" && d.error && <p role="alert">The last attempt to bind a wallet failed: {d.error}</p>}
           {(a.status === "awaiting-bank-review" || a.status === "kyb-confirmed") && <BindStep a={a} />}
           {a.status === "awaiting-signature" && <SignStep a={a} d={d} />}
@@ -75,11 +78,12 @@ export default async function Admit() {
               Your own wallet, or one a third party holds for you. First your bank confirms the KYB it already holds
               for you; then you bind the wallet with one signature.
             </p>
-            <form action={requestSelfCustodyAction}>
-              <label>Your client reference at the bank<input name="kycReference" required maxLength={200} /></label>
-              <button type="submit">Ask my bank to confirm my KYB</button>
-            </form>
-            <p><button type="button" disabled title="Available once your bank confirms your KYB">Bind wallet</button></p>
+            <div className="actions">
+              <form action={requestSelfCustodyAction}>
+                <button type="submit">Ask my bank to confirm my KYB</button>
+              </form>
+              <button type="button" disabled title="Available once your bank confirms your KYB">Bind wallet</button>
+            </div>
           </section>
           <section className="panel">
             <h2>Credentials in a holder wallet</h2>
@@ -98,9 +102,9 @@ export default async function Admit() {
 function BindStep({ a }: { a: Admission }) {
   const ready = a.status === "kyb-confirmed";
   return (
-    <form action={bindWalletAction}>
+    <form action={bindWalletAction} className="stack">
       <input type="hidden" name="id" value={a.id} />
-      <fieldset disabled={!ready} style={{ border: 0, padding: 0, margin: 0 }}>
+      <fieldset disabled={!ready} className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
         <label>Wallet address<input name="walletAddress" required pattern="0x[0-9a-fA-F]{40}" /></label>
         <label>
           Wallet type
