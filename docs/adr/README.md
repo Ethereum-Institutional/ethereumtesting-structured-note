@@ -63,3 +63,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0053](0053-entities-institutional-by-policy.md) | Entities admitted on the bank's KYB are institutional by policy | Accepted |
 | [0054](0054-three-onboarding-routes.md) | Three routes into the pool: custodied by default, self-custody through the bank, and the holder wallet | Accepted |
 | [0055](0055-service-key-for-the-bank.md) | The site reaches the bank's issuer with a scoped service key, not a staff session | Accepted |
+| [0056](0056-kyb-first-then-bind.md) | Self-custody: the bank confirms the client's KYB first, then the client binds a wallet with one signature | Accepted |

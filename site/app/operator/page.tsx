@@ -103,7 +103,7 @@ export default async function Operator() {
       <h2 id="self-custody">Self-custody requests</h2>
       <div className="table-wrap panel">
         <table>
-          <thead><tr><th>Requested</th><th>Requested by</th><th>Client reference</th><th>Wallet</th><th>Review</th></tr></thead>
+          <thead><tr><th>Requested</th><th>Requested by</th><th>Client reference</th><th>Confirm the client's KYB</th></tr></thead>
           <tbody>
             {admissions.filter((a) => a.route === "self-custody" && a.status === "awaiting-bank-review").map((a) => {
               const r = (a.data as Record<string, any>).request;
@@ -112,13 +112,12 @@ export default async function Operator() {
                   <td>{when(a.createdAt)}</td>
                   <td>{r.requestedBy}, {r.organisation}</td>
                   <td>{r.kycReference}</td>
-                  <td>{r.walletAddress} ({r.addressType})</td>
                   <td>
                     <form action={reviewSelfCustodyAction}>
                       <input type="hidden" name="id" value={a.id} />
                       <input type="hidden" name="decision" value="approve" />
                       <BankRecordFields />
-                      <button type="submit" className="quiet">Confirm the client and ask for the signature</button>
+                      <button type="submit" className="quiet">Confirm the client's KYB</button>
                     </form>
                     <form action={reviewSelfCustodyAction}>
                       <input type="hidden" name="id" value={a.id} />

@@ -4,6 +4,7 @@ import { currentRegistrant, isOperator } from "@/lib/access";
 import { getStore, type Admission } from "@/lib/store";
 import { Bar } from "../Bar";
 import {
+  bindWalletAction,
   renewAdmissionAction,
   renewChallengeAction,
   requestSelfCustodyAction,
@@ -23,8 +24,9 @@ export const dynamic = "force-dynamic";
  */
 
 const STATUS: Record<Admission["status"], string> = {
-  "awaiting-bank-review": "Your bank is reviewing the request.",
-  "awaiting-signature": "Approved by your bank. Sign once with the wallet to admit.",
+  "awaiting-bank-review": "Step 1 of 2: your bank is confirming your KYB.",
+  "kyb-confirmed": "Step 2 of 2: your bank has confirmed your KYB. Bind the wallet to admit.",
+  "awaiting-signature": "Step 2 of 2: sign once with the wallet to bind it.",
   "awaiting-officer": "Step 1 of 2: present your officer credential.",
   "awaiting-wallet": "Step 2 of 2: present the wallet-control credential.",
   ready: "Received. Awaiting the bank's approval.",
@@ -43,7 +45,7 @@ export default async function Admit() {
 
   return (
     <div className="wrap">
-      {open && a.status !== "awaiting-signature" && <AutoRefresh />}
+      {open && a.status !== "awaiting-signature" && a.status !== "kyb-confirmed" && <AutoRefresh />}
       <Bar who={who} operator={isOperator(who.email)} />
       <header className="masthead" style={{ paddingBottom: "1rem" }}>
         <p className="eyebrow">Conversion pool</p>
@@ -58,6 +60,8 @@ export default async function Admit() {
         <section className="panel">
           <p><strong>{STATUS[a.status]}</strong> {a.status === "refused" && problems(d)} {a.status === "failed" && d.error}</p>
           {a.status === "admitted" && <p className="muted">{d.assessment?.summary?.wallet} may now convert in the pool.</p>}
+          {a.status === "kyb-confirmed" && d.error && <p role="alert">The last attempt to bind a wallet failed: {d.error}</p>}
+          {(a.status === "awaiting-bank-review" || a.status === "kyb-confirmed") && <BindStep a={a} />}
           {a.status === "awaiting-signature" && <SignStep a={a} d={d} />}
           {(a.status === "awaiting-officer" || a.status === "awaiting-wallet") && <QrStep a={a} d={d} />}
         </section>
@@ -67,19 +71,15 @@ export default async function Admit() {
         <div className="cols">
           <section className="panel">
             <h2>A wallet you hold</h2>
-            <p className="muted">Your own wallet, or one a third party holds for you. Your bank checks the request against its records first.</p>
+            <p className="muted">
+              Your own wallet, or one a third party holds for you. First your bank confirms the KYB it already holds
+              for you; then you bind the wallet with one signature.
+            </p>
             <form action={requestSelfCustodyAction}>
               <label>Your client reference at the bank<input name="kycReference" required maxLength={200} /></label>
-              <label>Wallet address<input name="walletAddress" required pattern="0x[0-9a-fA-F]{40}" /></label>
-              <label>
-                Wallet type
-                <select name="addressType" defaultValue="eoa">
-                  <option value="eoa">Ordinary wallet (a key)</option>
-                  <option value="smart_contract">Contract wallet on this network</option>
-                </select>
-              </label>
-              <button type="submit">Ask my bank</button>
+              <button type="submit">Ask my bank to confirm my KYB</button>
             </form>
+            <p><button type="button" disabled title="Available once your bank confirms your KYB">Bind wallet</button></p>
           </section>
           <section className="panel">
             <h2>Credentials in a holder wallet</h2>
@@ -91,6 +91,28 @@ export default async function Admit() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Binding a wallet: shown throughout step 1, usable once the bank has confirmed the KYB. */
+function BindStep({ a }: { a: Admission }) {
+  const ready = a.status === "kyb-confirmed";
+  return (
+    <form action={bindWalletAction}>
+      <input type="hidden" name="id" value={a.id} />
+      <fieldset disabled={!ready} style={{ border: 0, padding: 0, margin: 0 }}>
+        <label>Wallet address<input name="walletAddress" required pattern="0x[0-9a-fA-F]{40}" /></label>
+        <label>
+          Wallet type
+          <select name="addressType" defaultValue="eoa">
+            <option value="eoa">Ordinary wallet (a key)</option>
+            <option value="smart_contract">Contract wallet on this network</option>
+          </select>
+        </label>
+        <button type="submit">Bind wallet</button>
+      </fieldset>
+      {!ready && <p className="muted">Binding a wallet opens once your bank has confirmed your KYB. This page updates by itself.</p>}
+    </form>
   );
 }
 

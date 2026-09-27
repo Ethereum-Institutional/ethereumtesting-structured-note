@@ -234,32 +234,52 @@ test("route 1 refuses a client the bank has no corporate identity for, and only 
   await assert.rejects(service.admitCustodied(operator as any, { kycReference: "KYC-UNKNOWN", instructionRef: "x", clientRef: `U-${NOW}`, record: RECORD }), /no live corporate identity/);
 });
 
-test("route 2, self-custody: the client asks, the bank reviews, the client signs once", async () => {
+test("route 2, self-custody: the bank confirms the KYB, then the client binds a wallet with one signature", async () => {
   const key = privateKeyToAccount(keccak256(toBytes(`self-custody wallet ${NOW}`)));
-  let a = await service.requestSelfCustody(registrant as any, { kycReference: "KYC-TI1", walletAddress: key.address, addressType: "eoa" });
+  const challengesBefore = challenges.size;
+  let a = await service.requestSelfCustody(registrant as any, { kycReference: "KYC-TI1" });
   assert.equal(a.status, "awaiting-bank-review");
-  assert.equal(challenges.size > 0 && [...challenges.values()].some((t: any) => t.message.walletAddress === key.address), false, "nothing is minted or challenged before the bank reviews");
+
+  // Binding is closed until the bank has confirmed the KYB; nothing is challenged or minted.
+  await assert.rejects(service.startWalletBinding(registrant as any, a.id, { walletAddress: key.address, addressType: "eoa" }), /not confirmed yet/);
+  assert.equal(challenges.size, challengesBefore, "no challenge before the bank confirms");
 
   await assert.rejects(service.reviewSelfCustody(registrant as any, a.id, "approve", RECORD), /Not permitted/);
   await service.reviewSelfCustody(operator as any, a.id, "approve", RECORD);
   a = (await store.admissionById(a.id))!;
-  assert.equal(a.status, "awaiting-signature");
+  assert.equal(a.status, "kyb-confirmed");
+  assert.equal(challenges.size, challengesBefore, "confirming the KYB issues no challenge either");
 
+  // Another client cannot bind a wallet under this confirmation.
+  await assert.rejects(service.startWalletBinding(operator as any, a.id, { walletAddress: key.address, addressType: "eoa" }), /not confirmed yet/);
+
+  await service.startWalletBinding(registrant as any, a.id, { walletAddress: key.address, addressType: "eoa" });
+  a = (await store.admissionById(a.id))!;
+  assert.equal(a.status, "awaiting-signature");
   const td = (a.data as any).challenge.typedData;
   const { EIP712Domain: _d, ...types } = td.types;
+  const signature = await key.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message: td.message });
+  a = await service.submitSelfCustodySignature(registrant as any, a.id, signature);
+  assert.equal(a.status, "admitted", JSON.stringify((a.data as any).assessment?.problems ?? (a.data as any).error));
+  const { allowed, jurisdiction } = await readPool(key.address);
+  assert.equal(allowed, true, "the client's own wallet is admitted with one signature");
+  assert.equal(jurisdiction, 442);
+});
+
+test("route 2: a wrong signature fails the binding, and the client can bind again", async () => {
+  const key = privateKeyToAccount(keccak256(toBytes(`second self-custody wallet ${NOW}`)));
+  let a = await service.requestSelfCustody(registrant as any, { kycReference: "KYC-TI1" });
+  await service.reviewSelfCustody(operator as any, a.id, "approve", RECORD);
+  await service.startWalletBinding(registrant as any, a.id, { walletAddress: key.address, addressType: "eoa" });
   await assert.rejects(service.submitSelfCustodySignature(registrant as any, a.id, "0x1234"), /signature does not verify/);
   a = (await store.admissionById(a.id))!;
-  assert.equal(a.status, "failed", "a bad signature fails the admission; the client starts again");
+  assert.equal(a.status, "kyb-confirmed", "the KYB stays confirmed");
+  assert.match((a.data as any).error, /signature does not verify/);
 
-  let b = await service.requestSelfCustody(registrant as any, { kycReference: "KYC-TI1", walletAddress: key.address, addressType: "eoa" });
-  await service.reviewSelfCustody(operator as any, b.id, "approve", RECORD);
-  b = (await store.admissionById(b.id))!;
-  const td2 = (b.data as any).challenge.typedData;
-  const { EIP712Domain: _d2, ...types2 } = td2.types;
-  const signature = await key.signTypedData({ domain: td2.domain, types: types2, primaryType: td2.primaryType, message: td2.message });
-  b = await service.submitSelfCustodySignature(registrant as any, b.id, signature);
-  assert.equal(b.status, "admitted", JSON.stringify((b.data as any).assessment?.problems ?? (b.data as any).error));
-  const { allowed, jurisdiction } = await readPool(key.address);
-  assert.equal(allowed, true, "the client's own wallet is admitted");
-  assert.equal(jurisdiction, 442);
+  await service.startWalletBinding(registrant as any, a.id, { walletAddress: key.address, addressType: "eoa" });
+  a = (await store.admissionById(a.id))!;
+  const td = (a.data as any).challenge.typedData;
+  const { EIP712Domain: _d, ...types } = td.types;
+  a = await service.submitSelfCustodySignature(registrant as any, a.id, await key.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message: td.message }));
+  assert.equal(a.status, "admitted", "bound on the second try, with no second review");
 });

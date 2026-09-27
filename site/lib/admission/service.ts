@@ -275,11 +275,8 @@ export async function admitCustodied(
   return (await store.admissionById(a.id))!;
 }
 
-/** Route 2, step 1: a signed-in client asks for its own wallet to be admitted under its bank KYB. */
-export async function requestSelfCustody(
-  client: Registrant,
-  input: { kycReference: string; walletAddress: string; addressType: "eoa" | "smart_contract" },
-): Promise<Admission> {
+/** Route 2, step 1: a signed-in client asks its bank to confirm its KYB (ADR 0056). No wallet yet. */
+export async function requestSelfCustody(client: Registrant, input: { kycReference: string }): Promise<Admission> {
   const a: Admission = {
     id: `adm_${randomBytes(9).toString("base64url")}`,
     registrantId: client.id,
@@ -291,14 +288,14 @@ export async function requestSelfCustody(
     data: { request: { ...input, requestedBy: client.email, organisation: client.organisation } },
   };
   await getStore().putAdmission(a);
-  await getStore().audit({ at: now(), actor: client.email, action: "asked for a self-custody wallet to be admitted", subject: a.id });
+  await getStore().audit({ at: now(), actor: client.email, action: "asked the bank to confirm its KYB for a self-custody wallet", subject: a.id });
   return a;
 }
 
 /**
- * Route 2, step 2: the bank's staff confirm the request is from the client they know, and state
- * the client's details from their file. Only then is a wallet challenge issued, so the bank never
- * mints a credential for a wallet it has not matched to a client.
+ * Route 2, step 2: the bank's staff confirm the request is from the client they know, find its
+ * corporate identity, and state the client's details from their file. The client may then bind a
+ * wallet, which needs no further review (ADR 0056).
  */
 export async function reviewSelfCustody(
   staff: Registrant,
@@ -318,20 +315,41 @@ export async function reviewSelfCustody(
   }
   const policy = policyConfig();
   const bank = bankConfig();
-  const chainId = loadManifest().chainId;
-  let corporate, challenge;
+  let corporate;
   try {
     corporate = await corporateIdentityFor(bank, d.request.kycReference, policy.schemas.corporateIdentity, nowSec());
-    challenge = await startWalletAttestation(bank, corporate.subjectDid, `eip155:${chainId}`, d.request.walletAddress, PURPOSE);
   } catch (e) {
     await store.updateAdmission({ ...a, status: "refused", data: { ...d, reviewedBy: staff.email, error: (e as Error).message } }, a.status);
     throw e;
   }
   await store.updateAdmission(
-    { ...a, status: "awaiting-signature", data: { ...d, record: { ...record!, kycReference: d.request.kycReference }, corporate, challenge, reviewedBy: staff.email } },
+    { ...a, status: "kyb-confirmed", data: { ...d, record: { ...record!, kycReference: d.request.kycReference }, corporate, reviewedBy: staff.email, confirmedAt: now() } },
     a.status,
   );
-  await store.audit({ at: now(), actor: staff.email, action: "approved a self-custody request; awaiting the wallet's signature", subject: a.id });
+  await store.audit({ at: now(), actor: staff.email, action: "confirmed a client's KYB for self-custody", subject: a.id });
+}
+
+/**
+ * Route 2, step 3: the client names the wallet to bind. The bank issues its challenge now, while
+ * the client is here to sign it; a challenge that lapses is simply issued again.
+ */
+export async function startWalletBinding(
+  client: Registrant,
+  id: string,
+  wallet: { walletAddress: string; addressType: "eoa" | "smart_contract" },
+): Promise<void> {
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.registrantId !== client.id || (a.status !== "kyb-confirmed" && a.status !== "awaiting-signature")) {
+    throw new Error("Your KYB is not confirmed yet.");
+  }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet.walletAddress)) throw new Error("That is not a wallet address.");
+  const d = a.data as Record<string, any>;
+  const challenge = await startWalletAttestation(bankConfig(), d.corporate.subjectDid, `eip155:${loadManifest().chainId}`, wallet.walletAddress, PURPOSE);
+  await store.updateAdmission(
+    { ...a, status: "awaiting-signature", data: { ...d, request: { ...d.request, ...wallet }, challenge } },
+    a.status,
+  );
 }
 
 /** A fresh challenge, when the client did not sign the last one in time. */
@@ -377,7 +395,8 @@ export async function submitSelfCustodySignature(client: Registrant, id: string,
       await store.audit({ at: now(), actor: client.email, action: `admitted self-custody wallet ${walletAddress}`, subject: a.id });
     }
   } catch (e) {
-    await store.updateAdmission({ ...a, status: "failed", data: { ...d, error: (e as Error).message } }, "failed");
+    // The KYB is still confirmed; only this binding failed. The client can bind again at once.
+    await store.updateAdmission({ ...a, status: "kyb-confirmed", data: { ...d, challenge: undefined, error: (e as Error).message } }, "failed");
     throw e;
   }
   return (await store.admissionById(a.id))!;

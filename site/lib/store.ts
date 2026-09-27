@@ -36,6 +36,7 @@ export type AuditEntry = { at: string; actor: string; action: string; subject: s
  */
 export type AdmissionStatus =
   | "awaiting-bank-review"
+  | "kyb-confirmed"
   | "awaiting-signature"
   | "awaiting-officer"
   | "awaiting-wallet"

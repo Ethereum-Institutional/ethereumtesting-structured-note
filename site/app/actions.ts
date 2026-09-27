@@ -9,6 +9,7 @@ import {
   renewRequest,
   renewSelfCustodyChallenge,
   requestSelfCustody,
+  startWalletBinding,
   reviewSelfCustody,
   startAdmission,
   submitSelfCustodySignature,
@@ -134,8 +135,14 @@ export async function reviewSelfCustodyAction(f: FormData) {
 export async function requestSelfCustodyAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
+  await recorded(() => requestSelfCustody(who, { kycReference: field(f, "kycReference").trim() }), "/admit");
+}
+
+export async function bindWalletAction(f: FormData) {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
   const type = field(f, "addressType") === "smart_contract" ? "smart_contract" : "eoa";
-  await recorded(() => requestSelfCustody(who, { kycReference: field(f, "kycReference").trim(), walletAddress: field(f, "walletAddress").trim(), addressType: type }), "/admit");
+  await recorded(() => startWalletBinding(who, field(f, "id"), { walletAddress: field(f, "walletAddress").trim(), addressType: type }), "/admit");
 }
 
 export async function submitSignatureAction(f: FormData) {

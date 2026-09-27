@@ -37,9 +37,10 @@ Three routes, one result: a pool grant and an Identity Registry grant, resting o
    custodian opens a segregated custody account, the account signs the wallet-control message
    (EIP-1271), the bank's issuer mints the wallet credential, both grants are written and the
    account is approved to trade. One action; the client does nothing.
-2. **Self-custody through the bank.** At `/admit` the client names its wallet; bank staff confirm it
-   against their records; the client signs once, from a browser wallet or by pasting a signature
-   from any other signer; the bank mints the wallet credential and the grants follow.
+2. **Self-custody through the bank.** At `/admit` the client asks the bank to confirm its KYB, by
+   client reference only; bank staff confirm it at `/operator`. Then the client binds a wallet:
+   names it and signs the bank's message once, from a browser wallet or by pasting a signature from
+   any other signer; the bank mints the wallet credential and the grants follow at once (ADR 0056).
 3. **Holder wallet.** At `/admit` an officer scans two QR codes with the holder wallet; the site
    receives each presentation at `/api/admission/callback` and an operator approves.
 
