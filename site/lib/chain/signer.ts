@@ -35,7 +35,8 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
   const configured = env.SIGNER_KEYS ? (JSON.parse(env.SIGNER_KEYS) as Record<string, Hex>) : {};
   const keys = local ? { ...LOCAL_KEYS, ...configured } : configured;
 
-  const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
+  // Polled every second, not viem's default four: Base mines every two seconds, and an admission waits on several receipts.
+  const publicClient = createPublicClient({ chain, transport: http(rpcUrl), pollingInterval: 1_000 });
   let nonceManager = createNonceManager({ source: jsonRpc() });
   const accounts = new Map<string, ReturnType<typeof privateKeyToAccount>>();
   const enqueue = signerQueues<string>();

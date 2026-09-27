@@ -229,6 +229,12 @@ test("route 1, custodied: one staff action opens, binds, admits and readies a cu
   assert.equal((a.data as any).walletAttestation.wallet.attestationMethod, "EIP-1271", "the account itself signed");
 });
 
+test("route 1: finishing is only for a custodied admission whose approvals failed", async () => {
+  const done = (await store.listAdmissions(30)).find((x: any) => x.route === "custodied" && x.status === "admitted")!;
+  await assert.rejects(service.finishCustodied(operator as any, done.id), /nothing to finish/);
+  await assert.rejects(service.finishCustodied(registrant as any, done.id), /Not permitted/);
+});
+
 test("route 1 refuses a client the bank has no corporate identity for, and only staff may admit", async () => {
   await assert.rejects(service.admitCustodied(registrant as any, { kycReference: "KYC-TI1", instructionRef: "x", clientRef: "y", record: RECORD }), /Not permitted/);
   await assert.rejects(service.admitCustodied(operator as any, { kycReference: "KYC-UNKNOWN", instructionRef: "x", clientRef: `U-${NOW}`, record: RECORD }), /no live corporate identity/);

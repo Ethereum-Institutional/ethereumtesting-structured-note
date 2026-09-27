@@ -19,7 +19,7 @@ import { emailList, isOperator } from "../operators.ts";
 import { sendMail } from "../mail.ts";
 import { assessBankAdmission, type BankAdmissionInput, type BankRecord } from "./assess.ts";
 import { bankConfig, completeWalletAttestation, corporateIdentityFor, startWalletAttestation, type WalletChallenge } from "./bank.ts";
-import { openCustodyAccount, readyToTrade, signAsCustodyAccount } from "./custody.ts";
+import { custodyAccountFor, openCustodyAccount, poolAllows, readyToTrade, signAsCustodyAccount } from "./custody.ts";
 import { policyConfig } from "./protocol.ts";
 import type { Address, Hex } from "viem";
 
@@ -244,6 +244,7 @@ export async function admitCustodied(
     data: { record, instructionRef: input.instructionRef, clientRef: input.clientRef, reviewedBy: staff.email, error: "writing" },
   };
   await store.putAdmission(a);
+  let progress = a.data as Record<string, unknown>; // what is kept if a later step fails
   try {
     const corporate = await corporateIdentityFor(bank, input.kycReference, policy.schemas.corporateIdentity, nowSec());
     const account = await openCustodyAccount(input.clientRef);
@@ -265,14 +266,40 @@ export async function admitCustodied(
       return (await store.admissionById(a.id))!;
     }
     const written = await writeGrants(policy.issuerDid, assessment.attestation, assessment.registry);
+    // The grants are on-chain: recorded before the approvals, so a failure there loses nothing and can be finished.
+    progress = { ...data, written, account };
+    await store.updateAdmission({ ...a, data: { ...progress, error: "setting trading approvals" } }, "failed");
     const readyTx = await readyToTrade(account);
     await store.updateAdmission({ ...a, status: "admitted", data: { ...data, written: { ...written, readyTx }, error: undefined } }, "failed");
     await store.audit({ at: now(), actor: staff.email, action: `admitted custody account ${account} for ${record.legalName}`, subject: a.id });
   } catch (e) {
-    await store.updateAdmission({ ...a, data: { ...a.data, error: (e as Error).message } }, "failed");
+    await store.updateAdmission({ ...a, data: { ...progress, error: (e as Error).message } }, "failed");
     throw e;
   }
   return (await store.admissionById(a.id))!;
+}
+
+/**
+ * Finishes a custodied admission whose grants were written but whose trading approvals failed. The
+ * account is re-derived from the custody reference and must be admitted by the pool gate now.
+ */
+export async function finishCustodied(staff: Registrant, id: string): Promise<void> {
+  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  const store = getStore();
+  const a = await store.admissionById(id);
+  const d = (a?.data ?? {}) as Record<string, any>;
+  if (!a || a.route !== "custodied" || a.status !== "failed" || !d.clientRef) throw new Error("That admission has nothing to finish.");
+  const account = await custodyAccountFor(d.clientRef);
+  if (!(await poolAllows(account))) throw new Error(`the pool does not admit ${account}: admit the client again`);
+  try {
+    const readyTx = await readyToTrade(account);
+    const written = { chainId: loadManifest().chainId, ...(d.written ?? {}), readyTx };
+    await store.updateAdmission({ ...a, status: "admitted", data: { ...d, account, written, error: undefined } }, "failed");
+    await store.audit({ at: now(), actor: staff.email, action: `set the trading approvals for custody account ${account}`, subject: a.id });
+  } catch (e) {
+    await store.updateAdmission({ ...a, data: { ...d, account, error: (e as Error).message } }, "failed");
+    throw e;
+  }
 }
 
 /** The steps a client may walk away from: everything before the grants are being written (ADR 0058). */

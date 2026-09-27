@@ -6,6 +6,7 @@ import { confirm, currentOperator, currentRegistrant, decide, register, requestS
 import {
   admitCustodied,
   cancelAdmission,
+  finishCustodied,
   decideAdmission,
   renewRequest,
   renewSelfCustodyChallenge,
@@ -132,6 +133,12 @@ export async function admitCustodiedAction(f: FormData) {
       }),
     "/operator",
   );
+}
+
+export async function finishCustodiedAction(f: FormData) {
+  const op = await currentOperator();
+  if (!op) throw new Error("Not permitted.");
+  await recorded(() => finishCustodied(op, field(f, "id")), "/operator");
 }
 
 export async function reviewSelfCustodyAction(f: FormData) {

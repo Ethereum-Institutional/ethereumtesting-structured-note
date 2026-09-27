@@ -13,7 +13,15 @@ const FACTORY = parseAbi([
   "function createAccount(string clientRef) returns (address)",
   "function predictAddress(string clientRef) view returns (address)",
 ]);
-const ACCOUNT = parseAbi(["function execute((address target, uint256 value, bytes data)[] calls) returns (bytes[])"]);
+const ACCOUNT = parseAbi([
+  "function execute((address target, uint256 value, bytes data)[] calls) returns (bytes[])",
+  "error NotCustodian(address caller)",
+  "error EmptyBatch()",
+  // Raised by the deposit token when it does not yet hold the account as eligible.
+  "error ERC7943CannotSend(address account)",
+]);
+const ELIGIBILITY = parseAbi(["function canSend(address account) view returns (bool)"]);
+const GATE = parseAbi(["function isAllowed(address account) view returns (bool)"]);
 const ERC20 = parseAbi(["function approve(address spender, uint256 amount) returns (bool)"]);
 const PERMIT2 = parseAbi(["function approve(address token, address spender, uint160 amount, uint48 expiration)"]);
 
@@ -42,9 +50,37 @@ export function signAsCustodyAccount(typedData: Record<string, any>): Promise<He
   return context().s.signTypedData("custodian", typedData);
 }
 
+/** The custody account the custodian opens for a client reference. */
+export function custodyAccountFor(clientRef: string): Promise<Address> {
+  const { s, factory } = context();
+  return s.publicClient.readContract({ address: factory, abi: FACTORY, functionName: "predictAddress", args: [clientRef] });
+}
+
+/** Whether the pool gate admits the account now. */
+export function poolAllows(account: Address): Promise<boolean> {
+  const { m, s } = context();
+  return s.publicClient.readContract({ address: m.venue.credentialGate, abi: GATE, functionName: "isAllowed", args: [account] });
+}
+
+/**
+ * Waits until the deposit token itself holds the account as eligible. The registry grant has
+ * confirmed by now, but a load-balanced RPC may answer the next call from a node that has not seen
+ * it yet, and the token then refuses the approval (ERC7943CannotSend).
+ */
+async function untilEligible(account: Address, token: Address, s: ReturnType<typeof signers>, timeoutMs = 45_000) {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    const ok = await s.publicClient.readContract({ address: token, abi: ELIGIBILITY, functionName: "canSend", args: [account] }).catch(() => false);
+    if (ok) return;
+    if (Date.now() > until) throw new Error(`the deposit token does not yet hold ${account} as eligible; try setting the trading approvals again`);
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+}
+
 /** The approvals a custodied account needs to convert through the pool, in one transaction. */
 export async function readyToTrade(account: Address): Promise<Hex> {
   const { m, s } = context();
+  if (m.assets.deposit?.address) await untilEligible(account, m.assets.deposit.address as Address, s);
   const permit2 = m.venue.permit2;
   const tokens = [m.assets.deposit?.address, m.assets.paymentToken?.address].filter(Boolean) as Address[];
   const calls: Array<{ target: Address; value: bigint; data: Hex }> = [];

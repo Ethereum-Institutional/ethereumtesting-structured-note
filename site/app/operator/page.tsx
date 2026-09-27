@@ -4,7 +4,8 @@ import { getStore, type Registrant } from "@/lib/store";
 import { explorerAddress, explorerTx } from "@/lib/explorer";
 import { bankConfig, corporateIdentities, type IssuedCredential } from "@/lib/admission/bank";
 import { policyConfig } from "@/lib/admission/protocol";
-import { admitCustodiedAction, decideAction, decideAdmissionAction, reviewSelfCustodyAction } from "../actions";
+import { admitCustodiedAction, decideAction, decideAdmissionAction, finishCustodiedAction, reviewSelfCustodyAction } from "../actions";
+import { PendingButton } from "../PendingButton";
 import { Bar } from "../Bar";
 import { NUMERIC } from "@/lib/admission/assess";
 import { JurisdictionSelect, ScreeningDate } from "./RecordFields";
@@ -145,7 +146,11 @@ export default async function Operator() {
             <label>Client instruction reference<input name="instructionRef" required maxLength={200} /></label>
             <BankRecordFields />
           </div>
-          <div className="actions"><button type="submit">Admit</button></div>
+          <div className="actions">
+            <PendingButton working="Opening the custody account, binding its wallet with the bank, writing both grants and setting its trading approvals. This takes up to a minute; keep this page open.">
+              Admit
+            </PendingButton>
+          </div>
         </form>
       </section>
 
@@ -165,7 +170,7 @@ export default async function Operator() {
                 <BankRecordFields />
               </div>
               <div className="actions">
-                <button type="submit">Confirm the client's KYB</button>
+                <PendingButton working="Finding the client's corporate identity at the bank…">Confirm the client's KYB</PendingButton>
                 <button type="submit" form={`decline-${a.id}`} className="quiet">Decline</button>
               </div>
             </form>
@@ -202,7 +207,7 @@ export default async function Operator() {
                   <td><span className={`pill ${a.status === "ready" ? "pending" : a.status === "admitted" ? "approved" : ""}`}>{a.status}</span></td>
                   <td>{s?.corporation ?? d.record?.legalName ?? ""}</td>
                   <td>{s?.officerDid ? `${s.role}, ${s.officerDid}` : ""}</td>
-                  <td>{s ? <Linked href={explorerAddress(w?.chainId, s.wallet)}>{s.wallet}</Linked> : d.request?.walletAddress ?? ""}</td>
+                  <td>{s ? <Linked href={explorerAddress(w?.chainId, s.wallet)}>{s.wallet}</Linked> : d.account ? <Linked href={explorerAddress(w?.chainId, d.account)}>{d.account}</Linked> : d.request?.walletAddress ?? ""}</td>
                   <td>{s?.walletType ?? d.request?.addressType ?? ""}</td>
                   <td>{s?.jurisdiction ?? d.record?.jurisdiction ?? ""}</td>
                   <td>{s?.investorClass ?? ""}</td>
@@ -212,12 +217,18 @@ export default async function Operator() {
                   <td>{tx(w?.readyTx)}</td>
                   <td style={{ whiteSpace: "normal", minWidth: 280 }}>{problem}</td>
                   <td>
+                    {a.route === "custodied" && a.status === "failed" && d.clientRef && (
+                      <form action={finishCustodiedAction} className="actions">
+                        <input type="hidden" name="id" value={a.id} />
+                        <PendingButton className="quiet" working="Setting the trading approvals…">Set trading approvals</PendingButton>
+                      </form>
+                    )}
                     {a.status === "ready" && (
                       <div className="actions">
                         <form action={decideAdmissionAction}>
                           <input type="hidden" name="id" value={a.id} />
                           <input type="hidden" name="decision" value="approve" />
-                          <button type="submit" className="quiet">Approve and write grants</button>
+                          <PendingButton className="quiet" working="Writing both grants: up to a minute.">Approve and write grants</PendingButton>
                         </form>
                         <form action={decideAdmissionAction}>
                           <input type="hidden" name="id" value={a.id} />
