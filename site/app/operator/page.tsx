@@ -6,20 +6,25 @@ import { bankConfig, corporateIdentities, type IssuedCredential } from "@/lib/ad
 import { policyConfig } from "@/lib/admission/protocol";
 import { admitCustodiedAction, decideAction, decideAdmissionAction, reviewSelfCustodyAction } from "../actions";
 import { Bar } from "../Bar";
+import { NUMERIC } from "@/lib/admission/assess";
+import { JurisdictionSelect, ScreeningDate } from "./RecordFields";
 
 export const dynamic = "force-dynamic";
+
+/** The pool gate's screening maximum age (script/01_DeployVenue.s.sol, SCREENING_MAX_AGE). */
+const SCREENING_MAX_AGE_DAYS = 30;
 
 /** What the bank states from its own file about the client (ADR 0054). */
 function BankRecordFields() {
   return (
     <>
       <label>Legal name<input name="legalName" required maxLength={200} /></label>
-      <label>Jurisdiction (ISO code)<input name="jurisdiction" required pattern="[A-Za-z]{2}" maxLength={2} /></label>
+      <JurisdictionSelect allowed={Object.keys(NUMERIC)} />
       <label>
         Status
         <select name="status" defaultValue="active"><option value="active">Active</option><option value="suspended">Suspended</option></select>
       </label>
-      <label>Last sanctions screening<input name="screenedOn" type="date" /></label>
+      <ScreeningDate maxAgeDays={SCREENING_MAX_AGE_DAYS} />
       <label>
         Investor class
         <select name="investorClass" defaultValue=""><option value="">Institutional (by policy)</option><option value="professional">Professional</option></select>
@@ -75,8 +80,13 @@ function Linked({ href, children }: { href: string | null; children: React.React
 const when = (iso: string | null) => (iso ? iso.slice(0, 16).replace("T", " ") + " UTC" : "");
 
 function Decide({ r, self }: { r: Registrant; self: boolean }) {
+  // One form per decision, carried in a hidden field: the clicked button's own name and value are not sent.
   const act = (decision: "approve" | "revoke", label: string) => (
-    <button type="submit" name="decision" value={decision} className="quiet">{label}</button>
+    <form action={decideAction}>
+      <input type="hidden" name="id" value={r.id} />
+      <input type="hidden" name="decision" value={decision} />
+      <button type="submit" className="quiet">{label}</button>
+    </form>
   );
   const buttons =
     r.status === "pending" ? <>{act("approve", "Approve")}{act("revoke", "Decline")}</>
@@ -84,12 +94,7 @@ function Decide({ r, self }: { r: Registrant; self: boolean }) {
     : r.status === "revoked" ? act("approve", "Reinstate")
     : null;
   if (!buttons) return null;
-  return (
-    <form action={decideAction} className="actions">
-      <input type="hidden" name="id" value={r.id} />
-      {buttons}
-    </form>
-  );
+  return <div className="actions">{buttons}</div>;
 }
 
 export default async function Operator() {
@@ -154,14 +159,19 @@ export default async function Operator() {
             <h3 style={{ margin: "0.25rem 0 1rem" }}>{r.organisation} <span className="muted">({r.requestedBy})</span></h3>
             <form action={reviewSelfCustodyAction} className="stack">
               <input type="hidden" name="id" value={a.id} />
+              <input type="hidden" name="decision" value="approve" />
               <div className="fields">
                 <ClientReference clients={clients} known={r.knownReference ?? r.kycReference} />
                 <BankRecordFields />
               </div>
               <div className="actions">
-                <button type="submit" name="decision" value="approve">Confirm the client's KYB</button>
-                <button type="submit" name="decision" value="decline" className="quiet" formNoValidate>Decline</button>
+                <button type="submit">Confirm the client's KYB</button>
+                <button type="submit" form={`decline-${a.id}`} className="quiet">Decline</button>
               </div>
+            </form>
+            <form action={reviewSelfCustodyAction} id={`decline-${a.id}`} hidden>
+              <input type="hidden" name="id" value={a.id} />
+              <input type="hidden" name="decision" value="decline" />
             </form>
           </section>
         );
@@ -203,11 +213,18 @@ export default async function Operator() {
                   <td style={{ whiteSpace: "normal", minWidth: 280 }}>{problem}</td>
                   <td>
                     {a.status === "ready" && (
-                      <form action={decideAdmissionAction} className="actions">
-                        <input type="hidden" name="id" value={a.id} />
-                        <button type="submit" name="decision" value="approve" className="quiet">Approve and write grants</button>
-                        <button type="submit" name="decision" value="decline" className="quiet">Decline</button>
-                      </form>
+                      <div className="actions">
+                        <form action={decideAdmissionAction}>
+                          <input type="hidden" name="id" value={a.id} />
+                          <input type="hidden" name="decision" value="approve" />
+                          <button type="submit" className="quiet">Approve and write grants</button>
+                        </form>
+                        <form action={decideAdmissionAction}>
+                          <input type="hidden" name="id" value={a.id} />
+                          <input type="hidden" name="decision" value="decline" />
+                          <button type="submit" className="quiet">Decline</button>
+                        </form>
+                      </div>
                     )}
                   </td>
                 </tr>

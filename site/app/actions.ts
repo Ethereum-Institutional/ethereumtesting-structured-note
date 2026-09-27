@@ -100,8 +100,10 @@ export async function decideAdmissionAction(f: FormData) {
   const op = await currentOperator();
   if (!op) throw new Error("Not permitted.");
   const d = field(f, "decision");
-  if (d !== "approve" && d !== "decline") throw new Error("Unknown decision.");
-  await recorded(() => decideAdmission(field(f, "id"), d, op), "/operator");
+  await recorded(async () => {
+    if (d !== "approve" && d !== "decline") throw new Error(`Unknown decision: ${d || "none"}.`);
+    await decideAdmission(field(f, "id"), d, op);
+  }, "/operator");
 }
 
 /** The bank's statement of a client's details, from its own file (ADR 0054). */
@@ -136,8 +138,10 @@ export async function reviewSelfCustodyAction(f: FormData) {
   const op = await currentOperator();
   if (!op) throw new Error("Not permitted.");
   const d = field(f, "decision");
-  if (d !== "approve" && d !== "decline") throw new Error("Unknown decision.");
-  await recorded(() => reviewSelfCustody(op, field(f, "id"), d, d === "approve" ? bankRecord(f) : undefined), "/operator");
+  await recorded(async () => {
+    if (d !== "approve" && d !== "decline") throw new Error(`Unknown decision: ${d || "none"}.`);
+    await reviewSelfCustody(op, field(f, "id"), d, d === "approve" ? bankRecord(f) : undefined);
+  }, "/operator");
 }
 
 export async function requestSelfCustodyAction(f: FormData) {
