@@ -293,3 +293,21 @@ test("route 2: a wrong signature fails the binding, and the client can bind agai
   a = await service.submitSelfCustodySignature(registrant as any, a.id, await key.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message: td.message }));
   assert.equal(a.status, "admitted", "bound on the second try, with no second review");
 });
+
+test("a client that started with a holder wallet can cancel and ask its bank instead", async () => {
+  const a = await service.startAdmission(registrant, "https://site.example");
+  const officerRequest = (a.data as any).officerRequest;
+  await assert.rejects(service.cancelAdmission(operator as any, a.id), /can no longer be cancelled/, "only the client cancels its own");
+  await service.cancelAdmission(registrant as any, a.id);
+  assert.equal((await store.admissionById(a.id))!.status, "cancelled");
+
+  // A scan that arrives after the cancel changes nothing.
+  assert.equal(await service.receivePresentation(presentation(officerRequest, SCHEMAS.officer, cid("officer"), { corporationDid: CORP, role: "CEO" }), "https://site.example"), null);
+  assert.equal((await store.admissionById(a.id))!.status, "cancelled");
+  await assert.rejects(service.cancelAdmission(registrant as any, a.id), /can no longer be cancelled/);
+
+  const b = await service.requestSelfCustody(registrant as any);
+  assert.equal(b.status, "awaiting-bank-review");
+  await service.cancelAdmission(registrant as any, b.id);
+  await assert.rejects(service.reviewSelfCustody(operator as any, b.id, "approve", { ...RECORD, kycReference: "KYC-TI1" }), /not awaiting review/, "staff cannot confirm a cancelled request");
+});

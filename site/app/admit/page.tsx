@@ -5,6 +5,7 @@ import { getStore, type Admission } from "@/lib/store";
 import { Bar } from "../Bar";
 import {
   bindWalletAction,
+  cancelAdmissionAction,
   renewAdmissionAction,
   renewChallengeAction,
   requestSelfCustodyAction,
@@ -13,6 +14,7 @@ import {
 } from "../actions";
 import { SignWallet } from "./SignWallet";
 import { AutoRefresh } from "../AutoRefresh";
+import { CANCELLABLE } from "@/lib/admission/service";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,7 @@ const STATUS: Record<Admission["status"], string> = {
   refused: "Not admitted.",
   admitted: "Admitted to the conversion pool.",
   declined: "Declined by the bank.",
+  cancelled: "You cancelled this request. Choose a way to be admitted below.",
   failed: "The admission could not be completed.",
 };
 
@@ -41,7 +44,7 @@ export default async function Admit() {
   if (!who) redirect("/");
   const a = await getStore().latestAdmissionFor(who.id);
   const d = (a?.data ?? {}) as Record<string, any>;
-  const open = a && !["refused", "admitted", "declined", "failed"].includes(a.status);
+  const open = a && !["refused", "admitted", "declined", "cancelled", "failed"].includes(a.status);
 
   return (
     <div className="wrap">
@@ -67,6 +70,14 @@ export default async function Admit() {
           {(a.status === "awaiting-bank-review" || a.status === "kyb-confirmed") && <BindStep a={a} />}
           {a.status === "awaiting-signature" && <SignStep a={a} d={d} />}
           {(a.status === "awaiting-officer" || a.status === "awaiting-wallet") && <QrStep a={a} d={d} />}
+          {CANCELLABLE.includes(a.status) && (
+            <form action={cancelAdmissionAction} className="actions" style={{ marginTop: "1.25rem" }}>
+              <input type="hidden" name="id" value={a.id} />
+              <button type="submit" className="quiet">
+                {a.route === "holder-wallet" ? "Cancel and choose another way" : "Cancel this request"}
+              </button>
+            </form>
+          )}
         </section>
       )}
 

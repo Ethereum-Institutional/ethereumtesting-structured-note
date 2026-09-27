@@ -44,6 +44,7 @@ export type AdmissionStatus =
   | "refused"
   | "admitted"
   | "declined"
+  | "cancelled"
   | "failed";
 
 /** How the participant came in (ADR 0054). */

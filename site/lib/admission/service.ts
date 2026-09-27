@@ -275,6 +275,27 @@ export async function admitCustodied(
   return (await store.admissionById(a.id))!;
 }
 
+/** The steps a client may walk away from: everything before the grants are being written (ADR 0058). */
+export const CANCELLABLE: readonly Admission["status"][] = [
+  "awaiting-bank-review", "kyb-confirmed", "awaiting-signature", "awaiting-officer", "awaiting-wallet", "ready",
+];
+
+/**
+ * The client cancels its own admission, on any route, so it can start again on another. The
+ * update only lands if the admission is still where the client saw it: a presentation, review or
+ * signature that arrives afterwards finds it cancelled and does nothing.
+ */
+export async function cancelAdmission(client: Registrant, id: string): Promise<void> {
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.registrantId !== client.id || !CANCELLABLE.includes(a.status)) throw new Error("That admission can no longer be cancelled.");
+  const d = a.data as Record<string, any>;
+  if (!(await store.updateAdmission({ ...a, status: "cancelled", data: { ...d, cancelledAt: now(), cancelledFrom: a.status } }, a.status))) {
+    throw new Error("That admission changed while cancelling; look again.");
+  }
+  await store.audit({ at: now(), actor: client.email, action: `cancelled a ${a.route} admission at ${a.status}`, subject: a.id });
+}
+
 /**
  * Route 2, step 1: a signed-in client asks its bank to confirm its KYB (ADR 0056). No wallet yet,
  * and no reference either: the bank knows its own client (ADR 0057). The reference the bank

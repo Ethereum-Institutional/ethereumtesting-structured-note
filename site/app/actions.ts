@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { confirm, currentOperator, currentRegistrant, decide, register, requestSignIn, signOut } from "@/lib/access";
 import {
   admitCustodied,
+  cancelAdmission,
   decideAdmission,
   renewRequest,
   renewSelfCustodyChallenge,
@@ -87,6 +88,12 @@ export async function renewAdmissionAction(f: FormData) {
   const a = await getStore().admissionById(field(f, "id"));
   const origin = await siteOrigin();
   if (a && a.registrantId === who.id) await recorded(() => renewRequest(a, origin), "/admit");
+}
+
+export async function cancelAdmissionAction(f: FormData) {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
+  await recorded(() => cancelAdmission(who, field(f, "id")), "/admit");
 }
 
 export async function decideAdmissionAction(f: FormData) {
