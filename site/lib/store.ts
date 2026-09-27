@@ -414,5 +414,6 @@ export function getStore(): Store {
   if (process.env.NODE_ENV === "production" && !process.env.ALLOW_FILE_STORE) {
     throw new Error("No database configured. Set POSTGRES_URL. Refusing to hold access state on local disk.");
   }
-  return (store = fileStore(join(process.cwd(), ".data")));
+  // FILE_STORE_DIR lets the browser tests keep a fresh store away from the development one.
+  return (store = fileStore(process.env.FILE_STORE_DIR || join(process.cwd(), ".data")));
 }

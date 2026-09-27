@@ -73,7 +73,15 @@ rm -rf .data && npm run e2e          # 31 end-to-end checks against the dev serv
 npm run build && npm run typecheck
 npm test                                                   # chain library and admission unit tests
 ../ops/reset.sh && npm run test:admission                  # the admission flow against the local chain
+../ops/reset.sh && npm run test:browser                    # the pages, clicked through in Chromium
+npm run test:local                                         # all of the above except e2e, on a fresh chain
 ```
+
+Every test runs on the local chain; none sends a transaction to a public network (ADR 0059). The
+browser tests click through a production build (`next start`) with a fresh store, the stand-in
+bank and verifier (`test/standins.ts`), and a proxy in front of anvil that answers reads from a
+block behind just after a receipt, as a load-balanced public RPC does (`test/lagging-rpc.ts`). Run
+them before every deploy; install Chromium once with `npx playwright install chromium`.
 
 The overview is copied from `docs/solution-overview.html` at build time, so the repository keeps
 one copy. Deploy from the repository root with the Vercel project's root directory set to `site`,

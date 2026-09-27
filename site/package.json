@@ -14,7 +14,9 @@
     "e2e": "python3 test/e2e.py /tmp/site-dev.log",
     "test": "node --test lib/chain/chain.test.ts lib/admission/admission.test.ts",
     "test:chain": "node --test lib/chain/deployment.test.ts",
-    "test:admission": "node --conditions=react-server --test test/admission.integration.ts"
+    "test:admission": "node --conditions=react-server --test test/admission.integration.ts",
+    "test:browser": "next build && playwright test",
+    "test:local": "../ops/reset.sh && npm test && npm run test:admission && npm run test:browser"
   },
   "dependencies": {
     "@noble/post-quantum": "0.4.1",
@@ -27,6 +29,7 @@
     "viem": "^2.56.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.5",
     "@types/qrcode": "1.5.5",
     "@types/react": "^19.0.7",

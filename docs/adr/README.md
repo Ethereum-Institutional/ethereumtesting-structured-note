@@ -66,3 +66,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0056](0056-kyb-first-then-bind.md) | Self-custody: the bank confirms the client's KYB first, then the client binds a wallet with one signature | Accepted |
 | [0057](0057-bank-holds-the-client-reference.md) | The bank holds the client's reference; staff choose it from the bank's list, and the client never types it | Accepted |
 | [0058](0058-client-can-cancel.md) | A client can cancel its admission at any step until the grants are being written | Accepted |
+| [0059](0059-test-locally-at-the-seams.md) | Test the pages and the network's behaviour on the local chain, before every deploy | Accepted |
