@@ -24,8 +24,9 @@ interface IWalletFactory {
  * Creates four real multi-signature wallets from the canonical deployment that
  * ops/setup-multisig.sh installs: the Agent's governance wallet, the Issuer's, the co-signing
  * institution's, and the Agent's servicing wallet. Each has three signers and a threshold of
- * two, so any two institutions together require four signatures. Signers are derived from the
- * local node's published test mnemonic at indices 10 to 21, which the local node funds.
+ * two, so any two institutions together require four signatures. Signers are derived at indices
+ * 10 to 21 from the local node's published test mnemonic on the local node, and from the
+ * network's own mnemonic (WALLET_MNEMONIC) anywhere else (ADR 0051).
  *
  * Delays are compressed for the local stack, as ADR 0023 allows for the PoC: one hour for Tier 2
  * and four hours for recovery. The targets are 72 hours and 14 days. Both are recorded in the
@@ -34,7 +35,6 @@ interface IWalletFactory {
  * The ceremony ends with the deployer's renunciation. Run from instruments/ after IssueNote.
  */
 contract Ceremony is Script {
-    string constant MANIFEST = "../ops/addresses.json";
     string constant MNEMONIC = "test test test test test test test test test test test junk";
 
     address constant WALLET_SINGLETON = 0x41675C099F32341bf84BFc5382aF534df5C7461a;
@@ -69,7 +69,7 @@ contract Ceremony is Script {
     }
 
     function _load() private view returns (Instruments.Deployed memory d, Lifecycle.Issued memory l) {
-        string memory j = vm.readFile(MANIFEST);
+        string memory j = vm.readFile(_manifest());
         d.registry = IdentityRegistry(vm.parseJsonAddress(j, ".instruments.registry"));
         d.note = StructuredNote(vm.parseJsonAddress(j, ".instruments.note"));
         d.deposit = TokenizedDeposit(vm.parseJsonAddress(j, ".instruments.deposit"));
@@ -91,7 +91,18 @@ contract Ceremony is Script {
             minInstitutions: 2,
             minSignatures: 4,
             tier2Delay: LOCAL_TIER2_DELAY,
-            recoveryDelay: LOCAL_RECOVERY_DELAY
+            recoveryDelay: LOCAL_RECOVERY_DELAY,
+            venue: _venue()
+        });
+    }
+
+    /// The venue, handed over in the same ceremony.
+    function _venue() private view returns (Governance.Venue memory) {
+        string memory j = vm.readFile(_manifest());
+        return Governance.Venue({
+            checker: vm.parseJsonAddress(j, ".venue.allowlistChecker"),
+            adapter: vm.parseJsonAddress(j, ".venue.permissionsAdapter"),
+            credentialGate: vm.parseJsonAddress(j, ".venue.credentialGate")
         });
     }
 
@@ -109,14 +120,14 @@ contract Ceremony is Script {
         vm.serializeUint(o, "tier2Delay", LOCAL_TIER2_DELAY);
         vm.serializeUint(o, "recoveryDelay", LOCAL_RECOVERY_DELAY);
         vm.serializeUint(o, "targetTier2Delay", TARGET_TIER2_DELAY);
-        vm.writeJson(vm.serializeUint(o, "targetRecoveryDelay", TARGET_RECOVERY_DELAY), MANIFEST, ".governance");
+        vm.writeJson(vm.serializeUint(o, "targetRecoveryDelay", TARGET_RECOVERY_DELAY), _manifest(), ".governance");
     }
 
     /// A 2-of-3 wallet whose signers are the mnemonic's keys from `firstIndex`.
     function _wallet(uint32 firstIndex, uint256 salt) private returns (address) {
         address[] memory owners = new address[](3);
         for (uint32 k = 0; k < 3; ++k) {
-            owners[k] = vm.addr(vm.deriveKey(MNEMONIC, firstIndex + k));
+            owners[k] = vm.addr(vm.deriveKey(_mnemonic(), firstIndex + k));
         }
         bytes memory setup = abi.encodeWithSignature(
             "setup(address[],uint256,address,bytes,address,address,uint256,address)",
@@ -130,5 +141,13 @@ contract Ceremony is Script {
             address(0)
         );
         return IWalletFactory(WALLET_FACTORY).createProxyWithNonce(WALLET_SINGLETON, setup, salt);
+    }
+
+    function _mnemonic() private view returns (string memory) {
+        return block.chainid == 31337 ? MNEMONIC : vm.envString("WALLET_MNEMONIC");
+    }
+
+    function _manifest() private view returns (string memory) {
+        return string.concat("../", vm.envOr("MANIFEST", string("ops/addresses.json")));
     }
 }

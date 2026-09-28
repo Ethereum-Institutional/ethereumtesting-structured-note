@@ -1,0 +1,263 @@
+{
+ "source": "Known-answer vectors for canonical JSON from the credential protocol's reference implementation (Apache-2.0).",
+ "vectors": [
+  {
+   "name": "null",
+   "input": {
+    "json": null
+   },
+   "expected": {
+    "hex": "6e756c6c"
+   }
+  },
+  {
+   "name": "true",
+   "input": {
+    "json": true
+   },
+   "expected": {
+    "hex": "74727565"
+   }
+  },
+  {
+   "name": "false",
+   "input": {
+    "json": false
+   },
+   "expected": {
+    "hex": "66616c7365"
+   }
+  },
+  {
+   "name": "zero",
+   "input": {
+    "json": 0
+   },
+   "expected": {
+    "hex": "30"
+   }
+  },
+  {
+   "name": "positive-int",
+   "input": {
+    "json": 42
+   },
+   "expected": {
+    "hex": "3432"
+   }
+  },
+  {
+   "name": "negative-int",
+   "input": {
+    "json": -7
+   },
+   "expected": {
+    "hex": "2d37"
+   }
+  },
+  {
+   "name": "empty-string",
+   "input": {
+    "json": ""
+   },
+   "expected": {
+    "hex": "2222"
+   }
+  },
+  {
+   "name": "ascii-string",
+   "input": {
+    "json": "hello"
+   },
+   "expected": {
+    "hex": "2268656c6c6f22"
+   }
+  },
+  {
+   "name": "string-quotes",
+   "input": {
+    "json": "a\"b"
+   },
+   "expected": {
+    "hex": "22615c226222"
+   }
+  },
+  {
+   "name": "string-newline",
+   "input": {
+    "json": "a\nb"
+   },
+   "expected": {
+    "hex": "22615c6e6222"
+   }
+  },
+  {
+   "name": "string-nfc-equivalent",
+   "description": "NFC-decomposed input is normalized to the composed form.",
+   "input": {
+    "json": "é"
+   },
+   "expected": {
+    "hex": "22c3a922"
+   }
+  },
+  {
+   "name": "empty-array",
+   "input": {
+    "json": []
+   },
+   "expected": {
+    "hex": "5b5d"
+   }
+  },
+  {
+   "name": "empty-object",
+   "input": {
+    "json": {}
+   },
+   "expected": {
+    "hex": "7b7d"
+   }
+  },
+  {
+   "name": "sorted-flat",
+   "description": "Object keys sort lexicographically.",
+   "input": {
+    "json": {
+     "b": 1,
+     "a": 2,
+     "c": 3
+    }
+   },
+   "expected": {
+    "hex": "7b2261223a322c2262223a312c2263223a337d"
+   }
+  },
+  {
+   "name": "nested",
+   "input": {
+    "json": {
+     "z": {
+      "y": 1,
+      "x": 2
+     },
+     "a": 1
+    }
+   },
+   "expected": {
+    "hex": "7b2261223a312c227a223a7b2278223a322c2279223a317d7d"
+   }
+  },
+  {
+   "name": "array-of-objs",
+   "input": {
+    "json": [
+     {
+      "b": 2
+     },
+     {
+      "a": 1
+     }
+    ]
+   },
+   "expected": {
+    "hex": "5b7b2262223a327d2c7b2261223a317d5d"
+   }
+  },
+  {
+   "name": "mixed-array",
+   "input": {
+    "json": [
+     1,
+     "two",
+     true,
+     null,
+     [
+      3
+     ]
+    ]
+   },
+   "expected": {
+    "hex": "5b312c2274776f222c747275652c6e756c6c2c5b335d5d"
+   }
+  },
+  {
+   "name": "integer-float-equivalent",
+   "description": "1.0 is an integer-valued float and is accepted.",
+   "input": {
+    "json": 1
+   },
+   "expected": {
+    "hex": "31"
+   }
+  },
+  {
+   "name": "reject-nan",
+   "input": {
+    "nonJsonable": "NaN"
+   },
+   "expected": {
+    "error": "nan-or-inf"
+   }
+  },
+  {
+   "name": "reject-infinity",
+   "input": {
+    "nonJsonable": "Infinity"
+   },
+   "expected": {
+    "error": "nan-or-inf"
+   }
+  },
+  {
+   "name": "reject-neg-inf",
+   "input": {
+    "nonJsonable": "-Infinity"
+   },
+   "expected": {
+    "error": "nan-or-inf"
+   }
+  },
+  {
+   "name": "reject-float",
+   "input": {
+    "json": 1.5
+   },
+   "expected": {
+    "error": "float"
+   }
+  },
+  {
+   "name": "reject-cycle",
+   "description": "Self-referential object — canonicalize throws CanonicalizeError with code \"cycle\".",
+   "input": {
+    "synthesize": "cycle-self"
+   },
+   "expected": {
+    "error": "cycle"
+   }
+  },
+  {
+   "name": "reject-depth",
+   "description": "33 levels of object nesting — canonicalize throws CanonicalizeError with code \"depth\".",
+   "input": {
+    "synthesize": "depth",
+    "levels": 33
+   },
+   "expected": {
+    "error": "depth"
+   }
+  },
+  {
+   "name": "reject-string-too-long",
+   "description": "65 537 single-byte UTF-8 characters — canonicalize throws CanonicalizeError with code \"string-too-long\".",
+   "input": {
+    "synthesize": "long-string",
+    "utf8Bytes": 65537
+   },
+   "expected": {
+    "error": "string-too-long"
+   }
+  }
+ ]
+}

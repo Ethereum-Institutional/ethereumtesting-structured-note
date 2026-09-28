@@ -34,3 +34,36 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0024](0024-real-wallets-locally.md) | The local stack runs the real multi-signature wallet | Accepted (Wave 4) |
 | [0025](0025-separate-servicing-wallet.md) | The Agent runs a separate servicing wallet | Accepted (Wave 4) |
 | [0026](0026-freeze-candidate-then-final.md) | Freeze the instruments as a release candidate now, finally after confirmation | Accepted (Wave 4) |
+| [0027](0027-production-presentation-on-chain.md) | What is written on-chain reads as production, and a public deployment sets it explicitly | Accepted (Wave 5) |
+| [0028](0028-credential-protocol-selected.md) | The credential protocol is selected, for the conversion pool first | Accepted (Wave 5) |
+| [0029](0029-vendors-by-capacity.md) | Vendors are named by capacity; their identifiers live in a network file | Accepted (Wave 5) |
+| [0030](0030-pool-credential-gate.md) | The pool has its own credential gate: verify off-chain, check issuer and revocation on-chain, gate on one read | Accepted (Wave 5) |
+| [0031](0031-pool-requires-both.md) | The pool requires both the deposit's eligibility and a live credential grant | Accepted (Wave 5) |
+| [0032](0032-fixed-policy-per-gate.md) | The policy is fixed at construction, one gate per policy, with one configured issuer | Accepted (Wave 5) |
+| [0033](0033-participant-paths-and-attributes.md) | Two participant paths, entity and natural person, on the protocol's own schema fields | Accepted (Wave 5) |
+| [0034](0034-attributes-checked-on-chain.md) | The attester's attribute values are checked against the policy on-chain | Accepted (Wave 5) |
+| [0035](0035-grant-lifetime.md) | A grant runs to the earlier of the credential's expiry and a maximum validity; root freshness is off by default | Accepted (Wave 5) |
+| [0036](0036-contract-wallets-admitted.md) | Contract wallets are admitted by their own signature, so custody accounts can be granted | Accepted (Wave 5) |
+| [0037](0037-grant-authority.md) | Grants are written by the Access Issuer, withdrawn under supervision, and voided by anyone on revocation | Accepted (Wave 5) |
+| [0038](0038-pool-configuration.md) | Pool configuration: the euro payment token against the deposit, near par, one liquidity provider | Accepted (Wave 5) |
+| [0039](0039-venue-under-the-controller.md) | The venue is governed through typed controller acts | Accepted (Wave 5) |
+| [0040](0040-protocol-code-locally.md) | The local stack installs the protocol's released registry code at its canonical addresses | Accepted (Wave 5) |
+| [0041](0041-fork-dry-run-first.md) | Wave 5 is built locally and dry-run against a fork of the test network; the live deployment waits | Accepted (Wave 5) |
+| [0042](0042-wallet-control-across-chains.md) | Wallet control is accepted from any EVM chain for ordinary wallets, and from the pool's chain for contract wallets | Accepted |
+| [0043](0043-wallet-credential-checked-on-chain.md) | The wallet-control credential is a third credential, checked on-chain | Accepted |
+| [0044](0044-one-presentation-two-grants.md) | One verified presentation writes both the pool grant and the Identity Registry grant | Accepted |
+| [0045](0045-presentation-by-qr.md) | Participants present credentials by scanning a QR code with the holder wallet | Accepted |
+| [0046](0046-officer-presents-for-entity.md) | For an entity, an authorised officer presents | Accepted |
+| [0047](0047-hosted-verifier-for-poc.md) | The protocol's hosted verifier gives the verdict for the PoC; the Access Issuer runs its own before execution | Accepted |
+| [0048](0048-operator-approves-admission.md) | An Access Issuer operator approves each admission; the site then signs both grants | Accepted |
+| [0049](0049-officer-credential-on-chain.md) | The officer's credential is a fourth credential, required on the entity path | Accepted |
+| [0050](0050-wallet-credential-to-officer.md) | The wallet-control credential is issued to the officer who presents | Accepted |
+| [0051](0051-integration-deployment.md) | An integration deployment on the test network, separate from the PoC execution | Accepted |
+| [0052](0052-bank-verifies-officers.md) | The bank verifies the officer structure and issues officer credentials; changes wait for notice or the periodic refresh | Accepted |
+| [0053](0053-entities-institutional-by-policy.md) | Entities admitted on the bank's KYB are institutional by policy | Accepted |
+| [0054](0054-three-onboarding-routes.md) | Three routes into the pool: custodied by default, self-custody through the bank, and the holder wallet | Accepted |
+| [0055](0055-service-key-for-the-bank.md) | The site reaches the bank's issuer with a scoped service key, not a staff session | Accepted |
+| [0056](0056-kyb-first-then-bind.md) | Self-custody: the bank confirms the client's KYB first, then the client binds a wallet with one signature | Accepted |
+| [0057](0057-bank-holds-the-client-reference.md) | The bank holds the client's reference; staff choose it from the bank's list, and the client never types it | Accepted |
+| [0058](0058-client-can-cancel.md) | A client can cancel its admission at any step until the grants are being written | Accepted |
+| [0059](0059-test-locally-at-the-seams.md) | Test the pages and the network's behaviour on the local chain, before every deploy | Accepted |

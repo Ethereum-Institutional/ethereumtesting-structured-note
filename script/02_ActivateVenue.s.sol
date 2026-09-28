@@ -19,146 +19,194 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 
+import {PoolCredentialRegistry} from "../contracts/PoolCredentialRegistry.sol";
+import {Manifest} from "./Manifest.sol";
+import {Admission} from "./Admission.sol";
+
+interface IDepositGateway {
+    function credit(address account, uint256 amount, bytes32 bookingRef) external;
+}
+
 /**
- * Verifies and enables the adapter, opens the pool and has investor A seed it.
+ * Verifies and enables the adapter, opens the pool at par, admits the cast to the credential
+ * gate, and has the Deposit Agent provide the pool's liquidity (ADR 0038).
  *
- * The opening price is 100 cash per unit of the asset. The pool quotes currency1 per
- * currency0 in base units, and the two currencies are ordered by address, so the price is
- * derived from whichever order the deployment produced and from both tokens' decimals. A
- * constant computed for one order opens the pool at an inverted price whenever the addresses
- * sort the other way.
+ * Admission here is the Access Issuer attesting directly, standing in for the verification of a
+ * presentation with the credential protocol's verifier that precedes it in operation. The
+ * credential identifiers are references, not credentials; the protocol's registries report them
+ * as not revoked. Investor A is an entity, investor B a natural person. Investor C is onboarded
+ * to the deposit but holds no credential, so the pool refuses it while the deposit does not: the
+ * pool's own perimeter (ADR 0031). Investor D is onboarded nowhere.
+ *
+ * The pool quotes currency1 per currency0 in base units, and the currencies are ordered by
+ * address, so the opening price is derived from whichever order the deployment produced and
+ * from both tokens' decimals.
  */
 contract ActivateVenue is Script {
-    uint24 constant FEE = 3000;
-    int24 constant TICK_SPACING = 60;
-    uint256 constant CASH_PER_ASSET = 100;
+    uint24 constant FEE = 500; // 0.05%
+    int24 constant TICK_SPACING = 10;
+    /// @dev About 0.5% either side of par (ADR 0038).
+    int24 constant RANGE_TICKS = 50;
 
-    /// @dev Liquidity is concentrated within 6000 ticks either side (about 1.8x), so swaps of
-    ///      the sizes the tests use show modest slippage.
-    int24 constant RANGE_TICKS = 6000;
+    uint256 constant LOCAL_SEED_DEPOSIT = 1_000_000_00; // EUR 1,000,000.00
+    uint256 constant NETWORK_SEED_DEPOSIT = 100_000_00; // EUR 100,000.00
+
+    struct Ctx {
+        address deposit;
+        address paymentToken;
+        address adapter;
+        address hook;
+        address router;
+        address posm;
+        address permit2;
+        address gate;
+        address gateway;
+        uint256 depositDecimals;
+        uint256 paymentDecimals;
+    }
 
     function run() external {
-        uint256 issuerPk = vm.envUint("ISSUER_PK");
-        uint256 seederPk = vm.envUint("INVESTOR_A_PK");
-        address seeder = vm.addr(seederPk);
+        string memory j = Manifest.read();
+        Ctx memory c = Ctx({
+            deposit: vm.parseJsonAddress(j, ".assets.deposit.address"),
+            paymentToken: vm.parseJsonAddress(j, ".assets.paymentToken.address"),
+            adapter: vm.parseJsonAddress(j, ".venue.permissionsAdapter"),
+            hook: vm.parseJsonAddress(j, ".venue.hook"),
+            router: vm.parseJsonAddress(j, ".venue.router"),
+            posm: vm.parseJsonAddress(j, ".venue.positionManager"),
+            permit2: vm.parseJsonAddress(j, ".venue.permit2"),
+            gate: vm.parseJsonAddress(j, ".venue.credentialGate"),
+            gateway: vm.parseJsonAddress(j, ".instruments.gateway"),
+            depositDecimals: vm.parseJsonUint(j, ".assets.deposit.decimals"),
+            paymentDecimals: vm.parseJsonUint(j, ".assets.paymentToken.decimals")
+        });
 
-        string memory j = vm.readFile("ops/addresses.json");
-        address asset = vm.parseJsonAddress(j, ".assets.venueAsset.address");
-        address cash = vm.parseJsonAddress(j, ".assets.cash.address");
-        address adapter = vm.parseJsonAddress(j, ".venue.permissionsAdapter");
-        address factory = vm.parseJsonAddress(j, ".venue.adapterFactory");
-        address hook = vm.parseJsonAddress(j, ".venue.hook");
-        address router = vm.parseJsonAddress(j, ".venue.router");
-        address posm = vm.parseJsonAddress(j, ".venue.positionManager");
-        address permit2 = vm.parseJsonAddress(j, ".venue.permit2");
-        address poolManager = vm.parseJsonAddress(j, ".venue.poolManager");
-
-        // ---------------- Issuer: verify and enable the adapter ---------------- //
-        vm.startBroadcast(issuerPk);
-
-        IPermissionsAdapterFactory(factory).verifyPermissionsAdapter(adapter);
-
-        IPermissionsAdapter pa = IPermissionsAdapter(adapter);
-        pa.updateAllowedWrapper(router, true);
-        pa.updateAllowedWrapper(posm, true);
-        pa.updateAllowedHook(IHooks(hook), true);
+        // ---------------- Issuer: verify and enable the adapter, open the pool ---------------- //
+        vm.startBroadcast(vm.envUint("ISSUER_PK"));
+        IPermissionsAdapterFactory(vm.parseJsonAddress(j, ".venue.adapterFactory")).verifyPermissionsAdapter(c.adapter);
+        IPermissionsAdapter pa = IPermissionsAdapter(c.adapter);
+        pa.updateAllowedWrapper(c.router, true);
+        pa.updateAllowedWrapper(c.posm, true);
+        pa.updateAllowedHook(IHooks(c.hook), true);
         pa.updateSwappingEnabled(true);
 
-        // ---------------- open the pool ---------------- //
-        bool adapterIsCurrency0 = adapter < cash;
-        (Currency c0, Currency c1) = adapterIsCurrency0
-            ? (Currency.wrap(adapter), Currency.wrap(cash))
-            : (Currency.wrap(cash), Currency.wrap(adapter));
-
-        PoolKey memory key =
-            PoolKey({currency0: c0, currency1: c1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(hook)});
-
-        uint160 sqrtPriceX96 = _openingPrice(
-            adapterIsCurrency0,
-            vm.parseJsonUint(j, ".assets.venueAsset.decimals"),
-            vm.parseJsonUint(j, ".assets.cash.decimals")
-        );
-        IPoolManager(poolManager).initialize(key, sqrtPriceX96);
+        PoolKey memory key = _key(c);
+        bool adapterIsCurrency0 = Currency.unwrap(key.currency0) == c.adapter;
+        uint160 sqrtPriceX96 = _parPrice(adapterIsCurrency0, c.depositDecimals, c.paymentDecimals);
+        IPoolManager(vm.parseJsonAddress(j, ".venue.poolManager")).initialize(key, sqrtPriceX96);
         vm.stopBroadcast();
+        console2.log("pool opened at par. currency0:", Currency.unwrap(key.currency0));
 
-        console2.log("pool initialized. currency0:", Currency.unwrap(c0));
-        console2.log("                  currency1:", Currency.unwrap(c1));
+        // ---------------- Access Issuer: admit the cast to the credential gate ---------------- //
+        _admit(j, c.gate);
 
-        // ---------------- investor A seeds liquidity ---------------- //
-        int24 current = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
-        int24 lower = _align(current - RANGE_TICKS);
-        int24 upper = _align(current + RANGE_TICKS);
-        console2.log("current tick:", current);
+        // ---------------- approvals, so that a trade is one transaction ---------------- //
+        // Investor D is included for the payment token: its refusal must come from the gate.
+        _approve(vm.envUint("INVESTOR_A_PK"), c, true);
+        _approve(vm.envUint("INVESTOR_B_PK"), c, true);
+        _approve(vm.envUint("INVESTOR_C_PK"), c, true);
+        _approve(vm.envUint("INVESTOR_D_PK"), c, false);
+        _approve(vm.envUint("DEPOSIT_AGENT_PK"), c, true);
 
-        uint256 amountAsset = 100_000e18;
-        uint256 amountCash = 10_000_000e6;
-        (uint256 amount0Max, uint256 amount1Max) =
-            adapterIsCurrency0 ? (amountAsset, amountCash) : (amountCash, amountAsset);
+        // ---------------- Deposit Agent: the pool's liquidity ---------------- //
+        (int24 lower, int24 upper, uint128 liquidity) = _seed(c, key, sqrtPriceX96);
+        _record(key, lower, upper, sqrtPriceX96, liquidity);
+    }
 
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(lower),
-            TickMath.getSqrtPriceAtTick(upper),
-            amount0Max,
-            amount1Max
-        );
-        console2.log("liquidity:", liquidity);
+    function _key(Ctx memory c) internal pure returns (PoolKey memory) {
+        (Currency c0, Currency c1) = c.adapter < c.paymentToken
+            ? (Currency.wrap(c.adapter), Currency.wrap(c.paymentToken))
+            : (Currency.wrap(c.paymentToken), Currency.wrap(c.adapter));
+        return PoolKey({currency0: c0, currency1: c1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(c.hook)});
+    }
 
-        // Every investor is approved in advance, so that a trade is one transaction. Investor D
-        // is included deliberately: the refusal must come from the gate, not a missing approval.
-        uint256[4] memory traderKeys = [
-            seederPk,
-            vm.envUint("INVESTOR_B_PK"),
-            vm.envUint("INVESTOR_C_PK"),
-            vm.envUint("INVESTOR_D_PK")
-        ];
-        for (uint256 i = 0; i < traderKeys.length; ++i) {
-            vm.startBroadcast(traderKeys[i]);
-            IERC20(asset).approve(permit2, type(uint256).max);
-            IERC20(cash).approve(permit2, type(uint256).max);
-            IAllowanceTransfer(permit2).approve(asset, posm, type(uint160).max, type(uint48).max);
-            IAllowanceTransfer(permit2).approve(cash, posm, type(uint160).max, type(uint48).max);
-            IAllowanceTransfer(permit2).approve(asset, router, type(uint160).max, type(uint48).max);
-            IAllowanceTransfer(permit2).approve(cash, router, type(uint160).max, type(uint48).max);
-            vm.stopBroadcast();
+    function _admit(string memory j, address gate) internal {
+        bytes32 entity = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.corporateIdentitySchema")));
+        bytes32 person = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.passportSchema")));
+        bytes32 screening = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.screeningSchema")));
+
+        vm.startBroadcast(vm.envUint("ACCESS_ISSUER_PK"));
+        PoolCredentialRegistry g = PoolCredentialRegistry(gate);
+        g.grant(Admission.entity(vm.parseJsonAddress(j, ".parties.depositAgent"), entity, "DE", 2, "CRD-0001"));
+        g.grant(Admission.entity(vm.parseJsonAddress(j, ".parties.investorA"), entity, "LU", 1, "CRD-0002"));
+        g.grant(Admission.person(vm.parseJsonAddress(j, ".parties.investorB"), person, screening, "FR", 1, "CRD-0003"));
+        vm.stopBroadcast();
+    }
+
+    function _approve(uint256 pk, Ctx memory c, bool withDeposit) internal {
+        vm.startBroadcast(pk);
+        IERC20(c.paymentToken).approve(c.permit2, type(uint256).max);
+        IAllowanceTransfer(c.permit2).approve(c.paymentToken, c.router, type(uint160).max, type(uint48).max);
+        IAllowanceTransfer(c.permit2).approve(c.paymentToken, c.posm, type(uint160).max, type(uint48).max);
+        if (withDeposit) {
+            IERC20(c.deposit).approve(c.permit2, type(uint256).max);
+            IAllowanceTransfer(c.permit2).approve(c.deposit, c.router, type(uint160).max, type(uint48).max);
+            IAllowanceTransfer(c.permit2).approve(c.deposit, c.posm, type(uint160).max, type(uint48).max);
         }
+        vm.stopBroadcast();
+    }
 
-        vm.startBroadcast(seederPk);
+    /// One position around par. On a public network the payment token side is whatever the
+    /// Deposit Agent holds, and it bounds the position.
+    function _seed(Ctx memory c, PoolKey memory key, uint160 sqrtPriceX96)
+        internal
+        returns (int24 lower, int24 upper, uint128 liquidity)
+    {
+        uint256 depositAgentPk = vm.envUint("DEPOSIT_AGENT_PK");
+        address depositAgent = vm.addr(depositAgentPk);
+        uint256 seedDeposit = Manifest.isLocal() ? LOCAL_SEED_DEPOSIT : NETWORK_SEED_DEPOSIT;
+        uint256 seedPayment = IERC20(c.paymentToken).balanceOf(depositAgent);
+        uint256 parPayment = seedDeposit * 10 ** c.paymentDecimals / 10 ** c.depositDecimals;
+        if (seedPayment > parPayment) seedPayment = parPayment;
+        require(seedPayment > 0, "the Deposit Agent holds none of the payment token");
+
+        int24 current = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
+        lower = _align(current - RANGE_TICKS);
+        upper = _align(current + RANGE_TICKS);
+        bool adapterIsCurrency0 = Currency.unwrap(key.currency0) == c.adapter;
+        (uint256 amount0Max, uint256 amount1Max) =
+            adapterIsCurrency0 ? (seedDeposit, seedPayment) : (seedPayment, seedDeposit);
+        liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96, TickMath.getSqrtPriceAtTick(lower), TickMath.getSqrtPriceAtTick(upper), amount0Max, amount1Max
+        );
+
+        vm.startBroadcast(depositAgentPk);
+        IDepositGateway(c.gateway).credit(depositAgent, seedDeposit, "VEN-0002");
         bytes memory actions = abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR));
         bytes[] memory params = new bytes[](2);
-        params[0] = abi.encode(key, lower, upper, liquidity, amount0Max, amount1Max, seeder, bytes(""));
+        params[0] = abi.encode(key, lower, upper, liquidity, amount0Max, amount1Max, depositAgent, bytes(""));
         params[1] = abi.encode(key.currency0, key.currency1);
-
-        IPositionManager(posm).modifyLiquidities(abi.encode(actions, params), block.timestamp + 3600);
+        IPositionManager(c.posm).modifyLiquidities(abi.encode(actions, params), block.timestamp + 3600);
         vm.stopBroadcast();
+        console2.log("liquidity provided by the Deposit Agent:", liquidity);
+    }
 
-        console2.log("liquidity minted to investor A");
-
+    function _record(PoolKey memory key, int24 lower, int24 upper, uint160 sqrtPriceX96, uint128 liquidity) internal {
         string memory obj = "pool";
-        vm.serializeAddress(obj, "currency0", Currency.unwrap(c0));
-        vm.serializeAddress(obj, "currency1", Currency.unwrap(c1));
+        vm.serializeAddress(obj, "currency0", Currency.unwrap(key.currency0));
+        vm.serializeAddress(obj, "currency1", Currency.unwrap(key.currency1));
         vm.serializeUint(obj, "fee", FEE);
         vm.serializeInt(obj, "tickSpacing", TICK_SPACING);
         vm.serializeInt(obj, "tickLower", lower);
         vm.serializeInt(obj, "tickUpper", upper);
+        vm.serializeUint(obj, "liquidity", liquidity);
         vm.serializeUint(obj, "sqrtPriceX96", sqrtPriceX96);
-        string memory out = vm.serializeAddress(obj, "hook", hook);
-        vm.writeJson(out, "ops/addresses.json", ".pool");
+        string memory out = vm.serializeAddress(obj, "hook", address(key.hooks));
+        vm.writeJson(out, Manifest.path(), ".pool");
     }
 
     /**
-     * @dev sqrt(currency1 base units per currency0 base unit) in Q64.96. The adapter carries
-     *      the asset's decimals. With cash per asset P, the ratio is P * 10^cashDecimals /
-     *      10^assetDecimals when the asset is currency0, and its reciprocal otherwise.
+     * @dev sqrt(currency1 base units per currency0 base unit) in Q64.96, at par: one unit of the
+     *      deposit for one unit of the payment token. The adapter carries the deposit's decimals.
      */
-    function _openingPrice(bool assetIsCurrency0, uint256 assetDecimals, uint256 cashDecimals)
+    function _parPrice(bool depositIsCurrency0, uint256 depositDecimals, uint256 paymentDecimals)
         internal
         pure
         returns (uint160)
     {
-        uint256 cashUnits = CASH_PER_ASSET * 10 ** cashDecimals;
-        uint256 assetUnits = 10 ** assetDecimals;
-        (uint256 num, uint256 den) = assetIsCurrency0 ? (cashUnits, assetUnits) : (assetUnits, cashUnits);
+        uint256 paymentUnits = 10 ** paymentDecimals;
+        uint256 depositUnits = 10 ** depositDecimals;
+        (uint256 num, uint256 den) = depositIsCurrency0 ? (paymentUnits, depositUnits) : (depositUnits, paymentUnits);
         return uint160(Math.sqrt(Math.mulDiv(num, 1 << 192, den)));
     }
 

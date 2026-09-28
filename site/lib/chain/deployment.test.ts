@@ -15,7 +15,7 @@ import { Tape, readTape } from "./tape.ts";
 const m = loadManifest();
 const client = createPublicClient({ chain: { ...foundry, id: m.chainId }, transport: http(process.env.RPC_URL ?? "http://127.0.0.1:8545") });
 
-test("the pool id locates the deployed pool, and its price reads 100 cash per unit", async () => {
+test("the pool id locates the deployed pool, and it opened at par", async () => {
   const [sqrtPriceX96] = await client.readContract({
     address: m.lens!.stateView,
     abi: parseAbi(["function getSlot0(bytes32) view returns (uint160, int24, uint24, uint24)"]),
@@ -23,8 +23,8 @@ test("the pool id locates the deployed pool, and its price reads 100 cash per un
     args: [poolId(poolKey(m.pool))],
   });
   assert.ok(sqrtPriceX96 > 0n, "no pool at this id");
-  const p = Number(priceOfAsset(sqrtPriceX96, poolKey(m.pool), m.venue.permissionsAdapter, m.assets.venueAsset, m.assets.cash));
-  assert.ok(Math.abs(p - 100) < 1e-6, String(p));
+  const p = Number(priceOfAsset(sqrtPriceX96, poolKey(m.pool), m.venue.permissionsAdapter, m.assets.deposit, m.assets.paymentToken));
+  assert.ok(Math.abs(p - 1) < 1e-6, String(p));
 });
 
 test("every call the deploy scripts made is recognised by the tape", async () => {

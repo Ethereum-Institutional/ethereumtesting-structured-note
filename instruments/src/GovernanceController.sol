@@ -29,10 +29,31 @@ interface IGovernedPayingAgent {
     function revokeRole(bytes32 role, address account) external;
 }
 
+/// @dev The venue's contracts are in the other compilation unit; the controller reaches them here.
+interface IGovernedChecker {
+    function setCredentialGate(address token, address gate) external;
+    function setLiquidityApproved(address token, address account, bool approved) external;
+    function acceptOwnership() external;
+}
+
+interface IGovernedAdapter {
+    function updateAllowedWrapper(address wrapper, bool allowed) external;
+    function updateAllowedHook(address hook, bool allowed) external;
+    function updateSwappingEnabled(bool enabled) external;
+    function acceptOwnership() external;
+}
+
+interface IGovernedCredentials {
+    function withdraw(address account, string calldata reason) external;
+    function grantRole(bytes32 role, address account) external;
+    function revokeRole(bytes32 role, address account) external;
+}
+
 /**
  * @title GovernanceController
- * @notice Every privileged power over the note, the deposit, the registry and the Paying Agent,
- *         exercised in two tiers through a fixed set of typed acts, and nothing else.
+ * @notice Every privileged power over the note, the deposit, the registry, the Paying Agent and
+ *         the conversion venue, exercised in two tiers through a fixed set of typed acts, and
+ *         nothing else.
  *
  * - **No general call path** (section 7, ADR 0021). Each permitted act is its own entry point
  *   with typed arguments; a proposal stores those arguments, never calldata, and the controller
@@ -47,6 +68,9 @@ interface IGovernedPayingAgent {
  *   notice that needs an off-chain lookup is not notice.
  * - **Recovery** (ADR 0019). Replacing an institution's wallet needs every other institution and
  *   the longer `RECOVERY_DELAY`, and the wallet being replaced can cancel it if it still works.
+ * - **The venue** (ADR 0039). The controller owns the venue checker and the deposit's permissions
+ *   adapter and administers the pool's credential gate. The servicing wallet switches swapping
+ *   off and on; supervisory withdrawal of pool access is Tier 1; every other venue act is Tier 2.
  * - **Nothing is upgradeable,** and no act changes the thresholds or the delays.
  */
 contract GovernanceController {
@@ -59,7 +83,12 @@ contract GovernanceController {
         SetRegistrar,
         SetMaxValidity,
         ReplaceServicingWallet,
-        ReplaceInstitution
+        ReplaceInstitution,
+        SetCredentialGate,
+        SetLiquidityProvider,
+        SetVenueWrapper,
+        SetVenueHook,
+        SetPoolAttester
     }
 
     struct Proposal {
@@ -78,11 +107,15 @@ contract GovernanceController {
     bytes32 private constant ERC20ENFORCER_ROLE = keccak256("ERC20ENFORCER_ROLE");
     bytes32 private constant DOCUMENT_ROLE = keccak256("DOCUMENT_ROLE");
     bytes32 private constant PAYER_ROLE = keccak256("PAYER_ROLE");
+    bytes32 private constant ATTESTER_ROLE = keccak256("ATTESTER_ROLE");
 
     IGovernedToken public immutable NOTE;
     IGovernedToken public immutable DEPOSIT;
     IGovernedRegistry public immutable REGISTRY;
     IGovernedPayingAgent public immutable PAYING_AGENT;
+    /// @notice The venue checker and the deposit's permissions adapter; zero where no venue.
+    IGovernedChecker public immutable CHECKER;
+    IGovernedAdapter public immutable ADAPTER;
 
     uint256 public immutable MIN_INSTITUTIONS;
     uint256 public immutable MIN_SIGNATURES;
@@ -95,6 +128,8 @@ contract GovernanceController {
     address public agentGovernance;
     /// @notice The Agent's servicing wallet (ADR 0025), replaceable only by Tier 2.
     address public servicingWallet;
+    /// @notice The pool's current credential gate, replaceable only by Tier 2.
+    address public credentialGate;
 
     uint256 public proposalCount;
     mapping(uint256 id => Proposal) private _proposals;
@@ -108,6 +143,8 @@ contract GovernanceController {
     event Cancelled(uint256 indexed id, address by);
     event InstitutionReplaced(address indexed oldWallet, address indexed newWallet);
     event ServicingWalletReplaced(address indexed oldWallet, address indexed newWallet);
+    event VenueSwapping(bool enabled);
+    event CredentialGateReplaced(address indexed oldGate, address indexed newGate);
 
     error InvalidConfiguration(string reason);
     error NotAgentGovernance(address caller);
@@ -121,6 +158,8 @@ contract GovernanceController {
     error NotCancellable(address caller);
     error NotGoverned(address token);
     error InvalidArgument();
+    error NotServicingWallet(address caller);
+    error NoVenue();
 
     struct Config {
         address note;
@@ -134,6 +173,9 @@ contract GovernanceController {
         uint256 minSignatures;
         uint48 tier2Delay;
         uint48 recoveryDelay;
+        address checker;
+        address adapter;
+        address credentialGate;
     }
 
     constructor(Config memory c) {
@@ -161,6 +203,14 @@ contract GovernanceController {
         RECOVERY_DELAY = c.recoveryDelay;
         agentGovernance = c.agentGovernance;
         servicingWallet = c.servicingWallet;
+
+        // The venue is all or nothing.
+        bool anyVenue = c.checker != address(0) || c.adapter != address(0) || c.credentialGate != address(0);
+        bool wholeVenue = c.checker != address(0) && c.adapter != address(0) && c.credentialGate != address(0);
+        if (anyVenue && !wholeVenue) revert InvalidConfiguration("venue incomplete");
+        CHECKER = IGovernedChecker(c.checker);
+        ADAPTER = IGovernedAdapter(c.adapter);
+        credentialGate = c.credentialGate;
     }
 
     modifier withReason(string calldata reason) {
@@ -187,6 +237,34 @@ contract GovernanceController {
         _onlyAgentGovernance();
         REGISTRY.withdraw(account, reason);
         emit Tier1("withdrawGrant", reason);
+    }
+
+    /// @notice Withdraws an account's access to the conversion pool at once (Tier 1, ADR 0039).
+    function withdrawPoolAccess(address account, string calldata reason) external withReason(reason) {
+        _onlyAgentGovernance();
+        _venue();
+        IGovernedCredentials(credentialGate).withdraw(account, reason);
+        emit Tier1("withdrawPoolAccess", reason);
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Servicing: the Agent's servicing wallet, no delay
+    // ------------------------------------------------------------------------------------------
+
+    /// @notice Switches swapping in the conversion pool off or on (ADR 0039).
+    function setVenueSwapping(bool enabled) external {
+        if (msg.sender != servicingWallet) revert NotServicingWallet(msg.sender);
+        _venue();
+        ADAPTER.updateSwappingEnabled(enabled);
+        emit VenueSwapping(enabled);
+    }
+
+    /// @notice Completes the venue's handover in the ceremony. Anyone may call; it only accepts
+    ///         ownership that was already transferred to this controller.
+    function acceptVenueOwnership() external {
+        _venue();
+        CHECKER.acceptOwnership();
+        ADAPTER.acceptOwnership();
     }
 
     // ------------------------------------------------------------------------------------------
@@ -285,6 +363,61 @@ contract GovernanceController {
         }
         if (newWallet == servicingWallet) revert InvalidArgument();
         return _propose(Kind.ReplaceInstitution, abi.encode(oldWallet, newWallet), reason);
+    }
+
+    /// @notice Points the venue checker at a new credential gate for the deposit.
+    function proposeSetCredentialGate(address gate, string calldata reason)
+        external
+        withReason(reason)
+        returns (uint256)
+    {
+        _venue();
+        if (gate == address(0)) revert InvalidArgument();
+        return _propose(Kind.SetCredentialGate, abi.encode(gate), reason);
+    }
+
+    /// @notice Approves an account to provide liquidity in the pool, or removes the approval.
+    function proposeSetLiquidityProvider(address account, bool approved, string calldata reason)
+        external
+        withReason(reason)
+        returns (uint256)
+    {
+        _venue();
+        if (account == address(0)) revert InvalidArgument();
+        return _propose(Kind.SetLiquidityProvider, abi.encode(account, approved), reason);
+    }
+
+    /// @notice Allows or refuses a router or position manager on the deposit's adapter.
+    function proposeSetVenueWrapper(address wrapper, bool allowed, string calldata reason)
+        external
+        withReason(reason)
+        returns (uint256)
+    {
+        _venue();
+        if (wrapper == address(0)) revert InvalidArgument();
+        return _propose(Kind.SetVenueWrapper, abi.encode(wrapper, allowed), reason);
+    }
+
+    /// @notice Allows or refuses a hook on the deposit's adapter.
+    function proposeSetVenueHook(address hook, bool allowed, string calldata reason)
+        external
+        withReason(reason)
+        returns (uint256)
+    {
+        _venue();
+        if (hook == address(0)) revert InvalidArgument();
+        return _propose(Kind.SetVenueHook, abi.encode(hook, allowed), reason);
+    }
+
+    /// @notice Appoints or removes an attester on the pool's current credential gate.
+    function proposeSetPoolAttester(address attester, bool appointed, string calldata reason)
+        external
+        withReason(reason)
+        returns (uint256)
+    {
+        _venue();
+        if (attester == address(0)) revert InvalidArgument();
+        return _propose(Kind.SetPoolAttester, abi.encode(attester, appointed), reason);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -428,9 +561,27 @@ contract GovernanceController {
             REGISTRY.setMaxValidity(abi.decode(p.args, (uint40)));
         } else if (k == Kind.ReplaceServicingWallet) {
             _replaceServicing(abi.decode(p.args, (address)));
-        } else {
+        } else if (k == Kind.ReplaceInstitution) {
             (address oldWallet, address newWallet) = abi.decode(p.args, (address, address));
             _replaceInstitution(oldWallet, newWallet);
+        } else if (k == Kind.SetCredentialGate) {
+            address gate = abi.decode(p.args, (address));
+            CHECKER.setCredentialGate(address(DEPOSIT), gate);
+            emit CredentialGateReplaced(credentialGate, gate);
+            credentialGate = gate;
+        } else if (k == Kind.SetLiquidityProvider) {
+            (address account, bool approved) = abi.decode(p.args, (address, bool));
+            CHECKER.setLiquidityApproved(address(DEPOSIT), account, approved);
+        } else if (k == Kind.SetVenueWrapper) {
+            (address wrapper, bool allowed) = abi.decode(p.args, (address, bool));
+            ADAPTER.updateAllowedWrapper(wrapper, allowed);
+        } else if (k == Kind.SetVenueHook) {
+            (address hook, bool allowed) = abi.decode(p.args, (address, bool));
+            ADAPTER.updateAllowedHook(hook, allowed);
+        } else {
+            (address attester, bool appointed) = abi.decode(p.args, (address, bool));
+            if (appointed) IGovernedCredentials(credentialGate).grantRole(ATTESTER_ROLE, attester);
+            else IGovernedCredentials(credentialGate).revokeRole(ATTESTER_ROLE, attester);
         }
     }
 
@@ -461,6 +612,10 @@ contract GovernanceController {
 
     function _onlyAgentGovernance() private view {
         if (msg.sender != agentGovernance) revert NotAgentGovernance(msg.sender);
+    }
+
+    function _venue() private view {
+        if (address(CHECKER) == address(0)) revert NoVenue();
     }
 
     function _governed(address token) private view {

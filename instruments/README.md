@@ -24,7 +24,7 @@ moves past PoC; see HANDOFF.md section 3.
 | `src/RecordDateEngine.sol` | The note's snapshot engine: balances at any past instant (E1), and the transfer stop at a possible redemption (E4) | 1,832 |
 | `src/PayingAgent.sol` | Coupons and redemptions to holders of record, reconciled on-chain; amounts the deposit cannot credit are held and claimable; coupon reversal and restatement for the controller (ADR 0014) | 10,710 |
 | `src/DvPSettlement.sol` | Delivery versus payment: propose, then accept, both legs or neither | 2,956 |
-| `src/GovernanceController.sol` | Every privileged power, in two tiers, through typed acts only: Tier 1 by the Agent's governance wallet; Tier 2 by two of three institutions and four signatures, after a delay; recovery with veto (ADRs 0019, 0021 to 0025) | 13,199 |
+| `src/GovernanceController.sol` | Every privileged power, in two tiers, through typed acts only: Tier 1 by the Agent's governance wallet; Tier 2 by two of three institutions and four signatures, after a delay; recovery with veto; the conversion venue's typed acts (ADRs 0019, 0021 to 0025, 0039) | 16,815 |
 
 `script/Instruments.sol` is the deployment, `script/Lifecycle.sol` the issuance and
 `script/Governance.sol` the ceremony, each used by its script (`DeployInstruments.s.sol`,
@@ -36,7 +36,7 @@ sheet are deploy parameters (HANDOFF.md, W6), provisional pending sign-off.
 
 ```bash
 forge build --sizes
-forge test --force  # 107, including all 25 payoff scenarios end to end
+forge test --force  # 115, including all 25 payoff scenarios end to end
 FOUNDRY_PROFILE=fork forge test --fork-url http://127.0.0.1:8545   # governance through the real wallets
 python3 test/vectors/flatten.py   # after regenerating spikes/payoff/vectors.json
 ```

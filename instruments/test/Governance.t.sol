@@ -10,7 +10,7 @@ import {InstrumentGate} from "../src/InstrumentGate.sol";
 import {Instruments} from "../script/Instruments.sol";
 import {Lifecycle} from "../script/Lifecycle.sol";
 import {Governance} from "../script/Governance.sol";
-import {MockWallet} from "./Fixtures.sol";
+import {MockWallet, MockVenueChecker, MockVenueAdapter, MockCredentialGate} from "./Fixtures.sol";
 
 /**
  * The governance controller and the ceremony: both tiers, both thresholds, both delays, recovery
@@ -25,6 +25,10 @@ contract GovernanceTest is Test {
     MockWallet issuerGov;
     MockWallet cosigner;
     MockWallet servicing;
+
+    MockVenueChecker checker;
+    MockVenueAdapter adapter;
+    MockCredentialGate gate;
 
     uint256 caKey = 0xCA11;
     address deployer = address(this);
@@ -72,10 +76,24 @@ contract GovernanceTest is Test {
         inst[0] = address(agentGov);
         inst[1] = address(issuerGov);
         inst[2] = address(cosigner);
+        checker = new MockVenueChecker(deployer);
+        adapter = new MockVenueAdapter(deployer);
+        gate = new MockCredentialGate(deployer);
         g = Governance.ceremony(
             d,
             l,
-            Governance.Config(deployer, agent, inst, address(agentGov), address(servicing), 2, 4, TIER2, RECOVERY)
+            Governance.Config(
+                deployer,
+                agent,
+                inst,
+                address(agentGov),
+                address(servicing),
+                2,
+                4,
+                TIER2,
+                RECOVERY,
+                Governance.Venue(address(checker), address(adapter), address(gate))
+            )
         );
     }
 
@@ -122,7 +140,20 @@ contract GovernanceTest is Test {
         inst[1] = address(issuerGov);
         inst[2] = address(cosigner);
         GovernanceController.Config memory c = GovernanceController.Config(
-            address(1), address(2), address(3), address(4), inst, address(agentGov), address(servicing), 2, 4, 0, RECOVERY
+            address(1),
+            address(2),
+            address(3),
+            address(4),
+            inst,
+            address(agentGov),
+            address(servicing),
+            2,
+            4,
+            0,
+            RECOVERY,
+            address(0),
+            address(0),
+            address(0)
         );
         vm.expectRevert(abi.encodeWithSelector(GovernanceController.InvalidConfiguration.selector, "Tier 2 delay is zero"));
         new GovernanceController(c);
@@ -136,6 +167,10 @@ contract GovernanceTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(GovernanceController.InvalidConfiguration.selector, "fewer signatures than institutions")
         );
+        new GovernanceController(c);
+        c.minSignatures = 4;
+        c.checker = address(checker);
+        vm.expectRevert(abi.encodeWithSelector(GovernanceController.InvalidConfiguration.selector, "venue incomplete"));
         new GovernanceController(c);
     }
 
@@ -417,5 +452,121 @@ contract GovernanceTest is Test {
         vm.warp(block.timestamp + TIER2);
         g.execute(id);
         assertEq(address(d.deposit.ruleEngine()), address(next));
+    }
+
+    // --- the venue (ADR 0039) ---
+
+    function _tier2(MockWallet proposer, bytes memory proposal) internal {
+        uint256 id = abi.decode(_via(proposer, proposal), (uint256));
+        _approve(cosigner, id);
+        vm.warp(block.timestamp + TIER2);
+        g.execute(id);
+    }
+
+    /// The ceremony hands the venue to the controller and leaves the deployer nothing on it.
+    function test_ceremonyHandsOverTheVenue() public view {
+        assertEq(checker.owner(), address(g), "checker");
+        assertEq(adapter.owner(), address(g), "adapter");
+        assertTrue(gate.hasRole(0x00, address(g)), "gate admin");
+        assertTrue(gate.hasRole(gate.SUPERVISOR_ROLE(), address(g)), "gate supervisor");
+        assertFalse(gate.hasRole(0x00, deployer), "the deployer renounced the gate");
+        assertEq(g.credentialGate(), address(gate));
+    }
+
+    /// Only the servicing wallet switches swapping, and it needs no approval or delay.
+    function test_servicingSwitchesSwapping() public {
+        _via(servicing, abi.encodeCall(GovernanceController.setVenueSwapping, (false)));
+        assertFalse(adapter.swappingEnabled(), "off at once");
+        _via(servicing, abi.encodeCall(GovernanceController.setVenueSwapping, (true)));
+        assertTrue(adapter.swappingEnabled(), "and back on");
+
+        vm.expectRevert(abi.encodeWithSelector(GovernanceController.NotServicingWallet.selector, address(agentGov)));
+        _via(agentGov, abi.encodeCall(GovernanceController.setVenueSwapping, (false)));
+    }
+
+    /// Pool access is withdrawn at Tier 1, with its reason carried to the gate whole.
+    function test_tier1WithdrawsPoolAccess() public {
+        string memory reason = "Adverse media match under review; pool access suspended pending the outcome";
+        _via(agentGov, abi.encodeCall(GovernanceController.withdrawPoolAccess, (b, reason)));
+        assertEq(gate.withdrawnFor(b), reason);
+
+        vm.expectRevert(abi.encodeWithSelector(GovernanceController.NotAgentGovernance.selector, address(cosigner)));
+        _via(cosigner, abi.encodeCall(GovernanceController.withdrawPoolAccess, (b, reason)));
+        vm.expectRevert(GovernanceController.NoReason.selector);
+        _via(agentGov, abi.encodeCall(GovernanceController.withdrawPoolAccess, (b, "")));
+    }
+
+    /// Repointing the credential gate is Tier 2, and later withdrawals go to the new gate.
+    function test_repointingTheCredentialGateIsTier2() public {
+        MockCredentialGate next = new MockCredentialGate(address(g));
+        bytes32 supervisor = next.SUPERVISOR_ROLE();
+        vm.prank(address(g));
+        next.grantRole(supervisor, address(g));
+
+        bytes memory proposal =
+            abi.encodeCall(GovernanceController.proposeSetCredentialGate, (address(next), "Issuer deactivated; new policy"));
+        uint256 id = abi.decode(_via(agentGov, proposal), (uint256));
+        assertEq(g.proposal(id).readyAt, 0, "one institution cannot queue");
+        _approve(issuerGov, id);
+        vm.warp(block.timestamp + TIER2);
+        g.execute(id);
+
+        assertEq(checker.credentialGate(address(d.deposit)), address(next), "the checker reads the new gate");
+        assertEq(g.credentialGate(), address(next));
+        _via(agentGov, abi.encodeCall(GovernanceController.withdrawPoolAccess, (a, "Withdrawn on the new gate")));
+        assertEq(next.withdrawnFor(a), "Withdrawn on the new gate");
+    }
+
+    function test_liquidityProviderIsTier2() public {
+        address lp = makeAddr("second liquidity provider");
+        _tier2(agentGov, abi.encodeCall(GovernanceController.proposeSetLiquidityProvider, (lp, true, "Second provider")));
+        assertTrue(checker.liquidityApproved(address(d.deposit), lp));
+        _tier2(agentGov, abi.encodeCall(GovernanceController.proposeSetLiquidityProvider, (lp, false, "Mandate ended")));
+        assertFalse(checker.liquidityApproved(address(d.deposit), lp));
+    }
+
+    function test_routersAndHooksAreTier2() public {
+        address router = makeAddr("router");
+        address hook = makeAddr("hook");
+        _tier2(issuerGov, abi.encodeCall(GovernanceController.proposeSetVenueWrapper, (router, true, "Router allowed")));
+        _tier2(issuerGov, abi.encodeCall(GovernanceController.proposeSetVenueHook, (hook, true, "Hook allowed")));
+        assertTrue(adapter.allowedWrappers(router));
+        assertTrue(adapter.allowedHooks(hook));
+    }
+
+    function test_poolAttesterIsTier2() public {
+        address attester = makeAddr("second attester");
+        _tier2(agentGov, abi.encodeCall(GovernanceController.proposeSetPoolAttester, (attester, true, "Second attester")));
+        assertTrue(gate.hasRole(gate.ATTESTER_ROLE(), attester));
+        _tier2(agentGov, abi.encodeCall(GovernanceController.proposeSetPoolAttester, (attester, false, "Key retired")));
+        assertFalse(gate.hasRole(gate.ATTESTER_ROLE(), attester));
+    }
+
+    /// A controller with no venue refuses every venue act.
+    function test_noVenueRefusesVenueActs() public {
+        address[] memory inst = g.institutions();
+        GovernanceController bare = new GovernanceController(
+            GovernanceController.Config(
+                address(d.note),
+                address(d.deposit),
+                address(d.registry),
+                address(l.payingAgent),
+                inst,
+                address(agentGov),
+                address(servicing),
+                2,
+                4,
+                TIER2,
+                RECOVERY,
+                address(0),
+                address(0),
+                address(0)
+            )
+        );
+        vm.expectRevert(GovernanceController.NoVenue.selector);
+        bare.acceptVenueOwnership();
+        vm.prank(address(servicing));
+        vm.expectRevert(GovernanceController.NoVenue.selector);
+        bare.setVenueSwapping(false);
     }
 }

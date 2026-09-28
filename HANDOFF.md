@@ -20,11 +20,11 @@ reviewed and signed off.
 **Phase 0b is deployed** from `site/` to the Vercel project `structurednote` (team scope, Hobby
 plan, research use): registration with email verification, then approval by an operator or by
 the domain rule, everything gated, the architecture as the signed-in home page with each
-component linked into the overview. Postgres is Neon in Frankfurt. Mail is Resend with a
-sending-only key; **delivery waits on the sending domain's DNS verification**, and until then a
-registration returns "Email delivery is unavailable". 27 end-to-end checks pass locally. The
-domain rule's list and the operator list live only in the Vercel environment, not in this
-repository. See `site/README.md`. No contracts and no chain are deployed.
+component linked into the overview. Postgres is Neon in Frankfurt. Mail is Resend, sending from
+`noreply@ethereumtesting.com`. The domain rule's list and the operator list live only in the
+Vercel environment, not in this repository. See `site/README.md`. Since Wave 5 the site also
+admits participants to the conversion pool (`/admit`, `/operator`), against an integration
+deployment on the public test network (section 5).
 The repository is a clone of the source demo with history preserved. **Wave 1 has stripped it to
 the venue** (section 5); nothing of the retired identity stack, the source console or the source
 hosting remains in the tree, only in history.
@@ -152,10 +152,9 @@ credential platform by its contracts.
 
 ## 4. Deliberately open
 
-- **Credential platform.** Three routes documented with strengths and costs. The deciding input is
-  expected to be distribution, not technology. Verify the current status of the commercial
-  compliance engines and of any revision to the incumbent securities-identity standard before
-  deciding; that space moves quickly.
+- ~~**Credential platform.**~~ **Selected by the owner for the pool, ADR 0028,** without the check
+  of the commercial engines this item asked for. The Identity Registry keeps registrar onboarding
+  until a separate decision moves it onto the protocol.
 - ~~**What "multi-signature" actually is.**~~ **Decided by ADR 0016:** one established
   multi-signature wallet per institution; the controller counts institution wallets and sums their
   thresholds for Tier 2, and Tier 1 is the Agent's own wallet.
@@ -163,8 +162,9 @@ credential platform by its contracts.
   replaced by every other institution after an extended timelock, with a veto for the old wallet;
   on catastrophic loss governance freezes, servicing continues on roles held apart from it, and
   the note is re-issued from the Register.
-- **Corporate officer presentation** pinned against entity verification rather than personal
-  identity needs building.
+- ~~**Corporate officer presentation** pinned against entity verification rather than personal
+  identity needs building.~~ **Built as the holder-wallet route** (ADRs 0045 to 0052); it waits
+  on the bank's side (section 5, open from Wave 5).
 - **Delegation of individuals to a custodian** needs designing.
 
 ---
@@ -375,22 +375,174 @@ clause, so a changed answer changes terms or one line, and the vector grid is re
 **Open items carried from the spikes and phase 0b (24 September 2026).**
 
 - **Branch.** `spike/eip170` and `wave/1-plumbing` are merged to `main`, which is pushed to
-  `origin`.
-- **Mail sender is temporary.** Production `MAIL_FROM` is Resend's shared test sender, which
-  delivers only to the Resend account owner. Once the sending domain verifies in Resend (DNS is
-  pending on the DNS provider), set `MAIL_FROM` to `Structured Note PoC
-  <access@ethereuminstitutional.org>` and redeploy. Until then, nobody else receives links.
+  `origin`. `wave/5-conversion-pool` is merged to `main` through pull request 1 (28 September 2026).
+- **Public domain.** The site is `https://structurednote-project.ethereumtesting.com`; production
+  `SITE_URL` names it, so every emailed link carries it. `structurednote.vercel.app` is a
+  permanent (308) redirect to it. `SITE_URL` is stored as sensitive, which Vercel now requires for
+  production variables here, so its value cannot be read back; set it with an explicit
+  `"type": "sensitive"`. Each deployment's own `*.vercel.app` address stays reachable unless
+  deployment protection is turned on.
+- **Mail sender.** Production `MAIL_FROM` is `Structured Note PoC <noreply@ethereumtesting.com>`,
+  on the Resend domain configured 25 September 2026, and production was redeployed with it (a
+  rebuild of the existing deployment, not a deploy of a branch). Confirm delivery by registering
+  with an address outside the Resend account; if sends fail, check the API key is not restricted
+  to another domain.
 - **Rotate the Resend key** before the site carries anything real; it was pasted into a session.
 - **Deploying.** From the repository root, always with `--scope ethereuminstitutional`: another
-  local session also uses the Vercel CLI and changes its default scope. Environment variables were
-  set through the REST API because `vercel env add` hangs non-interactively.
+  local session also uses the Vercel CLI and changes its default scope. From `site/` the build
+  fails, because it copies from `docs/`. Environment variables are set through the REST API
+  (`ops/vercel-admission-env.sh`) because `vercel env add` hangs non-interactively. Run
+  `npm run test:local` in `site/` before every deploy (ADR 0059).
 - **Commits are GPG-signed** and need the passphrase at the keyboard.
 - **Payoff confirmations C1 to C10** (`docs/spikes/03-payoff-specification.md` section 10) are
   still outstanding. Wave 3 is built on the defaults.
 - **Phones.** The overview's tables stack below 640px; diagrams and the responsibilities matrix
   scroll with a cue. Any copy of the overview published before 24 September has the old layout.
 
-**Then, in order.** Wave 5, FX pool, then freeze the venue's surface. The final freeze of the
+**Wave 5, the conversion pool. Built 25 to 28 September 2026 on `wave/5-conversion-pool`, merged
+to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
+
+- **Production presentation** (ADR 0027): the deposit is Euro Tokenized Deposit, `EURTD`; the note
+  defaults to EUR Worst-of Autocallable Note, `EURWAN`, pending naming sign-off. Off the local node
+  every name, symbol and term sheet value must be set or `DeployInstruments` stops. The router is
+  `PermissionedSwapRouter`; no deployed source calls itself simulated or a stand-in.
+- **Credential protocol selected** (ADR 0028) and named by capacity (ADR 0029). Its identifiers
+  for the test network are in `ops/networks/base-sepolia.json`, which is not committed; the
+  template beside it is.
+- **Pool credential gate** (`contracts/PoolCredentialRegistry.sol`, 10,553 bytes; ADRs 0030 to
+  0037). The Access Issuer attests after off-chain verification; at grant the contract checks the
+  configured issuer is active, neither credential is revoked, and the attested schema, checks,
+  jurisdiction (EEA, CH, GB), investor class (professional, institutional) and 30-day screening
+  meet the fixed policy; grants run at most 90 days. Anyone voids a revoked credential's grant or
+  suspends the gate once the issuer is deactivated; the controller withdraws with a reason. The
+  swap path reads two storage slots and never calls the protocol.
+- **An entity presents its corporate identity alone** (ADR 0033, amended): the screening rides
+  inside it, screened at issuance, and the gate refuses a separate screening credential on that
+  path. The configured issuer is now a bank issuer on the protocol's new pair of registries,
+  named in the network file; the fork dry run passes against it.
+- **The wallet binding is a third credential** (ADR 0043), accepted from any EVM chain for an
+  ordinary wallet and from the pool's chain for a contract wallet (ADR 0042). **One presentation
+  writes both grants** (ADR 0044): `script/Attest.s.sol` reads the verifier's result
+  (`ops/attestations/example.json` shows the shape; real files are not committed), makes the Access
+  Issuer's checks, and writes the pool grant and the Identity Registry grant.
+- **Three onboarding routes** (ADR 0054), all ending in the same two grants: **custodied** (the
+  default: bank staff admit a client's custody account in one action, the account signing its own
+  wallet credential by EIP-1271), **self-custody through the bank** (the client signs once), and
+  the **holder wallet** below. Entities are institutional by policy (ADR 0053); the officer
+  credential is a gate policy, off by default.
+- **Admission by QR** (ADRs 0045 to 0052, site `/admit`, now route 3): an officer scans two codes with the
+  holder wallet, the officer credential then the wallet-control credential issued to that officer;
+  the site verifies each through the protocol's hosted verifier, fetches the corporation's
+  corporate identity, checks the chain wallet, officer, corporation, corporate identity, and an
+  operator approves before the site writes both grants. The bank, as the one configured issuer,
+  verifies officers and issues all four credentials; the officer's credential is the grant's
+  fourth. An integration deployment on the test network (ADR 0051) uses keys from
+  `ops/new-network-keys.sh` and `ops/deploy-network.sh`; it is not the PoC execution.
+- **Checker** requires both the deposit's ERC-7943 eligibility and the credential grant (ADR 0031).
+- **Pool** (ADR 0038): the payment token against the deposit at par, fee 0.05%, spacing 10, one
+  position from 0.995 to 1.005 by the Deposit Agent, the only liquidity provider.
+- **Governed** (ADR 0039): the ceremony hands the checker and adapter to the controller, which
+  gains typed venue acts. The controller is 16,815 bytes. **This changes the frozen instruments'
+  surface**, as does a comment-only change to the deposit; both are listed in
+  `instruments/surface/rc1-changes.md`.
+- **Deploy order changed**: base (payment token, protocol), instruments, venue, activation, lens,
+  custody, issuance, ceremony (`ops/README.md`). `deploy-stack.sh` now force-builds both units first,
+  because an incremental build deployed a stale checker during mutation testing.
+- **Protocol code locally** (ADR 0040): `ops/setup-credential-protocol.sh` installs the live
+  registry implementations at their canonical addresses, checked by hash. The vendor's own
+  deployment record lists older implementations.
+- **Fork dry run** (ADR 0041): `ops/dry-run-fork.sh` deploys the whole stack against a fork of the
+  test network's real contracts and runs the venue tests. Its four findings are in ADR 0041.
+- **Tests** (rerun 28 September 2026). Venue: 53 (17 pool, 6 custody, 30 gate). The pool and
+  custody suites read the local deployment, so run them with `--fork-url http://127.0.0.1:8545`;
+  a plain `forge test` fails them. Also 23 against the fork dry run. Instruments: 115, and 4 on
+  the real wallets. Site: 59 unit, 8 admission and 6 browser tests, and 2 chain tests; the tape
+  knows every Wave 5 call. Seven deliberate errors in the gate, one in the checker and four in the
+  controller's venue acts were each caught.
+
+**Admission, built 26 to 28 September 2026** (site `/admit` and `/operator`; ADRs 0053 to 0059).
+
+- **Route 1, custodied: live on the test network.** Bank staff choose the client from the bank's
+  own corporate identities and give the custody account and instruction references. One action
+  then:
+  - opens the custody account;
+  - has it sign the bank's wallet-control challenge (EIP-1271), for which the bank mints the
+    wallet credential;
+  - writes both grants;
+  - sets the Permit2 approvals.
+
+  Two custody accounts are admitted: `0x19436e7b1943BD10330051943fE19539e5da1C38` and
+  `0x10e396d563f007c7E8D2b5c8CA0BAa1f716B1ABE`. The second's approvals failed on a lagging RPC
+  and were finished with **Set trading approvals**. The approvals now wait until the deposit
+  itself holds the account as eligible, and the grants are recorded before the approvals.
+- **Route 2, self-custody through the bank: built and tested locally.** The client asks for its
+  KYB to be confirmed and types nothing (ADRs 0056 and 0057). Staff confirm it by choosing the
+  client's reference. The client then names a wallet and signs the bank's challenge once, from a
+  browser wallet or by pasting a signature. A failed signature leaves the KYB confirmed.
+- **Route 3, holder wallet: built, waiting on the bank** (open items below).
+- **The bank** is reached with a service key, `sk_...`, sent only to the bank's own origin (ADR
+  0055). The key in use carries more scopes than the site needs; the owner chose to keep it. The
+  bank sends integers in typed data as decimal strings, so the site signs them as numbers
+  (`normaliseTypedData`).
+- **Clients can cancel** at any step until grants are being written (ADR 0058). Staff are warned
+  before submitting a jurisdiction outside the pool's 32, or a screening date in the future or
+  older than 30 days.
+- **Testing is local only** (ADR 0059; `npm run test:local` in `site/`):
+  - browser tests click through a production build of each route;
+  - `test/lagging-rpc.ts` answers reads from a block behind just after a receipt, which
+    reproduces the lagging-RPC failure;
+  - `test/standins.ts` plays the bank and the verifier, including their known quirks.
+
+  Nothing is tested on a public chain.
+
+- **Integration deployment on Base Sepolia, 26 September 2026** (ADR 0051; not the PoC execution).
+  Keys in `ops/keys.base-sepolia-integration.env`, manifest in `ops/addresses.base-sepolia.json`,
+  both not committed. Deposit 0x5Ef2c420518135f8A6E6daB15dEAA63B44718957, note 0xc48Dc039b8fDBC283Ae37c3495C12b0bE5d179c7,
+  pool credential gate 0xb4eC55923689FE8dDf12926D392Dc9b8eC0661a9, Identity Registry 0x95dB878cd374b55ff672A3E597ab207fd8FCCA05,
+  controller 0xbC224b2F963162a5bD5bB9aF27916f39BCBEcA5f. The pool holds about 20 of each token (the faucet's limit);
+  the note carries the placeholder term sheet reference. The cast's own grants rest on reference
+  identifiers, not issued credentials; real admissions go through the site.
+  `ops/vercel-admission-env.sh` sets the site's admission settings from these files.
+
+**For review, taken during the build.**
+
+- **Force-closing a liquidity position is not a controller act** (ADR 0039): proceeds the provider
+  could not receive would sit with the controller as a claim nothing can move.
+- **Custody accounts' registry grants and pool admission** now happen in the custody script, and
+  references are neutral (`SEG-0001`, `ONB-0001`, `CRD-0001`).
+- **The payment token cannot be minted on a fork**; the dry run writes balances to its storage and
+  reads them back.
+
+**Open, from Wave 5.**
+
+- **Route 3 needs three things on the bank's side.** The request has gone to the credential
+  protocol's operator:
+  - its verifier must accept the wallet-control schema in verifier requests;
+  - it must issue officer credentials, with the wallet-control credential issued to the same
+    officer;
+  - each corporation must publish its corporate identity at `/v1/issuer/corporate-identity`.
+
+  When it is done, put the real responses into `test/standins.ts` and run the browser tests
+  before scanning for real.
+- ~~**Test credentials** (ADR 0041).~~ The bank issuer now issues corporate identities and
+  wallet-control credentials on the test network; route 1 runs on them.
+- **S-36 must be narrowed for the person path** (ADR 0034): attested residence jurisdiction and
+  investor class are in the grant transaction's input.
+- ~~**Contract-signer wallet control** (ADR 0036).~~ Confirmed live: custody accounts attest by
+  EIP-1271 on the test network.
+- **The local node's published keys carry EIP-7702 delegations on the test network.** A live
+  deployment needs a key per capacity (Wave 6).
+- Root freshness stays off (ADR 0035).
+- ~~**The corporate identity schema needs an investor class.**~~ Entities are institutional by
+  policy (ADR 0053). On the bank's routes the screening date is the bank's own, stated by its
+  staff. On route 3 it is the credential's issuance time, so a corporate identity older than 30
+  days must be re-issued first.
+- **The protocol's registrar role is global over every issuer** (ADR 0028). Scope it before any
+  registrar outside the protocol operator holds it.
+- ~~A wallet-control credential is being built in the protocol.~~ Built and in use (ADR 0043).
+- **Rotate the Resend key** (above) and consider Next 16 for the postcss advisory (Wave 1).
+
+**Then, in order.** Freeze the venue's surface. The final freeze of the
 instruments once C1 to C10 and naming are confirmed. Wave 6, hardening and deployment.
 
 Two gates sit outside engineering and should start now: the **independent audit** and **token

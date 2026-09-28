@@ -29,6 +29,39 @@ page.
 | `OPERATOR_EMAILS` | yes | Comma-separated. Who may approve and revoke. Explicit list; no default, no domain rule |
 | `AUTO_APPROVE_DOMAINS` | no | Comma-separated domains whose addresses are approved on verification. Reading access only; exact match, subdomains excluded |
 
+### Pool admission (ADRs 0045 to 0054)
+
+Three routes, one result: a pool grant and an Identity Registry grant, resting on the bank's KYB.
+
+1. **Custodied, the default.** Bank staff admit a client on its instruction at `/operator`: the
+   custodian opens a segregated custody account, the account signs the wallet-control message
+   (EIP-1271), the bank's issuer mints the wallet credential, both grants are written and the
+   account is approved to trade. One action; the client does nothing.
+2. **Self-custody through the bank.** At `/admit` the client asks the bank to confirm its KYB and
+   enters nothing; bank staff choose the client from the bank's list of corporate identities at
+   `/operator` (ADR 0057). Then the client binds a wallet:
+   names it and signs the bank's message once, from a browser wallet or by pasting a signature from
+   any other signer; the bank mints the wallet credential and the grants follow at once (ADR 0056).
+3. **Holder wallet.** At `/admit` an officer scans two QR codes with the holder wallet; the site
+   receives each presentation at `/api/admission/callback` and an operator approves.
+
+In routes 1 and 2 the client's jurisdiction, status and screening are the bank's statement from its
+file; the credential identifiers make the grant revocable. Every input is kept with the admission;
+their hash is the evidence in both grants.
+
+| Variable | Purpose |
+|---|---|
+| `CREDENTIAL_VERIFIER_URL` | The protocol's hosted verifier |
+| `ADMISSION_VERIFIER_DID`, `ADMISSION_VERIFIER_NAME` | The Access Issuer as a verifier, as registered with the protocol |
+| `ADMISSION_VERIFIER_SEED` | 32-byte seed of its ML-DSA-65 key. Sensitive |
+| `ADMISSION_VERIFIER_INLINE_KEY` | `1` to put the public key in each request instead of relying on the protocol's verifier registry |
+| `ADMISSION_ISSUER_DID`, `ADMISSION_ISSUER_PUBKEY` | The configured issuer and its pinned ML-DSA-65 public key (ADR 0042) |
+| `ADMISSION_SCHEMAS` | JSON: `officer`, `walletControl`, `corporateIdentity` schema URIs |
+| `ADMISSION_CORPORATE_ISSUERS` | JSON: corporation DID to the base address of its issuer backend, for discovery |
+| `MANIFEST_JSON`, `RPC_URL` | The deployment grants are written to |
+| `SIGNER_KEYS` | JSON: `accessIssuer` and `custodian` to their chain keys. Sensitive; a key management service before anything real (ADR 0048) |
+| `BANK_ISSUER_URL`, `BANK_ISSUER_API_KEY` | The bank's issuer backend (HTTPS) and the service key issued to this site, scopes `credentials:read`, `wallet-attestation:eth`, `verify-requests:create` (ADR 0055). The key is sensitive |
+
 In development, mail is written to the server log and the store is `site/.data/store.json`.
 
 ## Commands
@@ -38,7 +71,17 @@ npm install
 OPERATOR_EMAILS=operator@example.org AUTO_APPROVE_DOMAINS=approved.example npm run dev > /tmp/site-dev.log 2>&1 &
 rm -rf .data && npm run e2e          # 31 end-to-end checks against the dev server
 npm run build && npm run typecheck
+npm test                                                   # chain library and admission unit tests
+../ops/reset.sh && npm run test:admission                  # the admission flow against the local chain
+../ops/reset.sh && npm run test:browser                    # the pages, clicked through in Chromium
+npm run test:local                                         # all of the above except e2e, on a fresh chain
 ```
+
+Every test runs on the local chain; none sends a transaction to a public network (ADR 0059). The
+browser tests click through a production build (`next start`) with a fresh store, the stand-in
+bank and verifier (`test/standins.ts`), and a proxy in front of anvil that answers reads from a
+block behind just after a receipt, as a load-balanced public RPC does (`test/lagging-rpc.ts`). Run
+them before every deploy; install Chromium once with `npx playwright install chromium`.
 
 The overview is copied from `docs/solution-overview.html` at build time, so the repository keeps
 one copy. Deploy from the repository root with the Vercel project's root directory set to `site`,

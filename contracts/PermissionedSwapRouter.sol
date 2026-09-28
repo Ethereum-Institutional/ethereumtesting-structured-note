@@ -13,13 +13,12 @@ import {IPermissionsAdapterFactory} from
     "@uniswap/v4-periphery/src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
 
 /**
- * @title DemoPermissionedRouter
- * @notice Minimal concrete swap router for permissioned pools.
+ * @title PermissionedSwapRouter
+ * @notice Concrete swap router for permissioned pools.
  *
- * `PermissionedV4Router` is abstract. In production the concrete implementation is the
- * AMM's universal router (v2.2.0 or later). This is a deliberately small stand-in that
- * implements only what a permissioned swap needs, so the venue does not depend on a
- * universal router deployment.
+ * `PermissionedV4Router` is abstract. This router implements only what a permissioned swap
+ * needs, which keeps the venue independent of any universal router deployment and bounds the
+ * code in audit scope.
  *
  * The important part is `_payPermissionedFromPayer`: the payer's real permissioned tokens
  * move into the permissions adapter, and the adapter then mints the matching virtual
@@ -29,7 +28,7 @@ import {IPermissionsAdapterFactory} from
  * `msgSender()` returns the reentrancy locker, the original EOA, which is the address the
  * hook checks against the asset's eligibility.
  */
-contract DemoPermissionedRouter is PermissionedV4Router, ReentrancyLock {
+contract PermissionedSwapRouter is PermissionedV4Router, ReentrancyLock {
     IAllowanceTransfer public immutable PERMIT2;
 
     error TransactionDeadlinePassed();

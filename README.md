@@ -25,9 +25,12 @@ both under EIP-170 (spike 1).
 | `site/` | Next.js | The registration-gated site, and the chain library the operations console will use |
 | `ops/` | | Local chain and deploy scripts |
 
-The venue is still exercised against two fixtures in `test/fixtures/`, a restricted asset with
-the ERC-7943 interface and an open cash leg, until Wave 5 pairs the pool with the tokenized
-deposit. Neither is an instrument and neither is in audit scope.
+The venue is the conversion pool: the euro payment token against the tokenized deposit, gated by
+the deposit's own eligibility and by the pool's credential gate, which admits only holders of a
+credential from the configured issuer whose attributes meet the configured policy (ADRs 0028 to
+0041). Locally the payment token is a stand-in in `test/fixtures/` and the credential protocol's
+released registries are installed at their canonical addresses; on the test network both are the
+real deployments, named in the network file (`ops/networks/`).
 
 ## Running it locally
 
@@ -38,32 +41,51 @@ git submodule update --init --recursive   # nothing compiles without them
 ./ops/reset.sh                            # fresh local chain, whole stack deployed
 forge test --fork-url http://127.0.0.1:8545 -vv
 ./ops/build.sh                            # both units, with the EIP-170 check
+./ops/dry-run-fork.sh                     # the whole stack against a fork of the test network
 ```
+
+The dry run needs `ops/networks/base-sepolia.json`, which is not committed; copy the template
+beside it and fill it from the private working documents.
 
 The deploy sequence and why it is ordered as it is are in `ops/README.md`. With Claude Code,
 `/demo` does all of the above.
 
 ## What the venue tests show
 
-Each test states a control and shows a transaction succeeding or failing for the right reason.
+Each test states a control and shows a transaction succeeding or failing for the right reason;
+every refusal has a positive control. They run against the deployed stack, after the ceremony.
 
 | Control | Test |
 |---|---|
-| An eligible investor trades | `test_eligibleInvestor_canSwap` |
-| Providing liquidity needs the venue's approval; the same plan succeeds for an approved investor | `test_swapOnlyInvestor_cannotProvideLiquidity` |
-| An ineligible wallet cannot reach the asset by any route | `test_ineligibleWallet_cannotSwap` |
-| Revoking eligibility on the asset stops trading at once, with no venue action | `test_revokedEligibility_haltsTrading` |
-| A freeze by the Agent stops the wallet trading | `test_agentFreeze_haltsTrading` |
-| Pausing the asset halts the whole market | `test_assetPause_haltsWholeMarket` |
-| A token that does not answer the interface is denied, not trusted | `test_checkerFailsClosedOnNonConformingToken` |
-| The Custodian trades for a client that never holds a key | `test_custodianTradesForEligibleClient` |
-| Only the Custodian can operate a client account | `test_onlyCustodianCanOperateClientAccount` |
-| Freezing one client leaves its siblings trading | `test_freezingOneClientDoesNotAffectOthers` |
-| A forced transfer takes from one client only, and never delivers to an ineligible account | `test_forcedTransferFromSingleClient`, `test_forcedTransferRefusesIneligibleRecipient` |
+| An admitted entity converts the payment token into the deposit near par (S-27) | `test_credentialedEntity_convertsIntoTheDeposit` |
+| An admitted natural person converts the deposit back | `test_credentialedPerson_convertsOutOfTheDeposit` |
+| A wallet the deposit accepts but with no credential is refused by the pool; admitted, it converts (S-28) | `test_noCredential_refusedByThePoolThoughTheDepositAccepts` |
+| A wallet onboarded nowhere is refused despite funds and approvals | `test_notOnboarded_refused` |
+| Only the Deposit Agent provides liquidity; the same plan is refused for an investor | `test_onlyTheDepositAgentProvidesLiquidity` |
+| A liquidity position cannot be transferred (S-29) | `test_liquidityPositionIsNotTransferable` |
+| A credential the protocol revokes is voided by anyone and stops the wallet | `test_protocolRevocation_voidedByAnyone_stopsTheWallet` |
+| Deactivating the issuer in the protocol suspends the pool | `test_issuerDeactivation_suspendsThePool` |
+| Supervisory withdrawal of pool access is Tier 1 | `test_tier1WithdrawalOfPoolAccess` |
+| Withdrawing the registry grant stops the pool at once (ADR 0004) | `test_registryWithdrawal_stopsThePool` |
+| A deposit freeze stops the wallet; a deposit pause halts the pool | `test_depositFreeze_stopsTheWallet`, `test_depositPause_haltsThePool` |
+| The servicing wallet switches swapping off and on through the controller | `test_servicingWalletSwitchesSwapping` |
+| A pool grant lapses without any transaction | `test_grantLapses` |
+| A gate or token that cannot answer denies rather than reverting | `test_unanswerableCredentialGate_deniesEveryone`, `test_checkerFailsClosedOnNonConformingToken` |
+| The venue answers to the controller alone | `test_theVenueIsGoverned` |
+| The Custodian converts for an admitted client that never holds a key; only the Custodian operates it | `test_custodianConvertsForAdmittedClient`, `test_onlyCustodianCanOperateClientAccount` |
+| A client account not admitted, or not onboarded, is refused | `test_notAdmittedClient_refusedByThePool`, `test_notOnboardedClient_refused` |
+| Freezing or withdrawing one client leaves its sibling converting | `test_freezingOneClientDoesNotAffectOthers`, `test_withdrawingOneClientsAccessDoesNotAffectOthers` |
+
+`test/PoolCredentialRegistry.t.sol` tests the credential gate alone, against a stand-in for the
+protocol, with no chain: each policy parameter refused and then met, bounded expiry, revocation by
+each route, the wallet-control credential required and voidable, a swap-path read of two storage slots that never calls the protocol and never reverts,
+and no attribute value stored. Ten deliberate errors in the gate and one in the checker were
+each caught. The venue tests pass unchanged against a fork of the test network
+(`ops/dry-run-fork.sh`).
 
 ## What the instruments tests show
 
-`cd instruments && forge test --force` runs 107. Spike 2's conformance suite runs against both the note
+`cd instruments && forge test --force` runs 115. Spike 2's conformance suite runs against both the note
 and the deposit: views that never revert under any gate failure, forced transfer only under its
 own role and never to an ineligible account, the written reason carried whole, and an admin that
 holds no role it was not granted. Against the registry: grants lapse at expiry, revocation is
@@ -84,7 +106,7 @@ one institution, four signatures in one firm, and two institutions with weak wal
 checked again at execution; recovery needing every other institution and the longer delay, and
 vetoed by a wallet that still works; the worked example of the wrong Record Time reversed and
 restated; and the deployer holding nothing after the ceremony. Four deliberate errors in the
-controller were each caught. `FOUNDRY_PROFILE=fork forge test` repeats Tier 1 and Tier 2 through
+controller, and four in its venue acts, were each caught. `FOUNDRY_PROFILE=fork forge test --fork-url http://127.0.0.1:8545` (from `instruments/`) repeats Tier 1 and Tier 2 through
 the real multi-signature wallets on the local stack.
 
 ## Contract size

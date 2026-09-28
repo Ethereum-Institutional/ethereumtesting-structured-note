@@ -12,17 +12,16 @@ const manifest: Manifest = {
   chainId: 31337,
   parties: { issuer: A(1), agent: A(2), investorA: A(3), custodian: A(4) },
   assets: {
-    venueAsset: { address: A(0x10), symbol: "ASSET", decimals: 18 },
-    cash: { address: A(0x11), symbol: "CASH", decimals: 6 },
-    note: { address: A(0x40), symbol: "NOTE", decimals: 0 },
-    deposit: { address: A(0x41), symbol: "DEP", decimals: 2 },
+    paymentToken: { address: A(0x11), symbol: "EURPT", decimals: 6 },
+    note: { address: A(0x40), symbol: "EURWAN", decimals: 0 },
+    deposit: { address: A(0x41), symbol: "EURTD", decimals: 2 },
   },
   venue: {
-    poolManager: A(0x20), permit2: A(0x21), adapterFactory: A(0x22), allowlistChecker: A(0x23),
+    poolManager: A(0x20), permit2: A(0x21), adapterFactory: A(0x22), allowlistChecker: A(0x23), credentialGate: A(0x29),
     hook: A(0x24), router: A(0x25), positionManager: A(0x26), permissionsAdapter: A(0x27), weth: A(0x28),
   },
   pool: { currency0: A(0x11), currency1: A(0x27), fee: 3000, tickSpacing: 60, tickLower: -60, tickUpper: 60, hook: A(0x24) },
-  custody: { custodian: A(4), factory: A(0x30), accounts: { "CLIENT-A": A(0x31) } },
+  custody: { custodian: A(4), factory: A(0x30), accounts: { "SEG-0001": A(0x31) } },
   instruments: { registry: A(0x42), noteGate: A(0x43), depositGate: A(0x44), note: A(0x40), deposit: A(0x41), gateway: A(0x45) },
   lifecycle: { determinations: A(0x50), recordDates: A(0x51), payingAgent: A(0x52), settlement: A(0x53) },
   governance: { controller: A(0x60), walletFactory: A(0x61), agentGovernance: A(0x62), issuerGovernance: A(0x63), cosigner: A(0x64), servicingWallet: A(0x65), tier2Delay: 3600, recoveryDelay: 14400 },
@@ -72,33 +71,33 @@ test("price refuses a token that is not in the pool", () => {
 const tape = new Tape(manifest);
 
 test("the same function on two tokens is two different rows", () => {
-  const [onAsset] = tape.describe(tx(A(0x10), call("function mint(address,uint256)", [A(3), 5n * 10n ** 18n])));
-  const [onCash] = tape.describe(tx(A(0x11), call("function mint(address,uint256)", [A(3), 5n * 10n ** 6n])));
-  assert.equal(onAsset.meaning, "Issued units");
-  assert.equal(onCash.meaning, "Issued test cash");
-  assert.deepEqual(onAsset.args, ["Investor A", "5 ASSET"]);
-  assert.deepEqual(onCash.args, ["Investor A", "5 CASH"]);
+  const [onDeposit] = tape.describe(tx(A(0x41), call("function mint(address,uint256)", [A(3), 5n * 10n ** 2n])));
+  const [onPayment] = tape.describe(tx(A(0x11), call("function mint(address,uint256)", [A(3), 5n * 10n ** 6n])));
+  assert.equal(onDeposit.meaning, "Issued units");
+  assert.equal(onPayment.meaning, "Issued the payment token (local stand-in only)");
+  assert.deepEqual(onDeposit.args, ["Investor A", "5 EURTD"]);
+  assert.deepEqual(onPayment.args, ["Investor A", "5 EURPT"]);
 });
 
 test("an amount is formatted in its own token's decimals, however small", () => {
   const [row] = tape.describe(tx(A(0x11), call("function transfer(address,uint256)", [A(3), 1n])));
-  assert.equal(row.args[1], "0.000001 CASH");
+  assert.equal(row.args[1], "0.000001 EURPT");
 });
 
 test("a maximum allowance reads as unlimited, not as a quantity", () => {
   const [row] = tape.describe(tx(A(0x11), call("function approve(address,uint256)", [A(0x21), (1n << 256n) - 1n])));
-  assert.equal(row.args[1], "unlimited CASH");
+  assert.equal(row.args[1], "unlimited EURPT");
 });
 
 test("an unknown selector on a known contract is kept, marked unrecognised, with its calldata", () => {
-  const input = call("function burn(address,uint256)", [A(3), 1n]);
-  const rows = tape.describe(tx(A(0x10), input));
+  const input = call("function sweep(address,uint256)", [A(3), 1n]);
+  const rows = tape.describe(tx(A(0x41), input));
   assert.equal(rows.length, 1);
   assert.equal(rows[0].recognised, false);
   assert.equal(rows[0].tone, "unrecognised");
   assert.equal(rows[0].fn, input.slice(0, 10));
   assert.deepEqual(rows[0].args, [input]);
-  assert.match(rows[0].meaning, /restrictedAsset/);
+  assert.match(rows[0].meaning, /deposit/);
 });
 
 test("a call to a contract the manifest does not name is kept, marked unrecognised", () => {
@@ -108,12 +107,12 @@ test("a call to a contract the manifest does not name is kept, marked unrecognis
 });
 
 test("a custody call is unwrapped to the instruction it carried", () => {
-  const inner = call("function transfer(address,uint256)", [A(3), 2n * 10n ** 18n]);
-  const [row] = tape.describe(tx(A(0x31), call("function executeOne(address,uint256,bytes)", [A(0x10), 0n, inner]), A(4)));
-  assert.equal(row.via, "CLIENT-A");
+  const inner = call("function transfer(address,uint256)", [A(3), 2n * 10n ** 2n]);
+  const [row] = tape.describe(tx(A(0x31), call("function executeOne(address,uint256,bytes)", [A(0x41), 0n, inner]), A(4)));
+  assert.equal(row.via, "SEG-0001");
   assert.equal(row.from, "Custodian");
-  assert.equal(row.target, "ASSET");
-  assert.deepEqual(row.args, ["Investor A", "2 ASSET"]);
+  assert.equal(row.target, "EURTD");
+  assert.deepEqual(row.args, ["Investor A", "2 EURTD"]);
 });
 
 test("a custody batch becomes one row per call, and an unknown inner call is kept", () => {
@@ -125,13 +124,13 @@ test("a custody batch becomes one row per call, and an unknown inner call is kep
   ]]);
   const rows = tape.describe(tx(A(0x31), batch, A(4)));
   assert.equal(rows.length, 2);
-  assert.equal(rows[0].meaning, "Set an allowance on cash");
+  assert.equal(rows[0].meaning, "Set an allowance on the payment token");
   assert.equal(rows[1].recognised, false);
-  assert.ok(rows.every((r) => r.via === "CLIENT-A"));
+  assert.ok(rows.every((r) => r.via === "SEG-0001"));
 });
 
 test("text is shown whole", () => {
-  const ref = "CLIENT-".padEnd(200, "X");
+  const ref = "SEG-".padEnd(200, "X");
   const [row] = tape.describe(tx(A(0x30), call("function createAccount(string)", [ref]), A(4)));
   assert.equal(row.args[0], JSON.stringify(ref));
 });
@@ -143,16 +142,16 @@ test("a reason payload is shown as its full text, or in full hex when it is not 
 });
 
 test("a deployment is shown, not skipped", () => {
-  const row = tape.describeCreation({ hash: `0x${"cd".repeat(32)}`, block: 1, from: A(1) }, A(0x10));
+  const row = tape.describeCreation({ hash: `0x${"cd".repeat(32)}`, block: 1, from: A(1) }, A(0x41));
   assert.equal(row.meaning, "Deployed a contract");
-  assert.equal(row.target, "ASSET");
+  assert.equal(row.target, "EURTD");
 });
 
 test("a note balance is a count of units; a deposit amount has two decimals", () => {
   const [note] = tape.describe(tx(A(0x40), call("function mint(address,uint256)", [A(3), 7n])));
   const [credit] = tape.describe(tx(A(0x45), call("function credit(address,uint256,bytes32)", [A(3), 123456n, stringToHex("booking-1", { size: 32 })])));
-  assert.deepEqual(note.args, ["Investor A", "7 NOTE"]);
-  assert.deepEqual(credit.args, ["Investor A", "1234.56 DEP", '"booking-1"']);
+  assert.deepEqual(note.args, ["Investor A", "7 EURWAN"]);
+  assert.deepEqual(credit.args, ["Investor A", "1234.56 EURTD", '"booking-1"']);
 });
 
 test("a grant shows its flags by name and its expiry as a date", () => {
@@ -195,14 +194,14 @@ test("a determination reads as its outcome, in euros per Calculation Amount", ()
 
 test("a DvP proposal shows units of the note and a price in the deposit", () => {
   const [row] = tape.describe(tx(A(0x53), call("function propose(address,address,uint64,uint256,uint48)", [A(1), A(3), 10n, 1_000_000n, 1_790_000_000n])));
-  assert.deepEqual(row.args.slice(0, 4), ["Issuer", "Investor A", "10 NOTE", "10000 DEP"]);
+  assert.deepEqual(row.args.slice(0, 4), ["Issuer", "Investor A", "10 EURWAN", "10000 EURTD"]);
 });
 
 test("a distribution's opening and payment name the kind and the holders", () => {
   const [open] = tape.describe(tx(A(0x52), call("function open(uint256,uint8)", [3n, 1])));
   const [pay] = tape.describe(tx(A(0x52), call("function pay(bytes32,address[])", [`0x${"cd".repeat(32)}`, [A(3), A(0x31)]])));
   assert.deepEqual(open.args, ["3", "redemption"]);
-  assert.equal(pay.args[1], "[Investor A, CLIENT-A]");
+  assert.equal(pay.args[1], "[Investor A, SEG-0001]");
 });
 
 test("a wallet transaction is shown as the governance act it carried", () => {
@@ -215,7 +214,7 @@ test("a wallet transaction is shown as the governance act it carried", () => {
   assert.equal(row.via, "Agent governance wallet");
   assert.equal(row.target, "Governance controller");
   assert.equal(row.meaning, "Tier 1: corrected the register to match the Register");
-  assert.deepEqual(row.args, ["Investor A", "Custodian", "2 NOTE", '"Register correction"']);
+  assert.deepEqual(row.args, ["Investor A", "Custodian", "2 EURWAN", '"Register correction"']);
 });
 
 test("flag and reference renderings", () => {
@@ -239,4 +238,26 @@ test("a failed task does not stop the queue", async () => {
   const enqueue = signerQueues<string>();
   await assert.rejects(enqueue("issuer", async () => { throw new Error("reverted"); }));
   assert.equal(await enqueue("issuer", async () => "next"), "next");
+});
+
+test("a pool admission reads as the policy it was checked against", () => {
+  const input = call(
+    "function grant((address account, uint8 path, bytes32 primaryCredential, bytes32 screeningCredential, bytes32 walletCredential, bytes32 authorityCredential, bytes32 primarySchema, bytes32 screeningSchema, uint32 checks, bytes2 jurisdiction, uint8 investorClass, uint40 screenedAt, uint40 credentialExpiry, bytes32 evidence))",
+    [{
+      account: A(3), path: 1, primaryCredential: `0x${"11".repeat(32)}`, screeningCredential: `0x${"22".repeat(32)}`, walletCredential: `0x${"66".repeat(32)}`, authorityCredential: `0x${"77".repeat(32)}`,
+      primarySchema: `0x${"33".repeat(32)}`, screeningSchema: `0x${"44".repeat(32)}`, checks: 7, jurisdiction: "0x4c55",
+      investorClass: 2, screenedAt: 1_790_000_000, credentialExpiry: 1_820_000_000, evidence: `0x${"55".repeat(32)}`,
+    }],
+  );
+  const [row] = tape.describe(tx(A(0x29), input, A(2)));
+  assert.equal(row.target, "Pool credential gate");
+  assert.equal(row.meaning, "Admitted an account to the pool from a presentation verified off-chain");
+  assert.match(row.args[0], /^Investor A, entity; jurisdiction LU; institutional; checks wallet control, not expired, entity active;/);
+});
+
+test("the pool's supervisory withdrawal shows its reason whole", () => {
+  const why = "Adverse media match under review; pool access suspended pending the outcome of the review.";
+  const [row] = tape.describe(tx(A(0x60), call("function withdrawPoolAccess(address,string)", [A(3), why])));
+  assert.equal(row.meaning, "Tier 1: withdrew an account's pool access under supervisory authority");
+  assert.equal(row.args[1], JSON.stringify(why));
 });

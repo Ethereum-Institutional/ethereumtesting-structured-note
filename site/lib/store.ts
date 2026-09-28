@@ -29,6 +29,39 @@ export type Registrant = {
 
 export type AuditEntry = { at: string; actor: string; action: string; subject: string };
 
+/**
+ * An admission to the conversion pool (ADRs 0045 to 0048): the officer's presentation, then the
+ * wallet-control presentation, then an operator's decision. `data` holds the signed requests, the
+ * presentations and verdicts, the corporate identity and the assessment, whole, as evidence.
+ */
+export type AdmissionStatus =
+  | "awaiting-bank-review"
+  | "kyb-confirmed"
+  | "awaiting-signature"
+  | "awaiting-officer"
+  | "awaiting-wallet"
+  | "ready"
+  | "refused"
+  | "admitted"
+  | "declined"
+  | "cancelled"
+  | "failed";
+
+/** How the participant came in (ADR 0054). */
+export type AdmissionRoute = "custodied" | "self-custody" | "holder-wallet";
+
+export type Admission = {
+  id: string;
+  registrantId: string;
+  route: AdmissionRoute;
+  status: AdmissionStatus;
+  createdAt: string;
+  /** The holder-wallet route's request identifiers; null on the bank's routes. */
+  officerRequestId: string | null;
+  walletRequestId: string | null;
+  data: Record<string, unknown>;
+};
+
 export interface Store {
   registrantByEmail(email: string): Promise<Registrant | null>;
   registrantById(id: string): Promise<Registrant | null>;
@@ -50,6 +83,15 @@ export interface Store {
 
   audit(e: AuditEntry): Promise<void>;
   auditLog(limit: number): Promise<AuditEntry[]>;
+
+  putAdmission(a: Admission): Promise<void>;
+  admissionById(id: string): Promise<Admission | null>;
+  /** The admission a verifier request belongs to, by either of its request identifiers. */
+  admissionByRequest(requestId: string): Promise<Admission | null>;
+  /** Replaces the admission, only if its status is still `expected`. Returns whether it did. */
+  updateAdmission(a: Admission, expected: AdmissionStatus): Promise<boolean>;
+  listAdmissions(limit: number): Promise<Admission[]>;
+  latestAdmissionFor(registrantId: string): Promise<Admission | null>;
 }
 
 // --------------------------------------------------------------------------------------------
@@ -81,6 +123,16 @@ create table if not exists sessions (
   registrant_id text not null references registrants(id),
   expires_at timestamptz not null
 );
+create table if not exists admissions (
+  id text primary key,
+  registrant_id text not null references registrants(id),
+  route text not null,
+  status text not null,
+  created_at timestamptz not null,
+  officer_request_id text unique,
+  wallet_request_id text unique,
+  data jsonb not null
+);
 create table if not exists audit (
   id bigserial primary key,
   at timestamptz not null,
@@ -102,6 +154,17 @@ const toRegistrant = (r: Row): Registrant => ({
   verifiedAt: iso(r.verified_at),
   decidedAt: iso(r.decided_at),
   decidedBy: (r.decided_by as string) ?? null,
+});
+
+const toAdmission = (r: Row): Admission => ({
+  id: r.id as string,
+  registrantId: r.registrant_id as string,
+  route: r.route as AdmissionRoute,
+  status: r.status as AdmissionStatus,
+  createdAt: iso(r.created_at)!,
+  officerRequestId: (r.officer_request_id as string) ?? null,
+  walletRequestId: (r.wallet_request_id as string) ?? null,
+  data: (typeof r.data === "string" ? JSON.parse(r.data) : r.data) as Record<string, unknown>,
 });
 
 function postgresStore(url: string): Store {
@@ -192,6 +255,36 @@ function postgresStore(url: string): Store {
         subject: r.subject as string,
       }));
     },
+    async putAdmission(a) {
+      const s = await q();
+      await s`insert into admissions (id, registrant_id, route, status, created_at, officer_request_id, wallet_request_id, data)
+              values (${a.id}, ${a.registrantId}, ${a.route}, ${a.status}, ${a.createdAt}, ${a.officerRequestId}, ${a.walletRequestId}, ${s.json(a.data as any)})`;
+    },
+    async admissionById(id) {
+      const s = await q();
+      const [r] = await s`select * from admissions where id = ${id}`;
+      return r ? toAdmission(r) : null;
+    },
+    async admissionByRequest(requestId) {
+      const s = await q();
+      const [r] = await s`select * from admissions where officer_request_id = ${requestId} or wallet_request_id = ${requestId}`;
+      return r ? toAdmission(r) : null;
+    },
+    async updateAdmission(a, expected) {
+      const s = await q();
+      const rows = await s`update admissions set status = ${a.status}, wallet_request_id = ${a.walletRequestId}, data = ${s.json(a.data as any)}
+                           where id = ${a.id} and status = ${expected} returning id`;
+      return rows.length === 1;
+    },
+    async listAdmissions(limit) {
+      const s = await q();
+      return (await s`select * from admissions order by created_at desc limit ${limit}`).map(toAdmission);
+    },
+    async latestAdmissionFor(registrantId) {
+      const s = await q();
+      const [r] = await s`select * from admissions where registrant_id = ${registrantId} order by created_at desc limit 1`;
+      return r ? toAdmission(r) : null;
+    },
   };
 }
 
@@ -204,6 +297,7 @@ type FileData = {
   links: { hash: string; registrantId: string; createdAt: string; expiresAt: string; usedAt: string | null }[];
   sessions: { hash: string; registrantId: string; expiresAt: string }[];
   audit: AuditEntry[];
+  admissions?: Admission[];
 };
 
 function fileStore(dir: string): Store {
@@ -283,6 +377,29 @@ function fileStore(dir: string): Store {
     async auditLog(limit) {
       return load().audit.slice(-limit).reverse();
     },
+    async putAdmission(a) {
+      edit((d) => void (d.admissions ??= []).push(a));
+    },
+    async admissionById(id) {
+      return load().admissions?.find((a) => a.id === id) ?? null;
+    },
+    async admissionByRequest(requestId) {
+      return load().admissions?.find((a) => a.officerRequestId === requestId || a.walletRequestId === requestId) ?? null;
+    },
+    async updateAdmission(a, expected) {
+      return edit((d) => {
+        const i = (d.admissions ?? []).findIndex((x) => x.id === a.id && x.status === expected);
+        if (i < 0) return false;
+        d.admissions![i] = a;
+        return true;
+      });
+    },
+    async listAdmissions(limit) {
+      return [...(load().admissions ?? [])].sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, limit);
+    },
+    async latestAdmissionFor(registrantId) {
+      return [...(load().admissions ?? [])].filter((a) => a.registrantId === registrantId).sort((x, y) => y.createdAt.localeCompare(x.createdAt))[0] ?? null;
+    },
   };
 }
 
@@ -297,5 +414,6 @@ export function getStore(): Store {
   if (process.env.NODE_ENV === "production" && !process.env.ALLOW_FILE_STORE) {
     throw new Error("No database configured. Set POSTGRES_URL. Refusing to hold access state on local disk.");
   }
-  return (store = fileStore(join(process.cwd(), ".data")));
+  // FILE_STORE_DIR lets the browser tests keep a fresh store away from the development one.
+  return (store = fileStore(process.env.FILE_STORE_DIR || join(process.cwd(), ".data")));
 }
