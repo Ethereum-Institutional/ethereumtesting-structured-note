@@ -64,7 +64,18 @@ export type IssuedCredential = {
   issuedAt: number;
   expiresAt: number;
   kycReference?: string;
+  /** The credential's own root, and where the bank anchored the batch containing it (ADR 0060). */
+  rootHex?: string | null;
+  rootAnchorTxHash?: string | null;
+  rootAnchorChain?: string | null;
+  revokedAt?: number | string | null;
 };
+
+/** Every credential the bank has issued, newest included, with its anchoring. */
+export async function issuedCredentials(b: BankConfig): Promise<IssuedCredential[]> {
+  const { credentials } = await call<{ credentials: IssuedCredential[] }>(b, `/v1/admin/credentials?limit=500`);
+  return credentials;
+}
 
 /** The bank's live corporate identities: the newest unexpired, unrevoked one for each client reference. */
 export async function corporateIdentities(b: BankConfig, schema: string, nowSec: number, kycReference?: string): Promise<IssuedCredential[]> {

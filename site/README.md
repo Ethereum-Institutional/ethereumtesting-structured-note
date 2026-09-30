@@ -75,6 +75,7 @@ npm test                                                   # chain library and a
 ../ops/reset.sh && npm run test:admission                  # the admission flow against the local chain
 ../ops/reset.sh && npm run test:browser                    # the pages, clicked through in Chromium
 npm run test:local                                         # all of the above except e2e, on a fresh chain
+(set -a; . ../ops/keys.base-sepolia-integration.env; set +a; node test/probe-route3.ts)  # route 3's real services, read-only
 ```
 
 Every test runs on the local chain; none sends a transaction to a public network (ADR 0059). The

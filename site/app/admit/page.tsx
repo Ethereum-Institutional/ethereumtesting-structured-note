@@ -5,6 +5,7 @@ import { getStore, type Admission } from "@/lib/store";
 import { Bar } from "../Bar";
 import {
   bindWalletAction,
+  advanceAdmissionAction,
   cancelAdmissionAction,
   renewAdmissionAction,
   renewChallengeAction,
@@ -14,6 +15,7 @@ import {
 } from "../actions";
 import { SignWallet } from "./SignWallet";
 import { AutoRefresh } from "../AutoRefresh";
+import { AnchorWatch } from "../AnchorWatch";
 import { CANCELLABLE } from "@/lib/admission/service";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +34,7 @@ const STATUS: Record<Admission["status"], string> = {
   "awaiting-officer": "Step 1 of 2: present your officer credential.",
   "awaiting-wallet": "Step 2 of 2: present the wallet-control credential.",
   ready: "Received. Awaiting the bank's approval.",
+  "awaiting-anchor": "Almost there: waiting for your bank to anchor the credential on-chain, usually about a minute. This page updates by itself.",
   refused: "Not admitted.",
   admitted: "Admitted to the conversion pool.",
   declined: "Declined by the bank.",
@@ -48,7 +51,8 @@ export default async function Admit() {
 
   return (
     <div className="wrap">
-      {open && a.status !== "awaiting-signature" && a.status !== "kyb-confirmed" && <AutoRefresh />}
+      {open && a.status !== "awaiting-signature" && a.status !== "kyb-confirmed" && a.status !== "awaiting-anchor" && <AutoRefresh />}
+      {a?.status === "awaiting-anchor" && <AnchorWatch ids={[a.id]} advance={advanceAdmissionAction} />}
       <Bar who={who} operator={isOperator(who.email)} />
       <header className="masthead" style={{ paddingBottom: "1rem" }}>
         <p className="eyebrow">Conversion pool</p>

@@ -39,10 +39,15 @@ test("staff admit a custodied client in one action, through a lagging RPC, withi
   await expect(form.getByRole("status")).toContainText("This takes up to a minute");
 
   const row = page.locator("#admissions + .table-wrap tbody tr").first();
+  // First the wallet credential waits for the bank's anchor; the page moves it on by itself (ADR 0060).
+  await expect(row.locator(".pill")).toHaveText("awaiting-anchor");
+  await expect(row).toContainText("Waiting for the bank to anchor");
   await expect(row.locator(".pill")).toHaveText("admitted", { timeout: 60_000 });
   expect(Date.now() - started, "a custodied admission completes within 30 s on one-second blocks").toBeLessThan(30_000);
   await expect(row).toContainText("custodied");
   // Pool grant, registry grant and trading approvals: each a transaction (plain on the local chain, which has no explorer).
-  expect((await row.innerText()).match(/0x[0-9a-f]{8}…/g) ?? [], "three transactions recorded").toHaveLength(3);
+  // Pool grant, registry grant, trading approvals, and the two anchoring transactions (the
+  // corporate identity's earlier batch and the wallet credential's).
+  expect((await row.innerText()).match(/0x[0-9a-f]{8}…/g) ?? [], "five transactions recorded").toHaveLength(5);
   await expectHealthy(page);
 });

@@ -4,7 +4,8 @@ import { getStore, type Registrant } from "@/lib/store";
 import { explorerAddress, explorerTx } from "@/lib/explorer";
 import { bankConfig, corporateIdentities, type IssuedCredential } from "@/lib/admission/bank";
 import { policyConfig } from "@/lib/admission/protocol";
-import { admitCustodiedAction, decideAction, decideAdmissionAction, finishCustodiedAction, reviewSelfCustodyAction } from "../actions";
+import { admitCustodiedAction, advanceAdmissionAction, decideAction, decideAdmissionAction, finishCustodiedAction, reviewSelfCustodyAction } from "../actions";
+import { AnchorWatch } from "../AnchorWatch";
 import { PendingButton } from "../PendingButton";
 import { Bar } from "../Bar";
 import { NUMERIC } from "@/lib/admission/assess";
@@ -183,13 +184,14 @@ export default async function Operator() {
       })}
 
       <h2 id="admissions">Pool admissions</h2>
+      <AnchorWatch ids={admissions.filter((a) => a.status === "awaiting-anchor").map((a) => a.id)} advance={advanceAdmissionAction} />
       <div className="table-wrap panel">
         <table style={{ whiteSpace: "nowrap" }}>
           <thead>
             <tr>
               <th>Started</th><th>Route</th><th>Status</th><th>Corporation</th><th>Officer</th><th>Wallet</th>
               <th>Wallet type</th><th>Jurisdiction</th><th>Class</th><th>Pool grant to</th><th>Pool grant</th>
-              <th>Registry grant</th><th>Trading approvals</th><th>Problem</th><th />
+              <th>Registry grant</th><th>Trading approvals</th><th>Anchored</th><th>Problem</th><th />
             </tr>
           </thead>
           <tbody>
@@ -197,14 +199,18 @@ export default async function Operator() {
               const d = a.data as Record<string, any>;
               const s = d.assessment?.ok ? d.assessment.summary : null;
               const w = d.written as { chainId?: number; poolGrantTx?: string; registryGrantTx?: string; readyTx?: string; poolGrantExpiresAt?: number } | undefined;
-              const problem = d.assessment && !d.assessment.ok ? d.assessment.problems.join(" ") : w ? "" : d.error ?? "";
+              const problem =
+                a.status === "awaiting-anchor"
+                  ? `Waiting for the bank to anchor ${d.anchoring?.pending?.length ?? "its"} credential${d.anchoring?.pending?.length === 1 ? "" : "s"} (since ${when(d.anchorSince ?? a.createdAt).slice(11)}); usually about a minute.`
+                  : d.assessment && !d.assessment.ok ? d.assessment.problems.join(" ") : w ? "" : d.error ?? "";
+              const anchorTxs = [...new Set(((d.anchors ?? []) as Array<{ anchorTx: string }>).map((x) => x.anchorTx))];
               const tx = (hash: string | undefined) =>
                 hash ? <Linked href={explorerTx(w?.chainId, hash)}>{`${hash.slice(0, 10)}…`}</Linked> : "";
               return (
                 <tr key={a.id}>
                   <td>{when(a.createdAt)}</td>
                   <td>{a.route}</td>
-                  <td><span className={`pill ${a.status === "ready" ? "pending" : a.status === "admitted" ? "approved" : ""}`}>{a.status}</span></td>
+                  <td><span className={`pill ${a.status === "ready" || a.status === "awaiting-anchor" ? "pending" : a.status === "admitted" ? "approved" : ""}`}>{a.status}</span></td>
                   <td>{s?.corporation ?? d.record?.legalName ?? ""}</td>
                   <td>{s?.officerDid ? `${s.role}, ${s.officerDid}` : ""}</td>
                   <td>{s ? <Linked href={explorerAddress(w?.chainId, s.wallet)}>{s.wallet}</Linked> : d.account ? <Linked href={explorerAddress(w?.chainId, d.account)}>{d.account}</Linked> : d.request?.walletAddress ?? ""}</td>
@@ -215,6 +221,7 @@ export default async function Operator() {
                   <td>{tx(w?.poolGrantTx)}</td>
                   <td>{tx(w?.registryGrantTx)}</td>
                   <td>{tx(w?.readyTx)}</td>
+                  <td>{anchorTxs.map((h) => <span key={h}>{tx(h)} </span>)}</td>
                   <td style={{ whiteSpace: "normal", minWidth: 280 }}>{problem}</td>
                   <td>
                     {a.route === "custodied" && a.status === "failed" && d.clientRef && (

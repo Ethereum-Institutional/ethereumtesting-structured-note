@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { confirm, currentOperator, currentRegistrant, decide, register, requestSignIn, signOut } from "@/lib/access";
 import {
   admitCustodied,
+  advanceAdmission,
   cancelAdmission,
   finishCustodied,
   decideAdmission,
@@ -89,6 +90,15 @@ export async function renewAdmissionAction(f: FormData) {
   const a = await getStore().admissionById(field(f, "id"));
   const origin = await siteOrigin();
   if (a && a.registrantId === who.id) await recorded(() => renewRequest(a, origin), "/admit");
+}
+
+/** Moves a waiting admission on once its credentials are anchored (ADR 0060); for staff or the admission's own client. */
+export async function advanceAdmissionAction(id: string) {
+  const who = await currentRegistrant();
+  if (!who) return;
+  const a = await getStore().admissionById(id);
+  if (!a || (a.registrantId !== who.id && !(await currentOperator()))) return;
+  await recorded(() => advanceAdmission(id), a.registrantId === who.id ? "/admit" : "/operator");
 }
 
 export async function cancelAdmissionAction(f: FormData) {

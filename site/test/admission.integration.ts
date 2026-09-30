@@ -10,7 +10,7 @@
  */
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { bytesToHex, createPublicClient, getAddress, keccak256, parseAbi, toBytes, http, type Hex } from "viem";
@@ -26,7 +26,9 @@ const WALLET = getAddress(`0x${keccak256(toBytes(`admission wallet ${Date.now()}
 
 // --- the stand-in verifier, discovery endpoint and bank (test/standins.ts) ---
 
-const standIns = await startStandIns(PORT, RPC);
+const LOCAL = JSON.parse(readFileSync(MANIFEST, "utf8"));
+// The stand-in bank anchors each new credential three seconds after issuing it (the real bank: about a minute).
+const standIns = await startStandIns(PORT, RPC, { revocations: LOCAL.credentialProtocol.revocations, anchorDelayMs: 3000 });
 after(() => standIns.close());
 const { now: NOW, cid, lodged, challenges } = standIns;
 
@@ -46,6 +48,17 @@ const store = getStore();
 const registrant = { id: "reg_officer", email: "officer@corp.example", name: "Officer", organisation: "Test Institution One", status: "approved" as const, createdAt: new Date().toISOString(), verifiedAt: null, decidedAt: null, decidedBy: null };
 const operator = { ...registrant, id: "reg_operator", email: "operator@example.org" };
 await store.createRegistrant(registrant);
+
+/** Moves an admission on, as the pages do, until it no longer waits for the bank's anchoring (ADR 0060). */
+async function untilAnchored(id: string, timeoutMs = 30_000) {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    await service.advanceAdmission(id);
+    const a = (await store.admissionById(id))!;
+    if (a.status !== "awaiting-anchor" || Date.now() > until) return a;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
 
 /** The holder wallet: a presentation of one credential, answering the request it scanned. */
 const presentation = standIns.presentation;
@@ -76,8 +89,10 @@ test("an officer admits a wallet by two scans and an operator's approval, and bo
 
   await assert.rejects(service.decideAdmission(a.id, "approve", registrant as any), /Not permitted/);
   await service.decideAdmission(a.id, "approve", operator as any);
-  a = (await store.admissionById(a.id))!;
+  a = await untilAnchored(a.id);
   assert.equal(a.status, "admitted", (a.data as any).error);
+  assert.equal((a.data as any).anchors.length, 3, "the officer, wallet and corporate identity credentials are each anchored");
+  assert.ok((a.data as any).anchors.every((x: any) => x.verifiedOnChain), "each anchoring transaction was checked on the chain");
   await assert.rejects(service.decideAdmission(a.id, "approve", operator as any), /not awaiting a decision/);
 
   // Read back from the chain.
@@ -113,10 +128,17 @@ const readPool = async (account: string) => {
 test("route 1, custodied: one staff action opens, binds, admits and readies a custody account", async () => {
   const stale = lagging.staleReads();
   const started = Date.now();
-  const a = await service.admitCustodied(operator as any, { kycReference: "KYC-TI1", instructionRef: "INS-2026-0001", clientRef: `TI1-${NOW}`, record: RECORD });
-  assert.equal(a.status, "admitted", JSON.stringify((a.data as any).assessment?.problems ?? (a.data as any).error));
+  let a = await service.admitCustodied(operator as any, { kycReference: "KYC-TI1", instructionRef: "INS-2026-0001", clientRef: `TI1-${NOW}`, record: RECORD });
+  // The new wallet credential is not anchored yet: nothing is granted until it is (ADR 0060).
+  assert.equal(a.status, "awaiting-anchor", JSON.stringify((a.data as any).assessment?.problems ?? (a.data as any).error));
+  assert.equal((await readPool((a.data as any).account)).allowed, false, "no grant before the credential is anchored");
+  a = await untilAnchored(a.id);
+  assert.equal(a.status, "admitted", JSON.stringify((a.data as any).error));
+  const anchors = (a.data as any).anchors;
+  assert.equal(anchors.length, 2, "the corporate identity and the wallet credential");
+  assert.ok(anchors.every((x: any) => x.verifiedOnChain && x.anchoredRoot), "each anchor was read from the chain, with its batch root");
   assert.ok(lagging.staleReads() > stale, "some reads were answered from a block behind, and the admission still completed");
-  assert.ok(Date.now() - started < 15_000, `a custodied admission takes under 15 s on one-second blocks (took ${Date.now() - started} ms)`);
+  assert.ok(Date.now() - started < 20_000, `a custodied admission takes under 20 s on one-second blocks with a 3 s anchor (took ${Date.now() - started} ms)`);
   const account = (a.data as any).admission.wallet.address as Hex;
   const { m, client, allowed, flags, jurisdiction } = await readPool(account);
   assert.equal(allowed, true, "the custody account is admitted to the pool");
@@ -125,6 +147,15 @@ test("route 1, custodied: one staff action opens, binds, admits and readies a cu
   const allowance = await client.readContract({ address: m.assets.deposit.address, abi: parseAbi(["function allowance(address, address) view returns (uint256)"]), functionName: "allowance", args: [account, m.venue.permit2] });
   assert.ok(allowance > 0n, "ready to trade: the deposit is approved to Permit2");
   assert.equal((a.data as any).walletAttestation.wallet.attestationMethod, "EIP-1271", "the account itself signed");
+});
+
+test("an admission resting on a credential the bank never issued is refused, not waited for", async () => {
+  const a = (await store.listAdmissions(30)).find((x: any) => x.route === "custodied" && x.status === "admitted")!;
+  const d = a.data as any;
+  const forged = { ...a, id: `adm_forged_${NOW}`, status: "awaiting-anchor" as const, data: { ...d, anchorSince: new Date().toISOString(), assessment: { ...d.assessment, attestation: { ...d.assessment.attestation, walletCredential: cid("never issued") } } } };
+  await store.putAdmission(forged);
+  await assert.rejects(service.advanceAdmission(forged.id), /no record of credential/);
+  assert.equal((await store.admissionById(forged.id))!.status, "refused");
 });
 
 test("route 1: finishing is only for a custodied admission whose approvals failed", async () => {
@@ -173,7 +204,9 @@ test("route 2, self-custody: the bank confirms the KYB, then the client binds a 
   const { EIP712Domain: _d, ...types } = td.types;
   const signature = await key.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message: td.message });
   a = await service.submitSelfCustodySignature(registrant as any, a.id, signature);
-  assert.equal(a.status, "admitted", JSON.stringify((a.data as any).assessment?.problems ?? (a.data as any).error));
+  assert.equal(a.status, "awaiting-anchor", JSON.stringify((a.data as any).assessment?.problems ?? (a.data as any).error));
+  a = await untilAnchored(a.id);
+  assert.equal(a.status, "admitted", JSON.stringify((a.data as any).error));
   const { allowed, jurisdiction } = await readPool(key.address);
   assert.equal(allowed, true, "the client's own wallet is admitted with one signature");
   assert.equal(jurisdiction, 442);
@@ -195,6 +228,7 @@ test("route 2: a wrong signature fails the binding, and the client can bind agai
   const td = (a.data as any).challenge.typedData;
   const { EIP712Domain: _d, ...types } = td.types;
   a = await service.submitSelfCustodySignature(registrant as any, a.id, await key.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message: td.message }));
+  a = await untilAnchored(a.id);
   assert.equal(a.status, "admitted", "bound on the second try, with no second review");
 });
 

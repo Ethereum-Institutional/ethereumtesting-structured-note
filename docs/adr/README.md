@@ -67,3 +67,5 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0057](0057-bank-holds-the-client-reference.md) | The bank holds the client's reference; staff choose it from the bank's list, and the client never types it | Accepted |
 | [0058](0058-client-can-cancel.md) | A client can cancel its admission at any step until the grants are being written | Accepted |
 | [0059](0059-test-locally-at-the-seams.md) | Test the pages and the network's behaviour on the local chain, before every deploy | Accepted |
+| [0060](0060-grant-only-anchored-credentials.md) | Grants rest only on credentials anchored in the bank's registry, on every route | Accepted |
+| [0061](0061-house-style.md) | The site takes the house style of the organisation's event pages, with a crimson icon | Accepted |

@@ -20,6 +20,8 @@ import { sendMail } from "../mail.ts";
 import { assessBankAdmission, type BankAdmissionInput, type BankRecord } from "./assess.ts";
 import { bankConfig, completeWalletAttestation, corporateIdentityFor, startWalletAttestation, type WalletChallenge } from "./bank.ts";
 import { custodyAccountFor, openCustodyAccount, poolAllows, readyToTrade, signAsCustodyAccount } from "./custody.ts";
+import { anchoringOf, type Anchor } from "./anchoring.ts";
+import { createHash } from "node:crypto";
 import { policyConfig } from "./protocol.ts";
 import type { Address, Hex } from "viem";
 
@@ -183,19 +185,84 @@ export async function decideAdmission(id: string, outcome: "approve" | "decline"
     await store.audit({ at: now(), actor: operator.email, action: "declined a pool admission", subject: a.id });
     return;
   }
-  // Claimed before anything is sent, so two approvals cannot both write.
-  if (!(await store.updateAdmission({ ...a, status: "failed", data: { ...d, decision, error: "writing" } }, "ready"))) {
+  if (!d.assessment?.ok) throw new Error("That admission has no grants to write.");
+  // Approved: the grants follow once every credential is anchored (ADR 0060).
+  if (!(await store.updateAdmission({ ...a, status: "awaiting-anchor", data: { ...d, decision, anchorSince: now() } }, "ready"))) {
     throw new Error("That admission was decided already.");
   }
-  const assessment = d.assessment;
+  await store.audit({ at: now(), actor: operator.email, action: "approved a pool admission", subject: a.id });
+  await advanceAdmission(a.id);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Anchoring, then the grants (ADR 0060)
+// ---------------------------------------------------------------------------------------------
+
+/** How long an admission waits for the bank's anchoring before it is reported as failed. */
+const ANCHOR_PATIENCE_MS = 15 * 60_000;
+
+/** The evidence the grants carry: what the admission rests on, and where each credential is anchored. */
+function anchoredEvidence(basis: Hex, anchors: Anchor[]): Hex {
+  return `0x${createHash("sha256").update(canonicalString({ basis, anchors })).digest("hex")}`;
+}
+
+export type Advance = "waiting" | "admitted" | "not-waiting";
+
+/**
+ * Writes an admission's grants once every credential they rest on is anchored in the bank's
+ * registry. Safe to call repeatedly and from anywhere, as the pages do while they wait: it writes
+ * only from "awaiting-anchor", and claims the admission first, so two calls cannot both write.
+ */
+export async function advanceAdmission(id: string): Promise<Advance> {
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.status !== "awaiting-anchor") return "not-waiting";
+  const d = a.data as Record<string, any>;
+  const assessment = d.assessment as Assessment;
   if (!assessment?.ok) throw new Error("That admission has no grants to write.");
+  const policy = policyConfig();
+  const at = assessment.attestation;
+  const ids = [at.primaryCredential, at.walletCredential, at.authorityCredential].filter((c, i, all) => !/^0x0+$/.test(c) && all.indexOf(c) === i);
+
+  let anchoring;
   try {
-    const written = await writeGrants(protocolConfig("").issuerDid, assessment.attestation, assessment.registry);
-    await store.updateAdmission({ ...a, status: "admitted", data: { ...d, decision, written } }, "failed");
-    await store.audit({ at: now(), actor: operator.email, action: `admitted ${assessment.summary.wallet} to the pool`, subject: a.id });
+    anchoring = await anchoringOf(bankConfig(), policy.issuerDid, ids);
   } catch (e) {
-    await store.updateAdmission({ ...a, status: "failed", data: { ...d, decision, error: (e as Error).message } }, "failed");
-    await store.audit({ at: now(), actor: operator.email, action: "pool admission failed on-chain", subject: a.id });
+    await store.updateAdmission({ ...a, status: "refused", data: { ...d, error: (e as Error).message } }, "awaiting-anchor");
+    throw e;
+  }
+  if (anchoring.pending.length) {
+    const waited = Date.now() - Date.parse(d.anchorSince ?? a.createdAt);
+    if (waited > ANCHOR_PATIENCE_MS) {
+      await store.updateAdmission({ ...a, status: "failed", data: { ...d, error: `the bank has not anchored ${anchoring.pending.join(", ")} after ${Math.round(waited / 60_000)} minutes` } }, "awaiting-anchor");
+      return "not-waiting";
+    }
+    await store.updateAdmission({ ...a, data: { ...d, anchoring: { pending: anchoring.pending, checkedAt: now() } } }, "awaiting-anchor");
+    return "waiting";
+  }
+
+  // Claimed before anything is sent, so two callers cannot both write.
+  const evidence = anchoredEvidence(at.evidence, anchoring.anchored);
+  const attestation = { ...at, evidence };
+  const registry = { ...assessment.registry, commitment: evidence };
+  const claimed = { ...d, anchors: anchoring.anchored, anchoring: undefined, assessment: { ...assessment, attestation, registry }, error: "writing" };
+  if (!(await store.updateAdmission({ ...a, status: "failed", data: claimed }, "awaiting-anchor"))) return "not-waiting";
+
+  let progress: Record<string, unknown> = claimed;
+  try {
+    const written = await writeGrants(policy.issuerDid, attestation, registry);
+    progress = { ...claimed, written, error: undefined };
+    if (a.route === "custodied") {
+      // The grants are on-chain: recorded before the approvals, so a failure there can be finished.
+      await store.updateAdmission({ ...a, status: "failed", data: { ...progress, error: "setting trading approvals" } }, "failed");
+      const readyTx = await readyToTrade(assessment.summary.wallet as Address);
+      progress = { ...progress, written: { ...written, readyTx } };
+    }
+    await store.updateAdmission({ ...a, status: "admitted", data: progress }, "failed");
+    await store.audit({ at: now(), actor: "site", action: `admitted ${assessment.summary.wallet} to the pool, its credentials anchored`, subject: a.id });
+    return "admitted";
+  } catch (e) {
+    await store.updateAdmission({ ...a, status: "failed", data: { ...progress, error: (e as Error).message } }, "failed");
     throw e;
   }
 }
@@ -265,17 +332,15 @@ export async function admitCustodied(
       await store.updateAdmission({ ...a, status: "refused", data: { ...data, error: undefined } }, "failed");
       return (await store.admissionById(a.id))!;
     }
-    const written = await writeGrants(policy.issuerDid, assessment.attestation, assessment.registry);
-    // The grants are on-chain: recorded before the approvals, so a failure there loses nothing and can be finished.
-    progress = { ...data, written, account };
-    await store.updateAdmission({ ...a, data: { ...progress, error: "setting trading approvals" } }, "failed");
-    const readyTx = await readyToTrade(account);
-    await store.updateAdmission({ ...a, status: "admitted", data: { ...data, written: { ...written, readyTx }, error: undefined } }, "failed");
-    await store.audit({ at: now(), actor: staff.email, action: `admitted custody account ${account} for ${record.legalName}`, subject: a.id });
+    // The wallet credential is minted; the grants follow once the bank has anchored it (ADR 0060).
+    await store.updateAdmission({ ...a, status: "awaiting-anchor", data: { ...data, account, anchorSince: now(), error: undefined } }, "failed");
+    await store.audit({ at: now(), actor: staff.email, action: `opened custody account ${account} for ${record.legalName}; waiting for the bank to anchor its credential`, subject: a.id });
   } catch (e) {
     await store.updateAdmission({ ...a, data: { ...progress, error: (e as Error).message } }, "failed");
     throw e;
   }
+  // Already anchored (a credential issued in an earlier batch) means the grants are written now.
+  await advanceAdmission(a.id);
   return (await store.admissionById(a.id))!;
 }
 
@@ -445,14 +510,16 @@ export async function submitSelfCustodySignature(client: Registrant, id: string,
     if (!assessment.ok) {
       await store.updateAdmission({ ...a, status: "refused", data }, "failed");
     } else {
-      const written = await writeGrants(policy.issuerDid, assessment.attestation, assessment.registry);
-      await store.updateAdmission({ ...a, status: "admitted", data: { ...data, written } }, "failed");
-      await store.audit({ at: now(), actor: client.email, action: `admitted self-custody wallet ${walletAddress}`, subject: a.id });
+      // The wallet is bound; the grants follow once the bank has anchored its credential (ADR 0060).
+      await store.updateAdmission({ ...a, status: "awaiting-anchor", data: { ...data, anchorSince: now() } }, "failed");
+      await store.audit({ at: now(), actor: client.email, action: `bound self-custody wallet ${walletAddress}; waiting for the bank to anchor its credential`, subject: a.id });
     }
   } catch (e) {
     // The KYB is still confirmed; only this binding failed. The client can bind again at once.
     await store.updateAdmission({ ...a, status: "kyb-confirmed", data: { ...d, challenge: undefined, error: (e as Error).message } }, "failed");
     throw e;
   }
+  // Already anchored (a credential issued in an earlier batch) means the grants are written now.
+  await advanceAdmission(a.id);
   return (await store.admissionById(a.id))!;
 }

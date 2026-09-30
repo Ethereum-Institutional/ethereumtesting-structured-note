@@ -484,6 +484,11 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   0055). The key in use carries more scopes than the site needs; the owner chose to keep it. The
   bank sends integers in typed data as decimal strings, so the site signs them as numbers
   (`normaliseTypedData`).
+- **Grants wait for anchoring** (ADR 0060). On every route, the grants are written only once each
+  credential they rest on is anchored in the bank's registry: reported by the bank, and its
+  `updateRoot` transaction checked on-chain. The admission shows `awaiting-anchor` for about a
+  minute meanwhile. An inclusion proof for each credential is still to come from the protocol.
+- **The site looks like the organisation's event pages** (ADR 0061), with a crimson icon.
 - **Clients can cancel** at any step until grants are being written (ADR 0058). Staff are warned
   before submitting a jurisdiction outside the pool's 32, or a screening date in the future or
   older than 30 days.

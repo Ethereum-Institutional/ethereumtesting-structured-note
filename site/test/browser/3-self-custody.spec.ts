@@ -36,6 +36,7 @@ test("self-custody: the client asks, the bank declines, the client asks again, t
   await client.getByLabel("Wallet address").fill(wallet);
   await client.getByRole("button", { name: "Bind wallet" }).click();
   await client.getByRole("button", { name: "Sign with browser wallet" }).click();
+  await expect(client.getByText("Almost there: waiting for your bank to anchor the credential")).toBeVisible({ timeout: 30_000 });
   await expect(client.getByText("Admitted to the conversion pool.")).toBeVisible({ timeout: 60_000 });
   await expectHealthy(client);
   await expectHealthy(staff);

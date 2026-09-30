@@ -10,7 +10,8 @@
 
 import { createServer, type Server } from "node:http";
 import { ml_dsa65 } from "@noble/post-quantum/ml-dsa";
-import { bytesToHex, createPublicClient, hashTypedData, http, keccak256, parseAbi, toBytes, verifyTypedData } from "viem";
+import { bytesToHex, concat, createPublicClient, createWalletClient, hashTypedData, http, keccak256, parseAbi, toBytes, verifyTypedData, type Address, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { canonicalize } from "../lib/admission/canonical.ts";
 
 export const ISSUER = "did:example:credential-issuer"; // the local stack's configured issuer
@@ -20,6 +21,21 @@ export const SERVICE_KEY = "sk_test_integrationsecret";
 export const KYC_REFERENCE = "KYC-TI1";
 export const SCHEMAS = { officer: "schema:corporate-officer/v1", walletControl: "schema:wallet-control-eth/v1", corporateIdentity: "schema:corporate-identity/v1" };
 export const issuerKeys = ml_dsa65.keygen(new Uint8Array(32).fill(21));
+/** The local credential issuer's published key (mnemonic index 22, ADR 0040), which anchors roots on the local chain. */
+const LOCAL_ISSUER_PK = "0x224b7eb7449992aac96d631d9677f7bf5888245eef6d6eeda31e62d2f29a83e4";
+
+type Issued = {
+  credentialId: Hex; schema: string; subjectDid: string; state: string; issuedAt: number; expiresAt: number;
+  kycReference?: string; rootHex: Hex; rootAnchorTxHash: Hex | null; rootAnchorChain: string | null; revokedAt: null;
+  anchorAt: number;
+};
+
+export type StandInOptions = {
+  /** The protocol's root registry on the local chain, where the bank anchors its batches. */
+  revocations: Address;
+  /** How long after issuing the bank anchors a credential. The real bank takes about a minute. */
+  anchorDelayMs?: number;
+};
 
 /** The holder wallet's presentation of one credential, answering a request it scanned. */
 export function presentation(now: number, root: string, request: any, schema: string, credential: string, disclosed: Record<string, unknown>) {
@@ -38,15 +54,56 @@ export type StandIns = {
   presentation: (request: any, schema: string, credential: string, disclosed: Record<string, unknown>) => Record<string, unknown>;
   /** The site's environment for these stand-ins and the given chain. */
   env: (rpc: string, manifestPath: string, siteUrl: string) => Record<string, string>;
+  /** Every credential the stand-in bank has issued, with its anchoring. */
+  issued: Map<string, Issued>;
   close: () => Promise<void>;
 };
 
-export async function startStandIns(port: number, rpc: string): Promise<StandIns> {
+export async function startStandIns(port: number, rpc: string, options: StandInOptions): Promise<StandIns> {
   const now = Math.floor(Date.now() / 1000);
   const cid = (s: string) => keccak256(toBytes(`${s}/${now}`));
   const lodged = new Map<string, any>();
   const challenges = new Map<string, any>();
   let lastLodged: any = null;
+  const anchorDelayMs = options.anchorDelayMs ?? 3000;
+
+  // The bank's register of what it issued. It issues at once and anchors in batches, as the real
+  // bank does: pending first, then anchored by an updateRoot transaction on the chain.
+  const issued = new Map<string, Issued>();
+  const issue = (credentialId: Hex, schema: string, subjectDid: string, extra: Partial<Issued> = {}, anchorAt = Date.now() + anchorDelayMs) => {
+    if (issued.has(credentialId.toLowerCase())) return;
+    issued.set(credentialId.toLowerCase(), {
+      credentialId, schema, subjectDid, state: "signed_pending_anchor", issuedAt: Math.floor(Date.now() / 1000), expiresAt: now + 365 * 86_400,
+      rootHex: keccak256(toBytes(`root of ${credentialId}`)), rootAnchorTxHash: null, rootAnchorChain: null, revokedAt: null, anchorAt, ...extra,
+    });
+  };
+  const anchorer = createWalletClient({ account: privateKeyToAccount(LOCAL_ISSUER_PK), transport: http(rpc) });
+  const reader = createPublicClient({ transport: http(rpc) });
+  const ROOTS = parseAbi(["function updateRoot(string did, bytes32 root)"]);
+  let anchoring = false;
+  const anchorDue = async () => {
+    if (anchoring) return;
+    const due = [...issued.values()].filter((c) => !c.rootAnchorTxHash && c.anchorAt <= Date.now());
+    if (!due.length) return;
+    anchoring = true;
+    try {
+      const chainId = await reader.getChainId();
+      const batchRoot = keccak256(concat(due.map((c) => c.rootHex)));
+      const hash = await anchorer.writeContract({ address: options.revocations, abi: ROOTS, functionName: "updateRoot", args: [ISSUER, batchRoot], chain: null });
+      await reader.waitForTransactionReceipt({ hash, pollingInterval: 250 });
+      for (const c of due) Object.assign(c, { state: c.state === "picked_up" ? "picked_up" : "signed_anchored", rootAnchorTxHash: hash, rootAnchorChain: `eip155:${chainId}` });
+    } catch {
+      // The next tick tries again.
+    } finally {
+      anchoring = false;
+    }
+  };
+  const ticker = setInterval(() => void anchorDue(), 500);
+
+  // Issued before the tests start, and anchored at once: the client's corporate identity at the
+  // bank (routes 1 and 2) and the corporation's own (route 3).
+  issue(cid("bank corporate identity"), SCHEMAS.corporateIdentity, CORP, { kycReference: KYC_REFERENCE, state: "picked_up", issuedAt: now - 200 * 86_400, expiresAt: now + 165 * 86_400 }, 0);
+  issue(cid("corporate identity"), SCHEMAS.corporateIdentity, CORP, { state: "picked_up" }, 0);
 
   function corporateIdentity() {
     const header = { v: 1, alg: "ML-DSA-65", hash: "RPO-256", iss: ISSUER, sub: CORP, iat: now - 86_400, exp: now + 365 * 86_400, cid: cid("corporate identity"), root: cid("root"), schema: SCHEMAS.corporateIdentity };
@@ -80,6 +137,7 @@ export async function startStandIns(port: number, rpc: string): Promise<StandIns
     if (req.method === "POST" && req.url === "/v1/verify") {
       const { presentation } = JSON.parse(body);
       const officer = presentation.header.schema === SCHEMAS.officer;
+      issue(presentation.header.cid, presentation.header.schema, presentation.header.sub, {}, 0);
       return send(200, {
         v: 1, decision: "GRANT", reason: "all checks passed", ms: 1,
         checks: { headerSignature: true, corporateChainValid: officer ? true : null },
@@ -94,8 +152,12 @@ export async function startStandIns(port: number, rpc: string): Promise<StandIns
     }
     if (req.method === "GET" && req.url?.startsWith("/v1/admin/credentials")) {
       const q = new URL(req.url, "http://x").searchParams;
-      const known = !q.has("kycReference") || q.get("kycReference") === KYC_REFERENCE;
-      return send(200, { v: 1, credentials: known ? [{ credentialId: cid("bank corporate identity"), schema: SCHEMAS.corporateIdentity, subjectDid: CORP, state: "anchored", issuedAt: now - 200 * 86_400, expiresAt: now + 165 * 86_400, kycReference: KYC_REFERENCE }] : [] });
+      // As the real bank: kycReference and schema filter; other parameters, credentialId included, are ignored.
+      const list = [...issued.values()]
+        .filter((c) => !q.has("kycReference") || c.kycReference === q.get("kycReference"))
+        .filter((c) => !q.has("schema") || c.schema === q.get("schema"))
+        .map(({ anchorAt: _a, ...c }) => c);
+      return send(200, { v: 1, credentials: list });
     }
     if (req.method === "POST" && req.url === "/v1/wallet-attestation/eth/initiate") {
       const b = JSON.parse(body);
@@ -128,7 +190,9 @@ export async function startStandIns(port: number, rpc: string): Promise<StandIns
         ok = magic === "0x1626ba7e";
       }
       if (!ok) return send(400, { error: { message: "signature does not verify" } });
-      return send(200, { v: 1, credentialId: cid(`wallet credential ${b.walletAddress}`), walletAddress: b.walletAddress, attestationMethod: b.addressType === "eoa" ? "EIP-712" : "EIP-1271", attestedAt: now, state: "signed_pending_anchor" });
+      const credentialId = keccak256(toBytes(`wallet credential ${b.walletAddress}/${b.challengeId}/${now}`));
+      issue(credentialId, SCHEMAS.walletControl, stored.message.holderDid);
+      return send(200, { v: 1, credentialId, walletAddress: b.walletAddress, attestationMethod: b.addressType === "eoa" ? "EIP-712" : "EIP-1271", attestedAt: now, state: "signed_pending_anchor" });
     }
     send(404, {});
   });
@@ -163,6 +227,7 @@ export async function startStandIns(port: number, rpc: string): Promise<StandIns
       BANK_ISSUER_URL: url,
       BANK_ISSUER_API_KEY: SERVICE_KEY,
     }),
-    close: () => new Promise<void>((r) => server.close(() => r())),
+    issued,
+    close: () => new Promise<void>((r) => { clearInterval(ticker); server.close(() => r()); }),
   };
 }

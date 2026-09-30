@@ -41,6 +41,7 @@ export type AdmissionStatus =
   | "awaiting-officer"
   | "awaiting-wallet"
   | "ready"
+  | "awaiting-anchor"
   | "refused"
   | "admitted"
   | "declined"
