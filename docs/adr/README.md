@@ -74,3 +74,5 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0064](0064-revoke-at-the-bank-separately.md) | Revoking at the bank is separate from offboarding, and the corporate identity is its own confirmed step | Accepted |
 | [0065](0065-new-clients-at-the-bank.md) | New corporate clients are added in the bank's own console, linked from the Operator page | Superseded by 0066 |
 | [0066](0066-site-issues-client-identities.md) | The site is the bank's onboarding system: staff enter a client once, and the issuer server signs and anchors it | Accepted |
+| [0067](0067-site-assigns-references.md) | The site assigns client and custody references | Accepted |
+| [0068](0068-browser-wallet-binds-in-one-click.md) | A browser wallet binds in one click: address read, chain switched or added, message proposed | Accepted |

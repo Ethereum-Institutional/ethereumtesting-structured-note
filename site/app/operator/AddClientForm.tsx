@@ -28,7 +28,8 @@ export function AddClientForm({
   return (
     <form action={submit} className="stack">
       <div className="fields">
-        <label>Client reference at the bank<input name="kycReference" required maxLength={120} defaultValue={prefill?.kycReference} /></label>
+        {/* The site assigns the reference; a client re-issued from the bank keeps the bank's (ADR 0067). */}
+        {prefill?.kycReference && <input type="hidden" name="kycReference" value={prefill.kycReference} />}
         <label>Legal name<input name="legalName" required maxLength={200} /></label>
         <label>
           Legal form

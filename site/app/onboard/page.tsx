@@ -6,6 +6,8 @@ import { Bar } from "../Bar";
 import {
   bindWalletAction,
   advanceAdmissionAction,
+  browserWalletFinishAction,
+  browserWalletStartAction,
   cancelAdmissionAction,
   renewAdmissionAction,
   renewChallengeAction,
@@ -16,6 +18,9 @@ import {
 import { SignWallet } from "./SignWallet";
 import { AutoRefresh } from "../AutoRefresh";
 import { AnchorWatch } from "../AnchorWatch";
+import { BrowserWallet } from "./BrowserWallet";
+import { chainParams } from "@/lib/chains";
+import { loadManifest } from "@/lib/chain/manifest";
 import { CANCELLABLE } from "@/lib/admission/service";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +37,7 @@ const STATUS: Record<Admission["status"], string> = {
   "kyb-confirmed": "Step 2 of 2: your bank has confirmed your KYB. Bind the wallet to admit.",
   "awaiting-signature": "Step 2 of 2: sign once with the wallet to bind it.",
   "awaiting-officer": "Step 1 of 2: present your officer credential.",
-  "awaiting-wallet": "Step 2 of 2: present the wallet-control credential.",
+  "awaiting-wallet": "Step 2 of 2: your officer credential is verified. Now bind the wallet to onboard.",
   ready: "Received. Awaiting the bank's approval.",
   "awaiting-anchor": "Almost there: waiting for your bank to anchor the credential on-chain, usually about a minute. This page updates by itself.",
   refused: "Not admitted.",
@@ -53,6 +58,7 @@ export default async function Onboard() {
   const [a, mine] = await Promise.all([store.latestAdmissionFor(who.id, [...CLIENT_ROUTES]), store.admissionsFor(who.id)]);
   const onboarded = mine.filter((x) => x.status === "admitted" && (CLIENT_ROUTES as readonly string[]).includes(x.route));
   const d = (a?.data ?? {}) as Record<string, any>;
+  const chain = chainParams(loadManifest().chainId);
   const open = a && !["refused", "admitted", "declined", "cancelled", "offboarded", "failed"].includes(a.status);
 
   return (
@@ -77,9 +83,27 @@ export default async function Onboard() {
             <p className="muted">Your bank's reference for you: {d.record.kycReference}{d.record.legalName ? `, ${d.record.legalName}` : ""}.</p>
           )}
           {a.status === "kyb-confirmed" && d.error && <p role="alert">The last attempt to bind a wallet failed: {d.error}</p>}
-          {(a.status === "awaiting-bank-review" || a.status === "kyb-confirmed") && <BindStep a={a} />}
+          {a.status === "awaiting-bank-review" && <BindStep a={a} />}
+          {a.status === "kyb-confirmed" && (
+            <>
+              <BrowserWallet id={a.id} chain={chain} label="Connect MetaMask and bind this wallet" start={browserWalletStartAction} finish={browserWalletFinishAction} />
+              <details style={{ marginTop: "1rem" }}>
+                <summary className="muted">Another signer, or a contract wallet</summary>
+                <div style={{ marginTop: "0.75rem" }}><BindStep a={a} /></div>
+              </details>
+            </>
+          )}
           {a.status === "awaiting-signature" && <SignStep a={a} d={d} />}
-          {(a.status === "awaiting-officer" || a.status === "awaiting-wallet") && <QrStep a={a} d={d} />}
+          {a.status === "awaiting-officer" && <QrStep a={a} d={d} />}
+          {a.status === "awaiting-wallet" && (
+            <>
+              <BrowserWallet id={a.id} chain={chain} label="Connect MetaMask and bind the officer's wallet" start={browserWalletStartAction} finish={browserWalletFinishAction} />
+              <details style={{ marginTop: "1rem" }}>
+                <summary className="muted">Or present a wallet-control credential from the holder wallet</summary>
+                <div style={{ marginTop: "0.75rem" }}><QrStep a={a} d={d} /></div>
+              </details>
+            </>
+          )}
           {CANCELLABLE.includes(a.status) && (
             <form action={cancelAdmissionAction} className="actions" style={{ marginTop: "1.25rem" }}>
               <input type="hidden" name="id" value={a.id} />

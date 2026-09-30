@@ -488,6 +488,10 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   facts. The site has the bank's issuer server sign and anchor them as its corporate identity
   (`credentials:issue`), and keeps the claims. Routes 1 and 2 then take only the client and, for
   custody, two references. **Re-screen** issues again when the 30-day screening lapses.
+- **References are the site's** (ADR 0067), and **browser wallets bind in one click** (ADR 0068).
+  MetaMask supplies the address, is switched to the pool's chain or has it added, and signs the
+  bank's message. This applies on route 2, and on route 3 after the officer's scan, where the bank
+  issues the wallet credential to the officer. The older ways remain, folded away.
 - **Offboarding and revocation** (ADRs 0063, 0064). **Offboard** revokes both grants, with a
   reason. **Revoke at the bank** revokes the wallet credential, or the corporate identity as its
   own confirmed step.

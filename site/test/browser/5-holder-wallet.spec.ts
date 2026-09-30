@@ -1,17 +1,17 @@
-import { getAddress, keccak256, toBytes } from "viem";
-import { test, expect, expectHealthy, holderPresents, signedIn, PEOPLE } from "./fixtures.ts";
+import { test, expect, expectHealthy, holderPresents, installWallet, signedIn, PEOPLE } from "./fixtures.ts";
 
-test("holder wallet: two scans, then the bank approves and both grants are written", async ({ browser }) => {
-  const wallet = getAddress(`0x${keccak256(toBytes(`browser holder wallet ${Date.now()}`)).slice(26)}`);
+test("holder wallet: the officer scans once, the officer's wallet signs in MetaMask, the bank approves", async ({ browser }) => {
   const client = await signedIn(browser, PEOPLE.holder);
+  const wallet = await installWallet(client, `browser officer wallet ${Date.now()}`);
   await client.goto("/onboard");
   await client.getByRole("button", { name: "Present from a holder wallet" }).click();
   await expect(client.getByText("Step 1 of 2: present your officer credential.")).toBeVisible();
 
   await holderPresents("officer");
-  await expect(client.getByText("Step 2 of 2: present the wallet-control credential.")).toBeVisible({ timeout: 20_000 });
-  await holderPresents("wallet", wallet);
-  await expect(client.getByText("Received. Awaiting the bank's approval.")).toBeVisible({ timeout: 20_000 });
+  await expect(client.getByText("Step 2 of 2: your officer credential is verified.")).toBeVisible({ timeout: 20_000 });
+  // The second step is the officer's wallet, bound by one signature (ADR 0068).
+  await client.getByRole("button", { name: "Connect MetaMask and bind the officer's wallet" }).click();
+  await expect(client.getByText("Received. Awaiting the bank's approval.")).toBeVisible({ timeout: 30_000 });
 
   const staff = await signedIn(browser, PEOPLE.operator);
   await staff.goto("/operator");

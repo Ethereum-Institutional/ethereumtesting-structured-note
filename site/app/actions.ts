@@ -6,6 +6,8 @@ import { confirm, currentOperator, currentRegistrant, decide, register, requestS
 import {
   admitCustodied,
   advanceAdmission,
+  completeOfficerWalletBinding,
+  startOfficerWalletBinding,
   offboardAdmission,
   revokeAtBank,
   cancelAdmission,
@@ -125,11 +127,7 @@ export async function admitCustodiedAction(f: FormData) {
   if (!op) throw new Error("Not permitted.");
   await recorded(
     () =>
-      admitCustodied(op, {
-        kycReference: field(f, "kycReference").trim(),
-        instructionRef: field(f, "instructionRef").trim(),
-        clientRef: field(f, "clientRef").trim(),
-      }),
+      admitCustodied(op, { kycReference: field(f, "kycReference").trim() }),
     "/operator",
   );
 }
@@ -154,7 +152,7 @@ export async function addClientAction(_prev: { ok?: string; error?: string }, f:
       cooOfficerDid: get("cooOfficerDid"),
       cfoOfficerDid: get("cfoOfficerDid"),
     });
-    return { ok: `Added ${c.claims.legalName} (${c.kycReference}). The bank issued its corporate identity; it is anchored within about a minute.` };
+    return { ok: `Added ${c.claims.legalName} as ${c.kycReference}. The bank issued its corporate identity; it is anchored within about a minute.` };
   } catch (e) {
     console.error(e);
     return { error: (e as Error).message };
@@ -205,6 +203,41 @@ export async function requestSelfCustodyAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
   await recorded(() => requestSelfCustody(who), "/onboard");
+}
+
+/**
+ * The browser wallet's two calls (ADR 0068): the bank's message for the connected address, then the
+ * signature. Each returns its outcome to the page, rather than failing into a server log.
+ */
+export async function browserWalletStartAction(id: string, address: string): Promise<{ typedData?: Record<string, unknown>; error?: string }> {
+  const who = await currentRegistrant();
+  if (!who) return { error: "Sign in again." };
+  try {
+    const a = await getStore().admissionById(id);
+    if (a?.route === "holder-wallet") return { typedData: await startOfficerWalletBinding(who, id, address) };
+    await startWalletBinding(who, id, { walletAddress: address, addressType: "eoa" });
+    const bound = await getStore().admissionById(id);
+    return { typedData: (bound?.data as Record<string, any>)?.challenge?.typedData };
+  } catch (e) {
+    console.error(e);
+    return { error: (e as Error).message };
+  }
+}
+
+export async function browserWalletFinishAction(id: string, signature: string): Promise<{ error?: string }> {
+  const who = await currentRegistrant();
+  if (!who) return { error: "Sign in again." };
+  try {
+    const a = await getStore().admissionById(id);
+    if (a?.route === "holder-wallet") await completeOfficerWalletBinding(who, id, signature as `0x${string}`, await siteOrigin());
+    else await submitSelfCustodySignature(who, id, signature as `0x${string}`);
+    return {};
+  } catch (e) {
+    console.error(e);
+    return { error: (e as Error).message };
+  } finally {
+    revalidatePath("/onboard");
+  }
 }
 
 export async function bindWalletAction(f: FormData) {

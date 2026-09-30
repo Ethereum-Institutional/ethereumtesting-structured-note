@@ -132,6 +132,9 @@ test("staff add a corporate client once; the bank issues its corporate identity 
   assert.equal(atBank.state, "signed_pending_anchor", "issued at once, anchored in the next batch");
   assert.match(c.pickupUrl, /\/v1\/issuance\/pickup\//);
   await assert.rejects(clients.addClient(operator as any, FACTS), /already exists/);
+  const { kycReference: _given, ...unreferenced } = FACTS;
+  const assigned = await clients.addClient(operator as any, { ...unreferenced, legalName: "Second Institution SA" });
+  assert.match(assigned.kycReference, /^CLI-\d{6}-[A-Z2-9]{4}$/, "the site assigns a reference when none is given");
   // The bank's own client, issued elsewhere, is listed for re-issuing here.
   assert.deepEqual((await clients.clientsIssuedElsewhere()).map((x) => x.kycReference), ["KYC-TI1"]);
 });
@@ -143,15 +146,40 @@ const readPool = async (account: string) => {
   return { m, client, allowed, flags, jurisdiction };
 };
 
+test("route 3 with a browser wallet: the officer is verified by scan, then the officer's wallet signs once", async () => {
+  const key = privateKeyToAccount(keccak256(toBytes(`officer browser wallet ${NOW}`)));
+  let a = await service.startAdmission(registrant, "https://site.example");
+  await service.receivePresentation(presentation((a.data as any).officerRequest, SCHEMAS.officer, cid("officer 2"), { corporationDid: CORP, role: "CEO" }), "https://site.example");
+  a = (await store.admissionById(a.id))!;
+  assert.equal(a.status, "awaiting-wallet");
+  await assert.rejects(service.startOfficerWalletBinding(operator as any, a.id, key.address), /not been verified/, "only the officer's own admission");
+
+  const td = await service.startOfficerWalletBinding(registrant as any, a.id, key.address);
+  assert.equal(td.message.holderDid, OFFICER, "the bank's challenge is for the officer's DID");
+  const { EIP712Domain: _d, ...types } = td.types;
+  await service.completeOfficerWalletBinding(registrant as any, a.id, await key.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message: td.message }), "https://site.example");
+  a = (await store.admissionById(a.id))!;
+  assert.equal(a.status, "ready", JSON.stringify((a.data as any).assessment?.problems ?? (a.data as any).error));
+  const walletCid = (a.data as any).assessment.attestation.walletCredential.toLowerCase();
+  assert.equal(standIns.issued.get(walletCid)?.subjectDid, OFFICER, "the wallet credential is issued to the officer");
+
+  await service.decideAdmission(a.id, "approve", operator as any);
+  a = await untilAnchored(a.id);
+  assert.equal(a.status, "admitted", (a.data as any).error);
+  assert.equal((await readPool(key.address)).allowed, true, "the officer's wallet is in the pool");
+});
+
 test("route 1, custodied: one staff action opens, binds, admits and readies a custody account", async () => {
   const stale = lagging.staleReads();
   const started = Date.now();
-  let a = await service.admitCustodied(operator as any, { kycReference: CLIENT, instructionRef: "INS-2026-0001", clientRef: `TI1-${NOW}` });
+  let a = await service.admitCustodied(operator as any, { kycReference: CLIENT });
   // The new wallet credential is not anchored yet: nothing is granted until it is (ADR 0060).
   assert.equal(a.status, "awaiting-anchor", JSON.stringify((a.data as any).assessment?.problems ?? (a.data as any).error));
   assert.equal((await readPool((a.data as any).account)).allowed, false, "no grant before the credential is anchored");
   a = await untilAnchored(a.id);
   assert.equal(a.status, "admitted", JSON.stringify((a.data as any).error));
+  assert.equal((a.data as any).clientRef, `${CLIENT}-SEG-0001`, "the site numbers the client's custody accounts");
+  assert.match((a.data as any).instructionRef, /^staff instruction adm_/);
   const anchors = (a.data as any).anchors;
   assert.equal(anchors.length, 2, "the corporate identity and the wallet credential");
   assert.ok(anchors.every((x: any) => x.verifiedOnChain && x.anchoredRoot), "each anchor was read from the chain, with its batch root");
@@ -183,16 +211,17 @@ test("route 1: finishing is only for a custodied admission whose approvals faile
 });
 
 test("route 1 refuses a client the bank has no corporate identity for, and only staff may admit", async () => {
-  await assert.rejects(service.admitCustodied(registrant as any, { kycReference: CLIENT, instructionRef: "x", clientRef: "y" }), /Not permitted/);
-  await assert.rejects(service.admitCustodied(operator as any, { kycReference: "KYC-UNKNOWN", instructionRef: "x", clientRef: `U-${NOW}` }), /No client KYC-UNKNOWN has been added/);
+  await assert.rejects(service.admitCustodied(registrant as any, { kycReference: CLIENT }), /Not permitted/);
+  await assert.rejects(service.admitCustodied(operator as any, { kycReference: "KYC-UNKNOWN" }), /No client KYC-UNKNOWN has been added/);
   // The bank's client issued elsewhere must be re-issued here first: the site does not know its facts.
-  await assert.rejects(service.admitCustodied(operator as any, { kycReference: "KYC-TI1", instructionRef: "x", clientRef: `E-${NOW}` }), /No client KYC-TI1 has been added/);
+  await assert.rejects(service.admitCustodied(operator as any, { kycReference: "KYC-TI1" }), /No client KYC-TI1 has been added/);
 });
 
 test("the bank's staff choose a client from the bank's own list of corporate identities", async () => {
   const bank = await import("../lib/admission/bank.ts");
   const list = await bank.corporateIdentities(bank.bankConfig(), SCHEMAS.corporateIdentity, NOW);
-  assert.deepEqual(list.map((c) => c.kycReference).sort(), [CLIENT, "KYC-TI1"].sort());
+  const refs = list.map((c) => c.kycReference);
+  assert.ok(refs.includes(CLIENT) && refs.includes("KYC-TI1"), refs.join(", "));
 });
 
 test("route 2, self-custody: the bank confirms the KYB, then the client binds a wallet with one signature", async () => {
@@ -275,7 +304,7 @@ test("a client screened more than 30 days ago is refused until re-screened; re-s
   const store2 = getStore();
   const c = (await store2.clientByReference(CLIENT))!;
   await store2.updateClient({ ...c, issuedAt: new Date(Date.now() - 31 * 86_400_000).toISOString() });
-  const refused = await service.admitCustodied(operator as any, { kycReference: CLIENT, instructionRef: "INS-OLD", clientRef: `OLD-${NOW}` });
+  const refused = await service.admitCustodied(operator as any, { kycReference: CLIENT });
   assert.equal(refused.status, "refused");
   assert.match(JSON.stringify((refused.data as any).assessment.problems), /re-screen the client first/);
 
@@ -283,7 +312,7 @@ test("a client screened more than 30 days ago is refused until re-screened; re-s
   assert.notEqual(fresh.credentialId, c.credentialId, "a new corporate identity");
   assert.equal(fresh.previous.at(-1)?.credentialId, c.credentialId, "the earlier one is kept on record");
   assert.deepEqual(standIns.issued.get(fresh.credentialId.toLowerCase())?.claims, c.claims, "the same facts");
-  let a = await service.admitCustodied(operator as any, { kycReference: CLIENT, instructionRef: "INS-NEW", clientRef: `NEW-${NOW}` });
+  let a = await service.admitCustodied(operator as any, { kycReference: CLIENT });
   a = await untilAnchored(a.id);
   assert.equal(a.status, "admitted", JSON.stringify((a.data as any).error ?? (a.data as any).assessment?.problems));
   assert.equal((a.data as any).assessment.attestation.primaryCredential.toLowerCase(), fresh.credentialId.toLowerCase(), "the admission rests on the new credential");

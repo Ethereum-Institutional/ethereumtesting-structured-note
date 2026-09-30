@@ -1,4 +1,4 @@
-import { test, expect, expectHealthy, installWallet, signedIn, PEOPLE } from "./fixtures.ts";
+import { test, expect, expectHealthy, chooseClient, installWallet, signedIn, PEOPLE } from "./fixtures.ts";
 
 test("self-custody: the client asks, the bank declines, the client asks again, the bank confirms, the client binds with one signature", async ({ browser }) => {
   const client = await signedIn(browser, PEOPLE.selfCustody);
@@ -25,18 +25,20 @@ test("self-custody: the client asks, the bank declines, the client asks again, t
   await staff.reload();
   panel = staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email });
   // Only the client: its facts come from Clients (ADR 0066).
-  await panel.locator('select[name="kycReference"]').selectOption("BR-CLIENT-1");
+  await chooseClient(panel.locator('select[name="kycReference"]'), "Browser Test Institution SA");
   await panel.getByRole("button", { name: "Confirm the client's KYB" }).click();
   await expect(staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email })).toHaveCount(0);
 
   // The client's page updates by itself, shows the bank's reference, and binding opens.
   await expect(client.getByText("Step 2 of 2: your bank has confirmed your KYB.")).toBeVisible({ timeout: 20_000 });
-  await expect(client.getByText("Your bank's reference for you: BR-CLIENT-1, Browser Test Institution SA")).toBeVisible();
-  await client.getByLabel("Wallet address").fill(wallet);
-  await client.getByRole("button", { name: "Bind wallet" }).click();
-  await client.getByRole("button", { name: "Sign with browser wallet" }).click();
+  await expect(client.getByText(/Your bank's reference for you: CLI-\d{6}-[A-Z2-9]{4}, Browser Test Institution SA/)).toBeVisible();
+  // One click: the wallet's address is read, the pool's chain added and switched to, and the
+  // bank's message proposed for signature (ADR 0068).
+  await client.getByRole("button", { name: "Connect MetaMask and bind this wallet" }).click();
   await expect(client.getByText("Almost there: waiting for your bank to anchor the credential")).toBeVisible({ timeout: 30_000 });
   await expect(client.getByText("Admitted to the conversion pool.")).toBeVisible({ timeout: 60_000 });
+  const calls: string[] = await client.evaluate(() => (window as any).__walletCalls);
+  expect(calls).toEqual(expect.arrayContaining(["eth_requestAccounts", "wallet_switchEthereumChain", "wallet_addEthereumChain", "eth_signTypedData_v4"]));
 
   // Onboarded once, the client can add another wallet by either route (ADR 0062).
   await client.reload();

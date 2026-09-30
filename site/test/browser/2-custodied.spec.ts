@@ -1,6 +1,6 @@
-import { test, expect, expectHealthy, signedIn, PEOPLE } from "./fixtures.ts";
+import { test, expect, expectHealthy, chooseClient, signedIn, PEOPLE } from "./fixtures.ts";
 
-const CLIENT = "BR-CLIENT-1";
+const LEGAL_NAME = "Browser Test Institution SA";
 
 test("staff add a corporate client once, warned before a jurisdiction the pool refuses; the bank issues it", async ({ browser }) => {
   const page = await signedIn(browser, PEOPLE.operator);
@@ -14,16 +14,18 @@ test("staff add a corporate client once, warned before a jurisdiction the pool r
   await form.getByLabel("Jurisdiction").selectOption("LU");
   await expect(form.getByRole("alert")).toHaveCount(0);
 
-  await form.getByLabel("Client reference at the bank").fill(CLIENT);
-  await form.getByLabel("Legal name").fill("Browser Test Institution SA");
+  // No reference to type: the site assigns it (ADR 0067).
+  await expect(form.getByLabel("Client reference at the bank")).toHaveCount(0);
+  await form.getByLabel("Legal name").fill(LEGAL_NAME);
   await form.getByLabel("Legal form").selectOption("PLC");
   await form.getByLabel("Registration number").fill("B 998 877");
   await form.getByLabel("Incorporation date").fill("2003-04-05");
   await form.getByRole("button", { name: "Add client and issue its corporate identity" }).click();
-  await expect(form.getByRole("status")).toContainText(`Added Browser Test Institution SA (${CLIENT})`);
+  await expect(form.getByRole("status")).toContainText(`Added ${LEGAL_NAME} as CLI-`);
+  const reference = (await form.getByRole("status").innerText()).match(/as (CLI-\d{6}-[A-Z2-9]{4})/)![1];
 
-  const row = page.locator("#clients + .panel tbody tr").filter({ hasText: CLIENT });
-  await expect(row).toContainText("did:elabify:local:client:BR-CLIENT-1");
+  const row = page.locator("#clients + .panel tbody tr").filter({ hasText: reference });
+  await expect(row).toContainText(`did:elabify:local:client:${reference}`);
   await expect(row).toContainText(/pending anchor|anchored/);
   await expectHealthy(page);
 });
@@ -31,12 +33,10 @@ test("staff add a corporate client once, warned before a jurisdiction the pool r
 test("staff admit a custodied client in one action, through a lagging RPC, within the time budget", async ({ browser }) => {
   const page = await signedIn(browser, PEOPLE.operator);
   await page.goto("/operator");
-  const form = page.locator("form").filter({ has: page.getByLabel("Custody account reference") });
-  const ref = `SEG-${Date.now()}`;
-  // Only the client and the two references: the client's facts come from Clients (ADR 0066).
-  await form.locator('select[name="kycReference"]').selectOption(CLIENT);
-  await form.getByLabel("Custody account reference").fill(ref);
-  await form.getByLabel("Client instruction reference").fill(`INS-${ref}`);
+  const form = page.locator("#custodied + .panel form");
+  // Only the client: its facts come from Clients, and the site assigns the references (ADRs 0066, 0067).
+  await expect(form.getByLabel("Custody account reference")).toHaveCount(0);
+  await chooseClient(form.locator('select[name="kycReference"]'), LEGAL_NAME);
 
   const started = Date.now();
   await form.getByRole("button", { name: "Admit" }).click();

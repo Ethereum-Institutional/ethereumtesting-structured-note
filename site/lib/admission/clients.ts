@@ -15,6 +15,12 @@ export { CORPORATE_STATUSES, LEGAL_FORMS, recordOf, type ClientInput } from "./c
  */
 
 const ONE_YEAR = 365 * 86_400;
+/** A client reference the site assigns: the date, and four characters no one confuses. */
+function newReference(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const tail = [...randomBytes(4)].map((b) => alphabet[b % alphabet.length]).join("");
+  return `CLI-${new Date().toISOString().slice(2, 10).replaceAll("-", "")}-${tail}`;
+}
 const now = () => new Date().toISOString();
 
 async function issue(kycReference: string, subjectDid: string, claims: Record<string, unknown>) {
@@ -26,9 +32,10 @@ async function issue(kycReference: string, subjectDid: string, claims: Record<st
 export async function addClient(staff: Registrant, input: ClientInput): Promise<Client> {
   if (!isOperator(staff.email)) throw new Error("Not permitted.");
   const store = getStore();
-  const checked = claimsFor(input, policyConfig().issuerDid);
+  // The site assigns the reference, unless the client is being re-issued under the bank's own (ADR 0067).
+  const checked = claimsFor({ ...input, kycReference: input.kycReference?.trim() || newReference() }, policyConfig().issuerDid);
   if ("problems" in checked) throw new Error(`Not added: ${checked.problems.join("; ")}.`);
-  const kycReference = input.kycReference.trim();
+  const kycReference = checked.kycReference;
   if (await store.clientByReference(kycReference)) throw new Error(`Not added: a client with reference ${kycReference} already exists.`);
   const issued = await issue(kycReference, checked.subjectDid, checked.claims);
   const c: Client = {

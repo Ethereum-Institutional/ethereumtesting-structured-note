@@ -240,13 +240,11 @@ export default async function Operator({ searchParams }: { searchParams: Promise
         <p className="muted">
           On the client's instruction: opens a segregated custody account, mints its wallet credential under the client's
           corporate identity, writes both grants once the bank has anchored it, and makes the account ready to trade.
-          The client's facts come from Clients above.
+          The client's facts come from Clients above; the site assigns the custody account's reference.
         </p>
         <form action={admitCustodiedAction} className="stack">
           <div className="fields">
             <ClientReference clients={clients} />
-            <label>Custody account reference<input name="clientRef" required maxLength={64} /></label>
-            <label>Client instruction reference<input name="instructionRef" required maxLength={200} /></label>
           </div>
           <div className="actions">
             <PendingButton working="Opening the custody account, binding its wallet with the bank, writing both grants and setting its trading approvals. This takes up to a minute; keep this page open.">

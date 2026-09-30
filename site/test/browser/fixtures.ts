@@ -4,7 +4,7 @@
  * server error Next reports as unhandled (the "Application error" page).
  */
 import { readFileSync, statSync } from "node:fs";
-import { test as base, expect, type Browser, type Page } from "@playwright/test";
+import { test as base, expect, type Browser, type Locator, type Page } from "@playwright/test";
 import { keccak256, toBytes } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { presentation, SCHEMAS, CORP } from "../standins.ts";
@@ -44,7 +44,11 @@ export async function expectHealthy(page: Page) {
   expect((page as any).__errors ?? [], "errors thrown in the page").toEqual([]);
 }
 
-/** A key for a self-custody wallet, and a browser wallet (window.ethereum) that signs with it. */
+/**
+ * A key, and a browser wallet (window.ethereum) that signs with it, as MetaMask does: it starts on
+ * Ethereum mainnet, does not know the pool's chain until asked to add it (4902), and signs typed
+ * data only on the chain its domain names. Every request is recorded in window.__walletCalls.
+ */
 export async function installWallet(page: Page, seed: string) {
   const account = privateKeyToAccount(keccak256(toBytes(seed)));
   await page.exposeFunction("__testSignTypedData", async (json: string) => {
@@ -53,15 +57,45 @@ export async function installWallet(page: Page, seed: string) {
     return account.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message: td.message });
   });
   await page.addInitScript((address) => {
-    (window as any).ethereum = {
-      request: async ({ method, params }: { method: string; params?: unknown[] }) => {
+    const w = window as any;
+    w.__walletCalls = [];
+    let chainId = "0x1";
+    const known = new Set(["0x1"]);
+    w.ethereum = {
+      request: async ({ method, params }: { method: string; params?: any[] }) => {
+        w.__walletCalls.push(method);
         if (method === "eth_requestAccounts" || method === "eth_accounts") return [address];
-        if (method === "eth_signTypedData_v4") return (window as any).__testSignTypedData(params![1]);
+        if (method === "eth_chainId") return chainId;
+        if (method === "wallet_switchEthereumChain") {
+          const wanted = String(params![0].chainId).toLowerCase();
+          if (!known.has(wanted)) throw Object.assign(new Error("Unrecognized chain ID"), { code: 4902 });
+          chainId = wanted;
+          return null;
+        }
+        if (method === "wallet_addEthereumChain") {
+          const added = String(params![0].chainId).toLowerCase();
+          known.add(added);
+          chainId = added;
+          return null;
+        }
+        if (method === "eth_signTypedData_v4") {
+          const td = JSON.parse(params![1]);
+          if (td.domain?.chainId !== undefined && `0x${Number(td.domain.chainId).toString(16)}` !== chainId) {
+            throw new Error(`Provided chainId "${td.domain.chainId}" must match the active chainId "${parseInt(chainId, 16)}"`);
+          }
+          return w.__testSignTypedData(params![1]);
+        }
         throw new Error(`the test wallet does not support ${method}`);
       },
     };
   }, account.address);
   return account.address;
+}
+
+/** Chooses a client in a Client dropdown by its legal name; the site assigns references. */
+export async function chooseClient(select: Locator, legalName: string) {
+  const value = await select.locator("option", { hasText: legalName }).first().getAttribute("value");
+  await select.selectOption(value!);
 }
 
 /** The holder wallet: answers the request the site last lodged with the verifier, as a scan would. */

@@ -14,7 +14,8 @@ export const CORPORATE_STATUSES = ["active", "dissolved", "suspended", "in-liqui
 const DID = /^did:elabify:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+:[A-Za-z0-9_:.x-]+$/;
 
 export type ClientInput = {
-  kycReference: string;
+  /** Assigned by the site when absent (ADR 0067). */
+  kycReference?: string;
   subjectDid?: string;
   legalName: string;
   legalForm: string;
@@ -38,7 +39,11 @@ export function clientDid(issuerDid: string, kycReference: string): string {
 }
 
 /** Checks the facts against the schema; returns the claims to issue, or the problems. */
-export function claimsFor(input: ClientInput, issuerDid: string, today = now().slice(0, 10)): { claims: Record<string, unknown>; subjectDid: string } | { problems: string[] } {
+export function claimsFor(
+  input: ClientInput,
+  issuerDid: string,
+  today = now().slice(0, 10),
+): { claims: Record<string, unknown>; subjectDid: string; kycReference: string } | { problems: string[] } {
   const problems: string[] = [];
   const t = (v?: string) => (v ?? "").trim();
   const kycReference = t(input.kycReference);
@@ -65,6 +70,7 @@ export function claimsFor(input: ClientInput, issuerDid: string, today = now().s
   if (problems.length) return { problems };
   return {
     subjectDid,
+    kycReference,
     claims: {
       id: subjectDid,
       legalName: t(input.legalName),
