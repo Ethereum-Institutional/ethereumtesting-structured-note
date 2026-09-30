@@ -26,6 +26,12 @@ test("holder wallet: the officer scans once, the officer's wallet signs in MetaM
   await fundWallet(wallet as `0x${string}`, 50_000_000n); // 50 EURPT
   await client.reload();
   await expect(client.getByText(/Your wallet holds 50(\.00)? EURPT/)).toBeVisible();
+  // Both tokens added to the wallet's list in a click each (EIP-747).
+  await client.getByRole("button", { name: "Add EURPT to MetaMask" }).click();
+  await expect(client.getByRole("status")).toContainText("EURPT is in your wallet's list");
+  await client.getByRole("button", { name: "Add EURTD to MetaMask" }).click();
+  await expect(client.getByRole("status")).toContainText("EURTD is in your wallet's list");
+  expect(await client.evaluate(() => (window as any).__watched)).toEqual(["EURPT", "EURTD"]);
   await client.getByLabel(/^Amount of EURPT/).fill("10");
   await expect(client.getByRole("note")).toContainText(/You receive about 9\.\d\d EURTD, and at least 9\.\d\d EURTD/);
   await client.getByRole("button", { name: "Convert with MetaMask" }).click();

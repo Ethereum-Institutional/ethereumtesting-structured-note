@@ -114,6 +114,10 @@ export async function installWallet(page: Page, seed: string, quirks: WalletQuir
           return w.__testSignTypedData(params![1]);
         }
         if (method === "eth_sendTransaction") return w.__testSendTransaction(params![0]);
+        if (method === "wallet_watchAsset") {
+          w.__watched = [...(w.__watched ?? []), (params as any).options.symbol];
+          return true;
+        }
         if (method === "eth_getTransactionReceipt") return w.__testReceipt(params![0]);
         throw new Error(`the test wallet does not support ${method}`);
       },

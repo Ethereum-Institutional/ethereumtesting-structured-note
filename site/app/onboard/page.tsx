@@ -209,6 +209,7 @@ export default async function Onboard() {
             wallet={currentWallet}
             chain={chain}
             symbols={{ payment: t.payment.symbol, deposit: t.deposit.symbol }}
+            assets={[t.payment, t.deposit]}
             quote={quoteAction}
             prepare={prepareConversionAction}
             done={conversionDoneAction}

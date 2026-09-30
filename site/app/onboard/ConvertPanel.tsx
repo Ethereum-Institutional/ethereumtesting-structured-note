@@ -16,6 +16,7 @@ export function ConvertPanel({
   wallet,
   chain,
   symbols,
+  assets,
   quote,
   prepare,
   done,
@@ -23,6 +24,8 @@ export function ConvertPanel({
   wallet: string;
   chain: ChainParams;
   symbols: { payment: string; deposit: string };
+  /** The two tokens, for adding them to the wallet's list (EIP-747). */
+  assets: Array<{ address: string; symbol: string; decimals: number }>;
   quote: (direction: string, amount: string) => Promise<QuoteView>;
   prepare: (direction: string, amount: string, address: string) => Promise<Prepared>;
   done: (tx: string, summary: string) => Promise<void>;
@@ -94,6 +97,25 @@ export function ConvertPanel({
     }
   }
 
+  /** Adds a token to the wallet's list, on the pool's network (EIP-747): the wallet asks the client to confirm. */
+  async function watch(asset: { address: string; symbol: string; decimals: number }) {
+    setError(null);
+    const eth = (window as any).ethereum;
+    if (!eth) return setError("No browser wallet was found. Install MetaMask first.");
+    try {
+      try {
+        await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain.chainId }] });
+      } catch (e: any) {
+        if (e?.code !== 4902 && e?.data?.originalError?.code !== 4902) throw e;
+        await eth.request({ method: "wallet_addEthereumChain", params: [chain] });
+      }
+      const added = await eth.request({ method: "wallet_watchAsset", params: { type: "ERC20", options: { address: asset.address, symbol: asset.symbol, decimals: asset.decimals } } });
+      setStatus(added ? `${asset.symbol} is in your wallet's list on ${chain.chainName}.` : `${asset.symbol} was not added.`);
+    } catch (e: any) {
+      setError(e?.code === 4001 ? "You declined in the wallet." : e?.message ?? `${asset.symbol} could not be added.`);
+    }
+  }
+
   const paying = direction === "into-deposit" ? symbols.payment : symbols.deposit;
   return (
     <div className="stack">
@@ -121,6 +143,11 @@ export function ConvertPanel({
         {status && <span role="status" className="muted">{status}</span>}
       </div>
       {error && <p role="alert" className="notice err">{error}</p>}
+      <div className="actions">
+        {assets.map((a) => (
+          <button key={a.address} type="button" className="quiet" onClick={() => watch(a)} disabled={busy}>Add {a.symbol} to MetaMask</button>
+        ))}
+      </div>
       <p className="muted">Converting from {wallet}. The first conversion of each token also asks for two approvals, once.</p>
     </div>
   );
