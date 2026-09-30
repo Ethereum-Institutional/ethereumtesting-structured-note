@@ -42,10 +42,15 @@ const STATUS: Record<Admission["status"], string> = {
   failed: "The admission could not be completed.",
 };
 
-export default async function Admit() {
+/** The routes a client takes itself. A custodied admission is the bank's own act and is shown to staff (ADR 0062). */
+const CLIENT_ROUTES = ["self-custody", "holder-wallet"] as const;
+
+export default async function Onboard() {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  const a = await getStore().latestAdmissionFor(who.id);
+  const store = getStore();
+  const [a, mine] = await Promise.all([store.latestAdmissionFor(who.id, [...CLIENT_ROUTES]), store.admissionsFor(who.id)]);
+  const onboarded = mine.filter((x) => x.status === "admitted" && (CLIENT_ROUTES as readonly string[]).includes(x.route));
   const d = (a?.data ?? {}) as Record<string, any>;
   const open = a && !["refused", "admitted", "declined", "cancelled", "failed"].includes(a.status);
 
@@ -56,10 +61,10 @@ export default async function Admit() {
       <Bar who={who} operator={isOperator(who.email)} />
       <header className="masthead" style={{ paddingBottom: "1rem" }}>
         <p className="eyebrow">Conversion pool</p>
-        <h1 style={{ fontSize: "2.25rem" }}>Admission</h1>
+        <h1 style={{ fontSize: "2.25rem" }}>Onboard</h1>
         <p className="lede">
-          If your bank or custodian holds your account, ask them to admit it: there is nothing for you to do here.
-          To admit a wallet you hold yourself, your bank reuses the verification it already holds, and you sign once.
+          If your bank or custodian holds your account, ask them to onboard it: there is nothing for you to do here.
+          Already onboarded by your bank? You can add a wallet you hold yourself at any time, by either route below.
         </p>
       </header>
 
@@ -82,6 +87,31 @@ export default async function Admit() {
               </button>
             </form>
           )}
+        </section>
+      )}
+
+      {onboarded.length > 0 && (
+        <section className="panel">
+          <h2>Your onboarded wallets</h2>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Wallet</th><th>Route</th><th>Onboarded</th><th>Grant runs to</th></tr></thead>
+              <tbody>
+                {onboarded.map((x) => {
+                  const xd = x.data as Record<string, any>;
+                  const to = xd.written?.poolGrantExpiresAt;
+                  return (
+                    <tr key={x.id}>
+                      <td>{xd.assessment?.summary?.wallet}</td>
+                      <td>{x.route === "self-custody" ? "Wallet you hold" : "Holder wallet"}</td>
+                      <td>{x.createdAt.slice(0, 10)}</td>
+                      <td>{to ? new Date(to * 1000).toISOString().slice(0, 10) : ""}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 

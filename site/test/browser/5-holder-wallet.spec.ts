@@ -4,7 +4,7 @@ import { test, expect, expectHealthy, holderPresents, signedIn, PEOPLE } from ".
 test("holder wallet: two scans, then the bank approves and both grants are written", async ({ browser }) => {
   const wallet = getAddress(`0x${keccak256(toBytes(`browser holder wallet ${Date.now()}`)).slice(26)}`);
   const client = await signedIn(browser, PEOPLE.holder);
-  await client.goto("/admit");
+  await client.goto("/onboard");
   await client.getByRole("button", { name: "Present from a holder wallet" }).click();
   await expect(client.getByText("Step 1 of 2: present your officer credential.")).toBeVisible();
 

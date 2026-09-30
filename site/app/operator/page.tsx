@@ -112,8 +112,9 @@ export default async function Operator() {
       <Bar who={op} operator />
       <header className="masthead" style={{ paddingBottom: "1rem" }}>
         <p className="eyebrow">Operator</p>
-        <h1 style={{ fontSize: "2.5rem" }}>Access requests</h1>
+        <h1 style={{ fontSize: "2.5rem" }}>Operator</h1>
       </header>
+      <h2 id="access" style={{ marginTop: 0 }}>Access requests</h2>
       <div className="table-wrap panel">
         <table>
           <thead>

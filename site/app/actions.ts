@@ -81,7 +81,7 @@ export async function startAdmissionAction() {
   const who = await currentRegistrant();
   if (!who) redirect("/");
   const origin = await siteOrigin();
-  await recorded(() => startAdmission(who, origin), "/admit");
+  await recorded(() => startAdmission(who, origin), "/onboard");
 }
 
 export async function renewAdmissionAction(f: FormData) {
@@ -89,7 +89,7 @@ export async function renewAdmissionAction(f: FormData) {
   if (!who) redirect("/");
   const a = await getStore().admissionById(field(f, "id"));
   const origin = await siteOrigin();
-  if (a && a.registrantId === who.id) await recorded(() => renewRequest(a, origin), "/admit");
+  if (a && a.registrantId === who.id) await recorded(() => renewRequest(a, origin), "/onboard");
 }
 
 /** Moves a waiting admission on once its credentials are anchored (ADR 0060); for staff or the admission's own client. */
@@ -98,13 +98,13 @@ export async function advanceAdmissionAction(id: string) {
   if (!who) return;
   const a = await getStore().admissionById(id);
   if (!a || (a.registrantId !== who.id && !(await currentOperator()))) return;
-  await recorded(() => advanceAdmission(id), a.registrantId === who.id ? "/admit" : "/operator");
+  await recorded(() => advanceAdmission(id), a.registrantId === who.id ? "/onboard" : "/operator");
 }
 
 export async function cancelAdmissionAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  await recorded(() => cancelAdmission(who, field(f, "id")), "/admit");
+  await recorded(() => cancelAdmission(who, field(f, "id")), "/onboard");
 }
 
 export async function decideAdmissionAction(f: FormData) {
@@ -164,24 +164,24 @@ export async function reviewSelfCustodyAction(f: FormData) {
 export async function requestSelfCustodyAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  await recorded(() => requestSelfCustody(who), "/admit");
+  await recorded(() => requestSelfCustody(who), "/onboard");
 }
 
 export async function bindWalletAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
   const type = field(f, "addressType") === "smart_contract" ? "smart_contract" : "eoa";
-  await recorded(() => startWalletBinding(who, field(f, "id"), { walletAddress: field(f, "walletAddress").trim(), addressType: type }), "/admit");
+  await recorded(() => startWalletBinding(who, field(f, "id"), { walletAddress: field(f, "walletAddress").trim(), addressType: type }), "/onboard");
 }
 
 export async function submitSignatureAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  await recorded(() => submitSelfCustodySignature(who, field(f, "id"), field(f, "signature").trim() as `0x${string}`), "/admit");
+  await recorded(() => submitSelfCustodySignature(who, field(f, "id"), field(f, "signature").trim() as `0x${string}`), "/onboard");
 }
 
 export async function renewChallengeAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  await recorded(() => renewSelfCustodyChallenge(who, field(f, "id")), "/admit");
+  await recorded(() => renewSelfCustodyChallenge(who, field(f, "id")), "/onboard");
 }

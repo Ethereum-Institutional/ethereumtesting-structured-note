@@ -42,6 +42,15 @@ test("staff admit a custodied client in one action, through a lagging RPC, withi
   // First the wallet credential waits for the bank's anchor; the page moves it on by itself (ADR 0060).
   await expect(row.locator(".pill")).toHaveText("awaiting-anchor");
   await expect(row).toContainText("Waiting for the bank to anchor");
+
+  // Meanwhile the bank's own act does not take over the staff member's onboarding page (ADR 0062).
+  const own = await signedIn(browser, PEOPLE.operator);
+  await own.goto("/onboard");
+  // Nothing of the custodied admission appears there: no status, no progress, no error.
+  await expect(own.locator("section.panel").filter({ hasText: /Almost there|could not be completed|Admitted to the conversion pool|writing/ })).toHaveCount(0);
+  await expect(own.getByRole("button", { name: "Ask my bank to confirm my KYB" })).toBeEnabled();
+  await expect(own.getByRole("button", { name: "Present from a holder wallet" })).toBeEnabled();
+  await own.close();
   await expect(row.locator(".pill")).toHaveText("admitted", { timeout: 60_000 });
   expect(Date.now() - started, "a custodied admission completes within 30 s on one-second blocks").toBeLessThan(30_000);
   await expect(row).toContainText("custodied");
@@ -49,5 +58,8 @@ test("staff admit a custodied client in one action, through a lagging RPC, withi
   // Pool grant, registry grant, trading approvals, and the two anchoring transactions (the
   // corporate identity's earlier batch and the wallet credential's).
   expect((await row.innerText()).match(/0x[0-9a-f]{8}…/g) ?? [], "five transactions recorded").toHaveLength(5);
+
+  await page.getByRole("link", { name: "Onboard" }).click();
+  await expect(page).toHaveURL(/\/onboard$/);
   await expectHealthy(page);
 });

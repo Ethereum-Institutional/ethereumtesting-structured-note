@@ -19,6 +19,10 @@ const csp = [
 /** @type {import('next').NextConfig} */
 export default {
   poweredByHeader: false,
+  // The client's page moved from /admit to /onboard; links already sent keep working.
+  async redirects() {
+    return [{ source: "/admit", destination: "/onboard", permanent: true }];
+  },
   outputFileTracingRoot: dirname(fileURLToPath(import.meta.url)),
   outputFileTracingIncludes: { "/overview": ["./content/**"] },
   async headers() {

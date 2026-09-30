@@ -394,7 +394,7 @@ export async function cancelAdmission(client: Registrant, id: string): Promise<v
  * confirmed last time is carried forward for its staff to reuse.
  */
 export async function requestSelfCustody(client: Registrant): Promise<Admission> {
-  const previous = await getStore().latestAdmissionFor(client.id);
+  const previous = await getStore().latestAdmissionFor(client.id, ["self-custody"]);
   const knownReference = previous?.route === "self-custody" ? (previous.data as Record<string, any>).record?.kycReference : undefined;
   const a: Admission = {
     id: `adm_${randomBytes(9).toString("base64url")}`,

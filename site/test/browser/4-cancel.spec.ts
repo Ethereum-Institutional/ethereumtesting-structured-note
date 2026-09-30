@@ -1,8 +1,10 @@
 import { test, expect, expectHealthy, signedIn, PEOPLE } from "./fixtures.ts";
 
-test("a client can leave /admit while it refreshes, and cancel the holder-wallet route to choose another", async ({ browser }) => {
+test("a client can leave /onboard while it refreshes, and cancel the holder-wallet route to choose another", async ({ browser }) => {
   const page = await signedIn(browser, PEOPLE.holder);
+  // The page's old address still works.
   await page.goto("/admit");
+  await expect(page).toHaveURL(/\/onboard$/);
   await page.getByRole("button", { name: "Present from a holder wallet" }).click();
   await expect(page.getByText("Scan with the holder wallet.")).toBeVisible();
 
@@ -12,7 +14,7 @@ test("a client can leave /admit while it refreshes, and cancel the holder-wallet
   await page.waitForTimeout(6_000);
   await expect(page).toHaveURL(/\/$/);
 
-  await page.goto("/admit");
+  await page.goto("/onboard");
   await page.getByRole("button", { name: "Cancel and choose another way" }).click();
   await expect(page.getByText("You cancelled this request.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Ask my bank to confirm my KYB" })).toBeVisible();

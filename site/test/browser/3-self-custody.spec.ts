@@ -6,7 +6,7 @@ test("self-custody: the client asks, the bank declines, the client asks again, t
   const staff = await signedIn(browser, PEOPLE.operator);
 
   // The client asks, entering nothing; binding waits for the bank.
-  await client.goto("/admit");
+  await client.goto("/onboard");
   await client.getByRole("button", { name: "Ask my bank to confirm my KYB" }).click();
   await expect(client.getByText("Step 1 of 2: your bank is confirming your KYB.")).toBeVisible();
   await expect(client.getByRole("button", { name: "Bind wallet" })).toBeDisabled();
@@ -38,6 +38,14 @@ test("self-custody: the client asks, the bank declines, the client asks again, t
   await client.getByRole("button", { name: "Sign with browser wallet" }).click();
   await expect(client.getByText("Almost there: waiting for your bank to anchor the credential")).toBeVisible({ timeout: 30_000 });
   await expect(client.getByText("Admitted to the conversion pool.")).toBeVisible({ timeout: 60_000 });
+
+  // Onboarded once, the client can add another wallet by either route (ADR 0062).
+  await client.reload();
+  await expect(client.getByRole("row").filter({ hasText: wallet })).toContainText("Wallet you hold");
+  await client.getByRole("button", { name: "Present from a holder wallet" }).click();
+  await expect(client.getByText("Scan with the holder wallet.")).toBeVisible();
+  await client.getByRole("button", { name: "Cancel and choose another way" }).click();
+  await expect(client.getByRole("row").filter({ hasText: wallet })).toBeVisible();
   await expectHealthy(client);
   await expectHealthy(staff);
 });

@@ -40,7 +40,8 @@ export function siteBar(email: string, operator: boolean): string {
   <nav aria-label="Site">
     <a href="/">Architecture</a>
     <a href="/overview" aria-current="page">Solution overview</a>
-    ${operator ? '<a href="/operator">Access requests</a>' : ""}
+    <a href="/onboard">Onboard</a>
+    ${operator ? '<a href="/operator">Operator</a>' : ""}
     <span class="who">${esc(email)}</span>
     <form method="post" action="/signout"><button type="submit">Sign out</button></form>
   </nav>

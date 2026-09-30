@@ -23,7 +23,7 @@ the domain rule, everything gated, the architecture as the signed-in home page w
 component linked into the overview. Postgres is Neon in Frankfurt. Mail is Resend, sending from
 `noreply@ethereumtesting.com`. The domain rule's list and the operator list live only in the
 Vercel environment, not in this repository. See `site/README.md`. Since Wave 5 the site also
-admits participants to the conversion pool (`/admit`, `/operator`), against an integration
+admits participants to the conversion pool (`/onboard`, `/operator`), against an integration
 deployment on the public test network (section 5).
 The repository is a clone of the source demo with history preserved. **Wave 1 has stripped it to
 the venue** (section 5); nothing of the retired identity stack, the source console or the source
@@ -430,7 +430,7 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   wallet credential by EIP-1271), **self-custody through the bank** (the client signs once), and
   the **holder wallet** below. Entities are institutional by policy (ADR 0053); the officer
   credential is a gate policy, off by default.
-- **Admission by QR** (ADRs 0045 to 0052, site `/admit`, now route 3): an officer scans two codes with the
+- **Admission by QR** (ADRs 0045 to 0052, site `/onboard`, now route 3): an officer scans two codes with the
   holder wallet, the officer credential then the wallet-control credential issued to that officer;
   the site verifies each through the protocol's hosted verifier, fetches the corporation's
   corporate identity, checks the chain wallet, officer, corporation, corporate identity, and an
@@ -460,7 +460,7 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   knows every Wave 5 call. Seven deliberate errors in the gate, one in the checker and four in the
   controller's venue acts were each caught.
 
-**Admission, built 26 to 28 September 2026** (site `/admit` and `/operator`; ADRs 0053 to 0059).
+**Admission, built 26 to 28 September 2026** (site `/onboard` and `/operator`; ADRs 0053 to 0059).
 
 - **Route 1, custodied: live on the test network.** Bank staff choose the client from the bank's
   own corporate identities and give the custody account and instruction references. One action

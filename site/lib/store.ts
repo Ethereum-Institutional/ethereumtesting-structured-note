@@ -92,7 +92,10 @@ export interface Store {
   /** Replaces the admission, only if its status is still `expected`. Returns whether it did. */
   updateAdmission(a: Admission, expected: AdmissionStatus): Promise<boolean>;
   listAdmissions(limit: number): Promise<Admission[]>;
-  latestAdmissionFor(registrantId: string): Promise<Admission | null>;
+  /** The registrant's newest admission, on the given routes only when named. */
+  latestAdmissionFor(registrantId: string, routes?: AdmissionRoute[]): Promise<Admission | null>;
+  /** Every admission the registrant started, newest first. */
+  admissionsFor(registrantId: string): Promise<Admission[]>;
 }
 
 // --------------------------------------------------------------------------------------------
@@ -281,10 +284,16 @@ function postgresStore(url: string): Store {
       const s = await q();
       return (await s`select * from admissions order by created_at desc limit ${limit}`).map(toAdmission);
     },
-    async latestAdmissionFor(registrantId) {
+    async latestAdmissionFor(registrantId, routes) {
       const s = await q();
-      const [r] = await s`select * from admissions where registrant_id = ${registrantId} order by created_at desc limit 1`;
+      const [r] = routes
+        ? await s`select * from admissions where registrant_id = ${registrantId} and route = any(${routes}) order by created_at desc limit 1`
+        : await s`select * from admissions where registrant_id = ${registrantId} order by created_at desc limit 1`;
       return r ? toAdmission(r) : null;
+    },
+    async admissionsFor(registrantId) {
+      const s = await q();
+      return (await s`select * from admissions where registrant_id = ${registrantId} order by created_at desc limit 100`).map(toAdmission);
     },
   };
 }
@@ -398,8 +407,13 @@ function fileStore(dir: string): Store {
     async listAdmissions(limit) {
       return [...(load().admissions ?? [])].sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, limit);
     },
-    async latestAdmissionFor(registrantId) {
-      return [...(load().admissions ?? [])].filter((a) => a.registrantId === registrantId).sort((x, y) => y.createdAt.localeCompare(x.createdAt))[0] ?? null;
+    async latestAdmissionFor(registrantId, routes) {
+      return [...(load().admissions ?? [])]
+        .filter((a) => a.registrantId === registrantId && (!routes || routes.includes(a.route)))
+        .sort((x, y) => y.createdAt.localeCompare(x.createdAt))[0] ?? null;
+    },
+    async admissionsFor(registrantId) {
+      return [...(load().admissions ?? [])].filter((a) => a.registrantId === registrantId).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
     },
   };
 }
