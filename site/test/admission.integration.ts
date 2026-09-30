@@ -342,6 +342,71 @@ test("a client screened more than 30 days ago is refused until re-screened; re-s
   assert.equal((a.data as any).assessment.attestation.primaryCredential.toLowerCase(), fresh.credentialId.toLowerCase(), "the admission rests on the new credential");
 });
 
+// --- conversion in the pool (ADR 0070; S-27, S-28) ---
+
+const convert = await import("../lib/pool/convert.ts");
+const ERC20_ABI = parseAbi(["function balanceOf(address) view returns (uint256)", "function mint(address to, uint256 amount)"]);
+const chainClient = createPublicClient({ transport: http(RPC) });
+/** A wallet with gas and test payment tokens, minted by the local token's owner (anvil account 0). */
+async function funded(key: ReturnType<typeof privateKeyToAccount>, eurpt: bigint) {
+  const m = (await import("../lib/chain/manifest.ts")).loadManifest();
+  await chainClient.request({ method: "anvil_setBalance" as any, params: [key.address, "0x56BC75E2D63100000"] as any });
+  const owner = createWalletClient({ account: privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"), transport: http(RPC) });
+  const h = await owner.writeContract({ address: m.assets.paymentToken!.address, abi: ERC20_ABI, functionName: "mint", args: [key.address, eurpt], chain: null });
+  await chainClient.waitForTransactionReceipt({ hash: h });
+  return createWalletClient({ account: key, transport: http(RPC) });
+}
+const balanceOf = async (token: Hex, who: Hex) => chainClient.readContract({ address: token, abi: ERC20_ABI, functionName: "balanceOf", args: [who] });
+
+test("S-27, custody account: the bank credits the deposit, and the custodian converts it within the quote", async () => {
+  const a = (await store.listAdmissions(50)).find((x: any) => x.route === "custodied" && x.status === "admitted")!;
+  const account = (a.data as any).assessment.summary.wallet as Hex;
+  const t = convert.tokens();
+  const credited = await convert.creditDeposit(account, 500n); // 5.00 EURTD
+  assert.match(credited.bookingRef, /^BKG-\d{6}-[0-9A-F]{8}$/);
+  assert.equal(await balanceOf(t.deposit.address, account), 500n);
+
+  const before = await balanceOf(t.payment.address, account);
+  const done = await convert.convertForCustody(account, "into-payment", 300n);
+  const got = (await balanceOf(t.payment.address, account)) - before;
+  assert.ok(got >= done.quote.minimumOut, `received ${got}, at least ${done.quote.minimumOut}`);
+  assert.ok(got <= done.quote.amountOut + 1n && got >= done.quote.amountOut - 1n, `received ${got}, quoted ${done.quote.amountOut}`);
+  assert.equal(await balanceOf(t.deposit.address, account), 200n);
+});
+
+test("S-27, own wallet: two approvals once, then each conversion is one transaction", async () => {
+  const key = privateKeyToAccount(keccak256(toBytes(`officer browser wallet ${NOW}`))); // admitted by the route 3 test
+  assert.equal((await readPool(key.address)).allowed, true);
+  const wallet = await funded(key, 50_000_000n); // 50 EURPT
+  const t = convert.tokens();
+  const nowSec = Math.floor(Date.now() / 1000);
+  const needed = await convert.approvalsNeeded(key.address, "into-deposit", 10_000_000n, nowSec);
+  assert.equal(needed.length, 2, "the token to Permit2, then Permit2 to the router");
+  for (const n of needed) await chainClient.waitForTransactionReceipt({ hash: await wallet.sendTransaction({ to: n.to, data: n.data, chain: null }) });
+  assert.equal((await convert.approvalsNeeded(key.address, "into-deposit", 10_000_000n, nowSec)).length, 0, "set once");
+
+  const q = await convert.quote("into-deposit", 10_000_000n);
+  const call = convert.swapCall("into-deposit", 10_000_000n, q.minimumOut, nowSec);
+  await chainClient.waitForTransactionReceipt({ hash: await wallet.sendTransaction({ to: call.to, data: call.data, chain: null }) });
+  assert.ok((await balanceOf(t.deposit.address, key.address)) >= q.minimumOut);
+
+  // The 0.5% limit is the swap's own: asking for more than the pool gives is refused on-chain.
+  const greedy = convert.swapCall("into-deposit", 10_000_000n, q.amountOut * 2n, nowSec);
+  await assert.rejects(chainClient.call({ account: key.address, to: greedy.to, data: greedy.data }));
+});
+
+test("S-28: a wallet not onboarded is refused at the pool, approvals and funds notwithstanding", async () => {
+  const key = privateKeyToAccount(keccak256(toBytes(`never onboarded ${NOW}`)));
+  const wallet = await funded(key, 20_000_000n);
+  const nowSec = Math.floor(Date.now() / 1000);
+  for (const n of await convert.approvalsNeeded(key.address, "into-deposit", 10_000_000n, nowSec)) {
+    await chainClient.waitForTransactionReceipt({ hash: await wallet.sendTransaction({ to: n.to, data: n.data, chain: null }) });
+  }
+  const q = await convert.quote("into-deposit", 10_000_000n);
+  const call = convert.swapCall("into-deposit", 10_000_000n, q.minimumOut, nowSec);
+  await assert.rejects(chainClient.call({ account: key.address, to: call.to, data: call.data }));
+});
+
 // --- offboarding and revocation (ADRs 0063, 0064): last, since the final test revokes the KYB ---
 
 const GATE_ABI = parseAbi([

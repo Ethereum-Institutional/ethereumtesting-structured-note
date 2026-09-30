@@ -5,7 +5,8 @@
  */
 import { readFileSync, statSync } from "node:fs";
 import { test as base, expect, type Browser, type Locator, type Page } from "@playwright/test";
-import { keccak256, toBytes } from "viem";
+import { createPublicClient, createWalletClient, http, keccak256, parseAbi, toBytes } from "viem";
+import { join } from "node:path";
 import { privateKeyToAccount } from "viem/accounts";
 import { presentation, SCHEMAS, CORP } from "../standins.ts";
 import { COOKIE, PEOPLE, SERVER_LOG, SITE, STANDINS_PORT, type Person } from "./people.ts";
@@ -61,6 +62,15 @@ export type WalletQuirks = {
 
 export async function installWallet(page: Page, seed: string, quirks: WalletQuirks = {}) {
   const account = privateKeyToAccount(keccak256(toBytes(seed)));
+  const chainRpc = process.env.RPC_URL ?? "http://127.0.0.1:8545";
+  const sender = createWalletClient({ account, transport: http(chainRpc) });
+  const reader = createPublicClient({ transport: http(chainRpc) });
+  // Transactions go to the local chain from the same key, as MetaMask would send them.
+  await page.exposeFunction("__testSendTransaction", async (tx: { to: `0x${string}`; data: `0x${string}` }) => sender.sendTransaction({ to: tx.to, data: tx.data, chain: null }));
+  await page.exposeFunction("__testReceipt", async (hash: `0x${string}`) => {
+    const r = await reader.getTransactionReceipt({ hash }).catch(() => null);
+    return r ? { status: r.status === "success" ? "0x1" : "0x0" } : null;
+  });
   await page.exposeFunction("__testSignTypedData", async (json: string) => {
     const td = JSON.parse(json);
     const { EIP712Domain: _d, ...types } = td.types;
@@ -103,11 +113,24 @@ export async function installWallet(page: Page, seed: string, quirks: WalletQuir
           }
           return w.__testSignTypedData(params![1]);
         }
+        if (method === "eth_sendTransaction") return w.__testSendTransaction(params![0]);
+        if (method === "eth_getTransactionReceipt") return w.__testReceipt(params![0]);
         throw new Error(`the test wallet does not support ${method}`);
       },
     };
   }, { address: account.address, quirks });
   return account.address;
+}
+
+/** Gas and test payment tokens for a wallet, minted by the local token's owner (anvil account 0). */
+export async function fundWallet(address: `0x${string}`, paymentUnits: bigint) {
+  const chainRpc = process.env.RPC_URL ?? "http://127.0.0.1:8545";
+  const reader = createPublicClient({ transport: http(chainRpc) });
+  await reader.request({ method: "anvil_setBalance" as any, params: [address, "0x56BC75E2D63100000"] as any });
+  const manifest = JSON.parse(readFileSync(join(import.meta.dirname, "..", "..", "..", "ops", "addresses.json"), "utf8"));
+  const owner = createWalletClient({ account: privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"), transport: http(chainRpc) });
+  const hash = await owner.writeContract({ address: manifest.assets.paymentToken.address, abi: parseAbi(["function mint(address to, uint256 amount)"]), functionName: "mint", args: [address, paymentUnits], chain: null });
+  await reader.waitForTransactionReceipt({ hash });
 }
 
 /** Chooses a client in a Client dropdown by its legal name; the site assigns references. */

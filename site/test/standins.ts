@@ -263,6 +263,7 @@ export async function startStandIns(port: number, rpc: string, options: StandInO
       SIGNER_KEYS: JSON.stringify({
         accessIssuer: "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
         custodian: "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+        depositAgent: "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6", // account 9
       }),
       BANK_ISSUER_URL: url,
       BANK_ISSUER_API_KEY: SERVICE_KEY,

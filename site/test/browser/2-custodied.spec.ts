@@ -64,6 +64,17 @@ test("staff admit a custodied client in one action, through a lagging RPC, withi
   // corporate identity's earlier batch and the wallet credential's).
   expect((await row.innerText()).match(/0x[0-9a-f]{8}…/g) ?? [], "five transactions recorded").toHaveLength(5);
 
+  // S-27 for a custody account: the bank credits the deposit, then the custodian converts it (ADR 0070).
+  await row.getByText("Credit deposit…").click();
+  await row.getByLabel("Amount of EURTD").fill("5");
+  await row.getByRole("button", { name: "Credit", exact: true }).click();
+  await expect(row).toContainText(/Last credit: 5\.00 EURTD, BKG-/, { timeout: 30_000 });
+  await row.getByText("Convert…").click();
+  await row.locator('select[name="direction"]').selectOption("into-payment");
+  await row.getByLabel("Amount", { exact: true }).fill("3");
+  await row.getByRole("button", { name: "Convert", exact: true }).click();
+  await expect(row).toContainText(/Last conversion: 3\.00 EURTD into EURPT/, { timeout: 30_000 });
+
   // Offboarding asks for a reason, says what the corporate identity's revocation would withdraw,
   // and leaves the row offboarded with both revocations linked (ADRs 0063, 0064).
   await row.getByText("Revoke at the bank…").click();

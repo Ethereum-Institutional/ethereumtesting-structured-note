@@ -77,3 +77,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0067](0067-site-assigns-references.md) | The site assigns client and custody references | Accepted |
 | [0068](0068-browser-wallet-binds-in-one-click.md) | A browser wallet binds in one click: address read, chain switched or added, message proposed | Accepted |
 | [0069](0069-one-wallet-per-kyb.md) | One wallet per KYB, a new wallet replaces the old, and the Onboard page shows three stages | Accepted |
+| [0070](0070-convert-in-the-pool.md) | Converting in the pool: both kinds of wallet, one-time approvals, faucets plus a bank credit, and a 0.5% limit | Accepted |

@@ -8,6 +8,9 @@ import {
   advanceAdmissionAction,
   bindNewWalletAction,
   browserWalletFinishAction,
+  conversionDoneAction,
+  prepareConversionAction,
+  quoteAction,
   browserWalletStartAction,
   cancelAdmissionAction,
   renewAdmissionAction,
@@ -20,6 +23,8 @@ import { SignWallet } from "./SignWallet";
 import { AutoRefresh } from "../AutoRefresh";
 import { AnchorWatch } from "../AnchorWatch";
 import { BrowserWallet } from "./BrowserWallet";
+import { ConvertPanel } from "./ConvertPanel";
+import { balances, tokens } from "@/lib/pool/convert";
 import { chainParams } from "@/lib/chains";
 import { loadManifest } from "@/lib/chain/manifest";
 import { CANCELLABLE } from "@/lib/admission/service";
@@ -94,6 +99,11 @@ export default async function Onboard() {
   const returning = hasKyb || viaHolder;
   const current = onboarded[0];
   const stage = stageOf(a?.status, onboarded.length > 0);
+  // The onboarded wallet's holdings, for converting (ADR 0070).
+  const currentWallet = (current?.data as Record<string, any> | undefined)?.assessment?.summary?.wallet as `0x${string}` | undefined;
+  const t = tokens();
+  const held = currentWallet ? await balances(currentWallet).catch(() => null) : null;
+  const show = (v: bigint, decimals: number) => (Number(v) / 10 ** decimals).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: decimals });
 
   return (
     <div className="wrap">
@@ -181,6 +191,28 @@ export default async function Onboard() {
               </tbody>
             </table>
           </div>
+        </section>
+      )}
+
+      {currentWallet && (
+        <section className="panel">
+          <h2>Convert</h2>
+          <p className="muted">
+            {held
+              ? <>Your wallet holds {show(held.payment, t.payment.decimals)} {t.payment.symbol}, {show(held.deposit, t.deposit.decimals)} {t.deposit.symbol} and {show(held.eth, 18)} ETH for fees.</>
+              : "The wallet's balances could not be read just now."}
+            {chain.chainId === "0x14a34" && (
+              <> Test {t.payment.symbol}: <a href="https://faucet.circle.com" target="_blank" rel="noreferrer">Circle's faucet</a>. Test ETH for fees: <a href="https://docs.base.org/base-chain/tools/network-faucets" target="_blank" rel="noreferrer">Base Sepolia faucets</a>. {t.deposit.symbol} is credited by your bank.</>
+            )}
+          </p>
+          <ConvertPanel
+            wallet={currentWallet}
+            chain={chain}
+            symbols={{ payment: t.payment.symbol, deposit: t.deposit.symbol }}
+            quote={quoteAction}
+            prepare={prepareConversionAction}
+            done={conversionDoneAction}
+          />
         </section>
       )}
 

@@ -12,7 +12,7 @@
     "start": "next start -p 3020",
     "typecheck": "tsc --noEmit",
     "e2e": "python3 test/e2e.py /tmp/site-dev.log",
-    "test": "node --test lib/chain/chain.test.ts lib/admission/admission.test.ts",
+    "test": "node --test lib/chain/chain.test.ts lib/admission/admission.test.ts lib/pool/quote.test.ts",
     "test:chain": "node --test lib/chain/deployment.test.ts",
     "test:admission": "node --conditions=react-server --test test/admission.integration.ts",
     "test:browser": "next build && playwright test",

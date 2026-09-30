@@ -27,7 +27,7 @@ bank_key = json.load(open(adm["bankIssuerKeyFile"]))
 env = {
     "MANIFEST_JSON": json.dumps(json.load(open(os.environ["MANIFEST"])), separators=(",", ":")),
     "RPC_URL": net["rpcUrl"],
-    "SIGNER_KEYS": json.dumps({"accessIssuer": os.environ["ACCESS_ISSUER_PK"], "custodian": os.environ["CUSTODIAN_PK"]}),
+    "SIGNER_KEYS": json.dumps({"accessIssuer": os.environ["ACCESS_ISSUER_PK"], "custodian": os.environ["CUSTODIAN_PK"], "depositAgent": os.environ["DEPOSIT_AGENT_PK"]}),
     "ADMISSION_ISSUER_DID": net["credentialProtocol"]["issuerDid"],
     "ADMISSION_ISSUER_PUBKEY": bank_key["mlDsaPubkey"],
     "ADMISSION_SCHEMAS": json.dumps({k: net["schemas"][k] for k in ("officer", "walletControl", "corporateIdentity")}),

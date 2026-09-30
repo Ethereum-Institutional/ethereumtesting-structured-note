@@ -6,6 +6,8 @@ import { bankConfig, issuedCredentials, type IssuedCredential } from "@/lib/admi
 import { clientsIssuedElsewhere, CORPORATE_STATUSES, LEGAL_FORMS } from "@/lib/admission/clients";
 import {
   addClientAction,
+  creditDepositAction,
+  custodyConvertAction,
   admitCustodiedAction,
   advanceAdmissionAction,
   decideAction,
@@ -21,6 +23,7 @@ import { PendingButton } from "../PendingButton";
 import { Bar } from "../Bar";
 import { NUMERIC, SCREENING_MAX_AGE } from "@/lib/admission/assess";
 import { AddClientForm } from "./AddClientForm";
+import { tokens } from "@/lib/pool/convert";
 
 export const dynamic = "force-dynamic";
 
@@ -48,9 +51,37 @@ function ClientReference({ clients, known }: { clients: Client[]; known?: string
 }
 
 /** Offboarding and revocation for an admitted account (ADRs 0063, 0064): each folded away until wanted. */
-function AdmittedActions({ id, affected }: { id: string; affected: number }) {
+function AdmittedActions({ id, affected, custodied, symbols, notes }: { id: string; affected: number; custodied: boolean; symbols: { payment: string; deposit: string }; notes: string[] }) {
   return (
     <div className="stack-actions">
+      <details>
+        <summary>Credit deposit…</summary>
+        <form action={creditDepositAction} className="stack">
+          <input type="hidden" name="id" value={id} />
+          <p className="muted">The Deposit Agent credits {symbols.deposit} to this account through the deposit gateway, against a booking reference the site assigns.</p>
+          <label>Amount of {symbols.deposit}<input name="amount" required inputMode="decimal" placeholder="10.00" /></label>
+          <PendingButton working="Crediting the deposit…">Credit</PendingButton>
+        </form>
+      </details>
+      {custodied && (
+        <details>
+          <summary>Convert…</summary>
+          <form action={custodyConvertAction} className="stack">
+            <input type="hidden" name="id" value={id} />
+            <p className="muted">On the client's instruction: the custodian converts in the pool for this account, refused if the pool gives more than 0.5% less than its quote.</p>
+            <label>
+              Convert
+              <select name="direction" defaultValue="into-deposit">
+                <option value="into-deposit">{symbols.payment} into {symbols.deposit}</option>
+                <option value="into-payment">{symbols.deposit} into {symbols.payment}</option>
+              </select>
+            </label>
+            <label>Amount<input name="amount" required inputMode="decimal" placeholder="10.00" /></label>
+            <PendingButton working="Converting in the pool…">Convert</PendingButton>
+          </form>
+        </details>
+      )}
+      {notes.map((n) => <span key={n} className="muted">{n}</span>)}
       <details>
         <summary>Offboard…</summary>
         <form action={offboardAction} className="stack">
@@ -122,6 +153,8 @@ export default async function Operator({ searchParams }: { searchParams: Promise
     clientsIssuedElsewhere().catch(() => [] as IssuedCredential[]),
   ]);
   const stateOf = new Map(bankView.list.map((c) => [c.credentialId.toLowerCase(), c]));
+  const t = tokens();
+  const symbols = { payment: t.payment.symbol, deposit: t.deposit.symbol };
   const prefill = params.prefill ? elsewhere.find((c) => c.kycReference === params.prefill) : undefined;
   const queue = admissions.filter((a) => a.route === "self-custody" && a.status === "awaiting-bank-review");
   // How many admitted wallets rest on each corporate identity: what revoking it would withdraw.
@@ -337,7 +370,16 @@ export default async function Operator({ searchParams }: { searchParams: Promise
                       </form>
                     )}
                     {a.status === "admitted" && (
-                      <AdmittedActions id={a.id} affected={resting.get(String(d.assessment?.attestation?.primaryCredential ?? "").toLowerCase()) ?? 1} />
+                      <AdmittedActions
+                        id={a.id}
+                        affected={resting.get(String(d.assessment?.attestation?.primaryCredential ?? "").toLowerCase()) ?? 1}
+                        custodied={a.route === "custodied"}
+                        symbols={symbols}
+                        notes={[
+                          ...((d.credits ?? []) as Array<{ amount: string; bookingRef: string }>).slice(-1).map((c) => `Last credit: ${c.amount} ${symbols.deposit}, ${c.bookingRef}`),
+                          ...((d.conversions ?? []) as Array<{ summary: string }>).slice(-1).map((c) => `Last conversion: ${c.summary}`),
+                        ]}
+                      />
                     )}
                     {a.status === "offboarded" && (
                       <span className="muted">{tx(d.offboarded?.poolRevokeTx)} {tx(d.offboarded?.registryRevokeTx)}</span>

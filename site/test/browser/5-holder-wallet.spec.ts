@@ -1,4 +1,4 @@
-import { test, expect, expectHealthy, holderPresents, installWallet, signedIn, PEOPLE } from "./fixtures.ts";
+import { test, expect, expectHealthy, fundWallet, holderPresents, installWallet, signedIn, PEOPLE } from "./fixtures.ts";
 
 test("holder wallet: the officer scans once, the officer's wallet signs in MetaMask, the bank approves", async ({ browser }) => {
   const client = await signedIn(browser, PEOPLE.holder);
@@ -21,6 +21,18 @@ test("holder wallet: the officer scans once, the officer's wallet signs in MetaM
   await expect(row.locator(".pill")).toHaveText("admitted", { timeout: 60_000 });
   await client.reload();
   await expect(client.getByText("Admitted to the conversion pool.")).toBeVisible();
+
+  // S-27 from the page: a quote as the amount is typed, then the approvals and the swap in MetaMask.
+  await fundWallet(wallet as `0x${string}`, 50_000_000n); // 50 EURPT
+  await client.reload();
+  await expect(client.getByText(/Your wallet holds 50(\.00)? EURPT/)).toBeVisible();
+  await client.getByLabel(/^Amount of EURPT/).fill("10");
+  await expect(client.getByRole("note")).toContainText(/You receive about 9\.\d\d EURTD, and at least 9\.\d\d EURTD/);
+  await client.getByRole("button", { name: "Convert with MetaMask" }).click();
+  await expect(client.getByRole("status").filter({ hasText: "Converted 10.000000 EURPT into at least" })).toBeVisible({ timeout: 60_000 });
+  const sent = (await client.evaluate(() => (window as any).__walletCalls as string[])).filter((m) => m === "eth_sendTransaction");
+  expect(sent, "two approvals, then the swap").toHaveLength(3);
+  await expect(client.getByText(/Your wallet holds 40(\.00)? EURPT, 9\.\d\d EURTD/)).toBeVisible({ timeout: 20_000 });
   await expectHealthy(client);
   await expectHealthy(staff);
 });

@@ -492,6 +492,11 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   MetaMask supplies the address, is switched to the pool's chain or has it added, and signs the
   bank's message. This applies on route 2, and on route 3 after the officer's scan, where the bank
   issues the wallet credential to the officer. The older ways remain, folded away.
+- **Convert** (ADR 0070; S-27, S-28).
+  - An onboarded wallet converts EURC and EURTD both ways from the Onboard page in MetaMask, with
+    one-time approvals, a quote, and a 0.5% minimum-received.
+  - Staff convert for custody accounts and credit EURTD through the gateway from the Operator page.
+  - The quote maths is unit-tested; conversions are tested on the local chain through the lagging RPC.
 - **One wallet per KYB** (ADR 0069). Admitting a wallet offboards the client's previous one, on
   any route. An onboarded client sees **Bind a new wallet**, with no second review, and the Onboard
   page shows three stages. MetaMask is always asked to switch to the pool's chain just before
