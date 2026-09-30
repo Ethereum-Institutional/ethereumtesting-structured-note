@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bytesToHex, createPublicClient, getAddress, keccak256, parseAbi, toBytes, http, type Hex } from "viem";
+import { bytesToHex, createPublicClient, createWalletClient, getAddress, keccak256, parseAbi, toBytes, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { CORP, ISSUER, OFFICER, SCHEMAS, startStandIns } from "./standins.ts";
 import { startLaggingRpc } from "./lagging-rpc.ts";
@@ -248,4 +248,57 @@ test("a client that started with a holder wallet can cancel and ask its bank ins
   assert.equal(b.status, "awaiting-bank-review");
   await service.cancelAdmission(registrant as any, b.id);
   await assert.rejects(service.reviewSelfCustody(operator as any, b.id, "approve", { ...RECORD, kycReference: "KYC-TI1" }), /not awaiting review/, "staff cannot confirm a cancelled request");
+});
+
+// --- offboarding and revocation (ADRs 0063, 0064): last, since the final test revokes the KYB ---
+
+const GATE_ABI = parseAbi([
+  "function isAllowed(address) view returns (bool)",
+  "function void(address account)",
+]);
+
+test("staff offboard an admitted account: both grants go, with the reason recorded; the credentials stay", async () => {
+  const a = (await store.listAdmissions(50)).find((x: any) => x.route === "custodied" && x.status === "admitted")!;
+  const account = (a.data as any).assessment.summary.wallet as Hex;
+  assert.equal((await readPool(account)).allowed, true);
+  await assert.rejects(service.offboardAdmission(registrant as any, a.id, "test"), /Not permitted/);
+  await assert.rejects(service.offboardAdmission(operator as any, a.id, "  "), /Give the reason/);
+  await service.offboardAdmission(operator as any, a.id, "Client closed its account");
+  const after = (await store.admissionById(a.id))!;
+  assert.equal(after.status, "offboarded");
+  assert.equal((after.data as any).offboarded.reason, "Client closed its account");
+  assert.ok((after.data as any).offboarded.poolRevokeTx && (after.data as any).offboarded.registryRevokeTx);
+  const { allowed, flags } = await readPool(account);
+  assert.equal(allowed, false, "the pool grant is gone");
+  assert.equal(flags, 0, "the Identity Registry grant is gone");
+  const credential = (a.data as any).assessment.attestation.walletCredential.toLowerCase();
+  assert.equal(standIns.issued.get(credential)?.revokedAt, null, "the credentials at the bank are untouched");
+  await assert.rejects(service.offboardAdmission(operator as any, a.id, "again"), /Only an admitted account/);
+});
+
+test("revoking a wallet credential at the bank lets anyone void its pool grant", async () => {
+  const a = (await store.listAdmissions(50)).find((x: any) => x.route === "self-custody" && x.status === "admitted")!;
+  const account = (a.data as any).assessment.summary.wallet as Hex;
+  await service.revokeAtBank(operator as any, a.id, "wallet", "Wallet reported compromised");
+  const credential = (a.data as any).assessment.attestation.walletCredential.toLowerCase();
+  assert.equal(standIns.issued.get(credential)?.state, "revoked");
+  assert.equal(((await store.admissionById(a.id))!.data as any).bankRevocations[0].reason, "Wallet reported compromised");
+  // The protocol's own path: the revocation is on-chain, so any caller removes the grant.
+  const m = (await import("../lib/chain/manifest.ts")).loadManifest();
+  // Mnemonic index 20: a wallet signer, holding no role on the gate.
+  const wallet = createWalletClient({ account: privateKeyToAccount("0xeaa861a9a01391ed3d587d8a5a84ca56ee277629a8b02c22093a419bf240e65d"), transport: http(RPC) });
+  const hash = await wallet.writeContract({ address: m.venue.credentialGate, abi: GATE_ABI, functionName: "void", args: [account], chain: null });
+  await createPublicClient({ transport: http(RPC) }).waitForTransactionReceipt({ hash });
+  assert.equal((await readPool(account)).allowed, false, "voided by an unprivileged caller");
+});
+
+test("revoking a corporate identity needs the count of wallets it withdraws, and a changed count stops it", async () => {
+  const a = (await store.listAdmissions(50)).find((x: any) => x.route === "holder-wallet" && x.status === "admitted")!;
+  const cid = (a.data as any).assessment.attestation.primaryCredential;
+  const affected = (await service.restingOn(cid)).length;
+  assert.ok(affected >= 1);
+  await assert.rejects(service.revokeAtBank(operator as any, a.id, "corporate", "KYB withdrawn", affected + 1), /look again/);
+  assert.notEqual(standIns.issued.get(cid.toLowerCase())?.state, "revoked", "nothing was revoked");
+  await service.revokeAtBank(operator as any, a.id, "corporate", "KYB withdrawn", affected);
+  assert.equal(standIns.issued.get(cid.toLowerCase())?.state, "revoked");
 });

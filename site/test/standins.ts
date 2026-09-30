@@ -26,7 +26,7 @@ const LOCAL_ISSUER_PK = "0x224b7eb7449992aac96d631d9677f7bf5888245eef6d6eeda31e6
 
 type Issued = {
   credentialId: Hex; schema: string; subjectDid: string; state: string; issuedAt: number; expiresAt: number;
-  kycReference?: string; rootHex: Hex; rootAnchorTxHash: Hex | null; rootAnchorChain: string | null; revokedAt: null;
+  kycReference?: string; rootHex: Hex; rootAnchorTxHash: Hex | null; rootAnchorChain: string | null; revokedAt: number | null;
   anchorAt: number;
 };
 
@@ -79,7 +79,7 @@ export async function startStandIns(port: number, rpc: string, options: StandInO
   };
   const anchorer = createWalletClient({ account: privateKeyToAccount(LOCAL_ISSUER_PK), transport: http(rpc) });
   const reader = createPublicClient({ transport: http(rpc) });
-  const ROOTS = parseAbi(["function updateRoot(string did, bytes32 root)"]);
+  const ROOTS = parseAbi(["function updateRoot(string did, bytes32 root)", "function revoke(string did, bytes32 cid)"]);
   let anchoring = false;
   const anchorDue = async () => {
     if (anchoring) return;
@@ -147,7 +147,7 @@ export async function startStandIns(port: number, rpc: string, options: StandInO
     if (req.method === "GET" && req.url === "/v1/issuer/corporate-identity") return send(200, corporateIdentity());
 
     // The bank's issuer operator API (ADR 0054), behind its service key (ADR 0055).
-    if (req.url?.startsWith("/v1/admin/") || req.url?.startsWith("/v1/wallet-attestation/")) {
+    if (req.url?.startsWith("/v1/admin/") || req.url?.startsWith("/v1/wallet-attestation/") || req.url?.startsWith("/v1/credentials/")) {
       if (!authorised) return send(401, { error: { code: "unauthenticated", message: "unauthenticated" } });
     }
     if (req.method === "GET" && req.url?.startsWith("/v1/admin/credentials")) {
@@ -158,6 +158,18 @@ export async function startStandIns(port: number, rpc: string, options: StandInO
         .filter((c) => !q.has("schema") || c.schema === q.get("schema"))
         .map(({ anchorAt: _a, ...c }) => c);
       return send(200, { v: 1, credentials: list });
+    }
+    // Revocation (ADR 0064): as the real bank, a versioned body; the revocation is recorded on-chain.
+    const revoking = req.method === "POST" ? req.url?.match(/^\/v1\/credentials\/(0x[0-9a-fA-F]{64})\/revoke$/) : null;
+    if (revoking) {
+      const b = JSON.parse(body || "{}");
+      if (b.v !== 1) return send(400, { error: { code: "bad_version", message: "v must be 1" } });
+      const c = issued.get(revoking[1].toLowerCase());
+      if (!c) return send(404, { error: { code: "not_found", message: "no such credential" } });
+      const hash = await anchorer.writeContract({ address: options.revocations, abi: ROOTS, functionName: "revoke", args: [ISSUER, c.credentialId], chain: null });
+      await reader.waitForTransactionReceipt({ hash, pollingInterval: 250 });
+      Object.assign(c, { state: "revoked", revokedAt: Math.floor(Date.now() / 1000) });
+      return send(200, { v: 1, credentialId: c.credentialId, state: "revoked", revocationTxHash: hash, revocationReason: b.reason ?? null });
     }
     if (req.method === "POST" && req.url === "/v1/wallet-attestation/eth/initiate") {
       const b = JSON.parse(body);

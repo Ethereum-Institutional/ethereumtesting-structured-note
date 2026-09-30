@@ -140,6 +140,10 @@ th { font-family: var(--sans); font-size: 0.75rem; letter-spacing: 0.01em; color
 .pill.approved { background: var(--ok-bg); color: var(--ok); }
 .pill.revoked { background: var(--seal-bg); color: var(--seal); }
 .fields { display: grid; gap: 0.9rem 1.25rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); align-items: start; }
+.stack-actions { display: grid; gap: 0.5rem; min-width: 20rem; white-space: normal; }
+.stack-actions summary { cursor: pointer; color: var(--fg2); font-size: 0.875rem; }
+.stack-actions details[open] { background: var(--bg3); border-radius: 12px; padding: 0.75rem 0.9rem; }
+.stack-actions details[open] summary { margin-bottom: 0.75rem; }
 .actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
 td .actions { flex-wrap: nowrap; }
 label .muted { font-weight: 400; font-size: 0.75rem; }

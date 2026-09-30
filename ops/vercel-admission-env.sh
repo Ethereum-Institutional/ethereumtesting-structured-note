@@ -38,6 +38,8 @@ env = {
     "ADMISSION_VERIFIER_SEED": os.environ["ADMISSION_VERIFIER_SEED"],
     "ADMISSION_VERIFIER_INLINE_KEY": "1",  # self-signed: no registration with the protocol needed
 }
+if adm.get("bankConsoleUrl"):
+    env["BANK_CONSOLE_URL"] = adm["bankConsoleUrl"]  # where staff issue a new client (ADR 0065)
 for k in ("BANK_ISSUER_URL", "BANK_ISSUER_API_KEY"):
     if os.environ.get(k):
         env[k] = os.environ[k]

@@ -39,6 +39,7 @@ const STATUS: Record<Admission["status"], string> = {
   admitted: "Admitted to the conversion pool.",
   declined: "Declined by the bank.",
   cancelled: "You cancelled this request. Choose a way to be admitted below.",
+  offboarded: "Your bank has offboarded this wallet from the pool.",
   failed: "The admission could not be completed.",
 };
 
@@ -52,7 +53,7 @@ export default async function Onboard() {
   const [a, mine] = await Promise.all([store.latestAdmissionFor(who.id, [...CLIENT_ROUTES]), store.admissionsFor(who.id)]);
   const onboarded = mine.filter((x) => x.status === "admitted" && (CLIENT_ROUTES as readonly string[]).includes(x.route));
   const d = (a?.data ?? {}) as Record<string, any>;
-  const open = a && !["refused", "admitted", "declined", "cancelled", "failed"].includes(a.status);
+  const open = a && !["refused", "admitted", "declined", "cancelled", "offboarded", "failed"].includes(a.status);
 
   return (
     <div className="wrap">

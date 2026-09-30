@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { canonicalString } from "./canonical.ts";
 import { assess, type Assessment, type Received } from "./assess.ts";
-import { writeGrants } from "./grants.ts";
+import { removeGrants, writeGrants } from "./grants.ts";
 import {
   corporateIdentity,
   lodge,
@@ -18,7 +18,7 @@ import { getStore, type Admission, type Registrant } from "../store.ts";
 import { emailList, isOperator } from "../operators.ts";
 import { sendMail } from "../mail.ts";
 import { assessBankAdmission, type BankAdmissionInput, type BankRecord } from "./assess.ts";
-import { bankConfig, completeWalletAttestation, corporateIdentityFor, startWalletAttestation, type WalletChallenge } from "./bank.ts";
+import { bankConfig, completeWalletAttestation, corporateIdentityFor, revokeCredential, startWalletAttestation, type WalletChallenge } from "./bank.ts";
 import { custodyAccountFor, openCustodyAccount, poolAllows, readyToTrade, signAsCustodyAccount } from "./custody.ts";
 import { anchoringOf, type Anchor } from "./anchoring.ts";
 import { createHash } from "node:crypto";
@@ -365,6 +365,85 @@ export async function finishCustodied(staff: Registrant, id: string): Promise<vo
     await store.updateAdmission({ ...a, data: { ...d, account, error: (e as Error).message } }, "failed");
     throw e;
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Offboarding and revocation (ADRs 0063, 0064)
+// ---------------------------------------------------------------------------------------------
+
+const walletOf = (a: Admission) => ((a.data as Record<string, any>).assessment?.summary?.wallet ?? "") as Address;
+
+/**
+ * Offboards an admitted account (ADR 0063): its pool grant and Identity Registry grant are
+ * revoked by the site's own key, with the staff member's written reason. The credentials at the
+ * bank are untouched, so the client can be onboarded again.
+ */
+export async function offboardAdmission(staff: Registrant, id: string, reason: string): Promise<void> {
+  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!reason.trim()) throw new Error("Give the reason for offboarding.");
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.status !== "admitted") throw new Error("Only an admitted account can be offboarded.");
+  const d = a.data as Record<string, any>;
+  // Claimed first, so two clicks cannot both send.
+  if (!(await store.updateAdmission({ ...a, status: "failed", data: { ...d, error: "offboarding" } }, "admitted"))) {
+    throw new Error("That admission changed; look again.");
+  }
+  try {
+    const removed = await removeGrants(walletOf(a));
+    const offboarded = { by: staff.email, at: now(), reason: reason.trim(), ...removed };
+    await store.updateAdmission({ ...a, status: "offboarded", data: { ...d, offboarded, error: undefined } }, "failed");
+    await store.audit({ at: now(), actor: staff.email, action: `offboarded ${walletOf(a)}: ${reason.trim()}`, subject: a.id });
+  } catch (e) {
+    // Nothing is lost: the admission is admitted again and the error shown, to be retried.
+    await store.updateAdmission({ ...a, status: "admitted", data: { ...d, error: `offboarding failed: ${(e as Error).message}` } }, "failed");
+    throw e;
+  }
+}
+
+/** The admitted accounts resting on a corporate identity: what revoking it would withdraw. */
+export async function restingOn(corporateCredential: string): Promise<Admission[]> {
+  return (await getStore().listAdmissions(500)).filter(
+    (x) => x.status === "admitted" && (x.data as Record<string, any>).assessment?.attestation?.primaryCredential?.toLowerCase() === corporateCredential.toLowerCase(),
+  );
+}
+
+/**
+ * Revokes one of an admission's credentials at the bank (ADR 0064), separately from offboarding.
+ * The wallet credential affects this wallet only. The corporate identity is the client's KYB:
+ * every wallet onboarded on it falls, so staff confirm the number they were shown, and a changed
+ * number stops the revocation.
+ */
+export async function revokeAtBank(
+  staff: Registrant,
+  id: string,
+  which: "wallet" | "corporate",
+  reason: string,
+  confirmedCount?: number,
+): Promise<void> {
+  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!reason.trim()) throw new Error("Give the reason for revoking.");
+  const store = getStore();
+  const a = await store.admissionById(id);
+  const d = (a?.data ?? {}) as Record<string, any>;
+  const at = d.assessment?.attestation;
+  if (!a || !at) throw new Error("That admission has no credentials to revoke.");
+  const credentialId: string = which === "wallet" ? at.walletCredential : at.primaryCredential;
+  if (which === "corporate") {
+    const affected = (await restingOn(credentialId)).length;
+    if (confirmedCount !== affected) throw new Error(`The corporate identity now supports ${affected} admitted wallet(s), not ${confirmedCount}; look again before revoking.`);
+  }
+  await revokeCredential(bankConfig(), credentialId, reason.trim());
+  const entry = { which, credentialId, by: staff.email, at: now(), reason: reason.trim() };
+  const latest = (await store.admissionById(a.id))!;
+  const ld = latest.data as Record<string, any>;
+  await store.updateAdmission({ ...latest, data: { ...ld, bankRevocations: [...(ld.bankRevocations ?? []), entry] } }, latest.status);
+  await store.audit({
+    at: now(),
+    actor: staff.email,
+    action: `revoked the ${which === "wallet" ? "wallet credential" : "corporate identity"} ${credentialId} at the bank: ${reason.trim()}`,
+    subject: a.id,
+  });
 }
 
 /** The steps a client may walk away from: everything before the grants are being written (ADR 0058). */

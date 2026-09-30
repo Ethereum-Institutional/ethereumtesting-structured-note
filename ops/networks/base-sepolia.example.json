@@ -37,6 +37,7 @@
     },
     "verifierDid": "did:web:structurednote-project.ethereumtesting.com",
     "verifierName": "Access Issuer",
-    "bankIssuerKeyFile": "<file holding the issuer's ML-DSA-65 public key>"
+    "bankIssuerKeyFile": "<file holding the issuer's ML-DSA-65 public key>",
+    "bankConsoleUrl": "<where the bank's staff issue a new client's corporate identity>"
   }
 }

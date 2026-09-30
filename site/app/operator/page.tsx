@@ -4,7 +4,7 @@ import { getStore, type Registrant } from "@/lib/store";
 import { explorerAddress, explorerTx } from "@/lib/explorer";
 import { bankConfig, corporateIdentities, type IssuedCredential } from "@/lib/admission/bank";
 import { policyConfig } from "@/lib/admission/protocol";
-import { admitCustodiedAction, advanceAdmissionAction, decideAction, decideAdmissionAction, finishCustodiedAction, reviewSelfCustodyAction } from "../actions";
+import { admitCustodiedAction, advanceAdmissionAction, decideAction, decideAdmissionAction, finishCustodiedAction, offboardAction, revokeAtBankAction, reviewSelfCustodyAction } from "../actions";
 import { AnchorWatch } from "../AnchorWatch";
 import { PendingButton } from "../PendingButton";
 import { Bar } from "../Bar";
@@ -47,6 +47,17 @@ async function bankClients(): Promise<Clients> {
   }
 }
 
+/** Where the bank's staff issue a new client's corporate identity (ADR 0065); set per deployment. */
+function IssueAtBank() {
+  const url = process.env.BANK_CONSOLE_URL?.trim();
+  if (!url) return null;
+  return (
+    <span className="muted">
+      Client not listed? <a href={url} target="_blank" rel="noreferrer">Issue its corporate identity at the bank</a>, then reload this page.
+    </span>
+  );
+}
+
 /** The client's reference at the bank: chosen from the bank's own list, typed only if the list is unavailable. */
 function ClientReference({ clients, known }: { clients: Clients; known?: string }) {
   if ("error" in clients) {
@@ -70,7 +81,46 @@ function ClientReference({ clients, known }: { clients: Clients; known?: string 
           </option>
         ))}
       </select>
+      <IssueAtBank />
     </label>
+  );
+}
+
+/** Offboarding and revocation for an admitted account (ADRs 0063, 0064): each folded away until wanted. */
+function AdmittedActions({ id, affected }: { id: string; affected: number }) {
+  return (
+    <div className="stack-actions">
+      <details>
+        <summary>Offboard…</summary>
+        <form action={offboardAction} className="stack">
+          <input type="hidden" name="id" value={id} />
+          <p className="muted">Revokes its pool grant and its Identity Registry grant. It can no longer convert, or hold or move the deposit; the bank redeems any balance. Its credentials at the bank are untouched.</p>
+          <label>Reason<input name="reason" required maxLength={500} /></label>
+          <PendingButton working="Revoking both grants…">Offboard</PendingButton>
+        </form>
+      </details>
+      <details>
+        <summary>Revoke at the bank…</summary>
+        <form action={revokeAtBankAction} className="stack">
+          <input type="hidden" name="id" value={id} />
+          <input type="hidden" name="which" value="wallet" />
+          <p className="muted">Revokes this wallet's wallet-control credential at the bank. Only this wallet is affected.</p>
+          <label>Reason<input name="reason" required maxLength={500} /></label>
+          <PendingButton className="quiet" working="Revoking at the bank…">Revoke the wallet credential</PendingButton>
+        </form>
+        <form action={revokeAtBankAction} className="stack" style={{ marginTop: "1rem" }}>
+          <input type="hidden" name="id" value={id} />
+          <input type="hidden" name="which" value="corporate" />
+          <input type="hidden" name="affected" value={affected} />
+          <p className="muted">Revokes the client's corporate identity: its KYB. Every wallet onboarded on it falls.</p>
+          <label>Reason<input name="reason" required maxLength={500} /></label>
+          <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <input type="checkbox" required /> I understand this withdraws the KYB for {affected} admitted wallet{affected === 1 ? "" : "s"}.
+          </label>
+          <PendingButton className="quiet" working="Revoking at the bank…">Revoke the corporate identity</PendingButton>
+        </form>
+      </details>
+    </div>
   );
 }
 
@@ -105,6 +155,12 @@ export default async function Operator() {
   const store = getStore();
   const [rows, log, admissions, clients] = await Promise.all([store.listRegistrants(), store.auditLog(50), store.listAdmissions(30), bankClients()]);
   const queue = admissions.filter((a) => a.route === "self-custody" && a.status === "awaiting-bank-review");
+  // How many admitted wallets rest on each corporate identity: what revoking it would withdraw.
+  const resting = new Map<string, number>();
+  for (const x of await store.listAdmissions(500)) {
+    const cid = (x.data as Record<string, any>).assessment?.attestation?.primaryCredential?.toLowerCase();
+    if (x.status === "admitted" && cid) resting.set(cid, (resting.get(cid) ?? 0) + 1);
+  }
   const order = { pending: 0, approved: 1, unverified: 2, revoked: 3 } as const;
   rows.sort((a, b) => order[a.status] - order[b.status]);
   return (
@@ -200,8 +256,15 @@ export default async function Operator() {
               const d = a.data as Record<string, any>;
               const s = d.assessment?.ok ? d.assessment.summary : null;
               const w = d.written as { chainId?: number; poolGrantTx?: string; registryGrantTx?: string; readyTx?: string; poolGrantExpiresAt?: number } | undefined;
+              const revokedAtBank = ((d.bankRevocations ?? []) as Array<{ which: string; by: string; reason: string }>)
+                .map((r) => `${r.which === "wallet" ? "Wallet credential" : "Corporate identity"} revoked at the bank by ${r.by}: ${r.reason}.`)
+                .join(" ");
               const problem =
-                a.status === "awaiting-anchor"
+                a.status === "offboarded"
+                  ? `Offboarded by ${d.offboarded?.by} on ${when(d.offboarded?.at ?? null)}: ${d.offboarded?.reason} ${revokedAtBank}`
+                  : revokedAtBank && a.status === "admitted"
+                  ? `${revokedAtBank} Offboard it to remove its grants now; otherwise anyone can void its pool grant once the revocation is on-chain.`
+                  : a.status === "awaiting-anchor"
                   ? `Waiting for the bank to anchor ${d.anchoring?.pending?.length ?? "its"} credential${d.anchoring?.pending?.length === 1 ? "" : "s"} (since ${when(d.anchorSince ?? a.createdAt).slice(11)}); usually about a minute.`
                   : d.assessment && !d.assessment.ok ? d.assessment.problems.join(" ") : w ? "" : d.error ?? "";
               const anchorTxs = [...new Set(((d.anchors ?? []) as Array<{ anchorTx: string }>).map((x) => x.anchorTx))];
@@ -211,7 +274,7 @@ export default async function Operator() {
                 <tr key={a.id}>
                   <td>{when(a.createdAt)}</td>
                   <td>{a.route}</td>
-                  <td><span className={`pill ${a.status === "ready" || a.status === "awaiting-anchor" ? "pending" : a.status === "admitted" ? "approved" : ""}`}>{a.status}</span></td>
+                  <td><span className={`pill ${a.status === "ready" || a.status === "awaiting-anchor" ? "pending" : a.status === "admitted" ? "approved" : a.status === "offboarded" ? "revoked" : ""}`}>{a.status}</span></td>
                   <td>{s?.corporation ?? d.record?.legalName ?? ""}</td>
                   <td>{s?.officerDid ? `${s.role}, ${s.officerDid}` : ""}</td>
                   <td>{s ? <Linked href={explorerAddress(w?.chainId, s.wallet)}>{s.wallet}</Linked> : d.account ? <Linked href={explorerAddress(w?.chainId, d.account)}>{d.account}</Linked> : d.request?.walletAddress ?? ""}</td>
@@ -230,6 +293,12 @@ export default async function Operator() {
                         <input type="hidden" name="id" value={a.id} />
                         <PendingButton className="quiet" working="Setting the trading approvals…">Set trading approvals</PendingButton>
                       </form>
+                    )}
+                    {a.status === "admitted" && (
+                      <AdmittedActions id={a.id} affected={resting.get(String(d.assessment?.attestation?.primaryCredential ?? "").toLowerCase()) ?? 1} />
+                    )}
+                    {a.status === "offboarded" && (
+                      <span className="muted">{tx(d.offboarded?.poolRevokeTx)} {tx(d.offboarded?.registryRevokeTx)}</span>
                     )}
                     {a.status === "ready" && (
                       <div className="actions">

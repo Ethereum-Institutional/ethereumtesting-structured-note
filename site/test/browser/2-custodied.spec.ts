@@ -26,6 +26,8 @@ test("staff admit a custodied client in one action, through a lagging RPC, withi
   await page.goto("/operator");
   const form = page.locator("form").filter({ has: page.getByLabel("Custody account reference") });
   const ref = `SEG-${Date.now()}`;
+  // A client the bank has not issued yet is added in the bank's own console (ADR 0065).
+  await expect(form.getByRole("link", { name: "Issue its corporate identity at the bank" })).toBeVisible();
   await form.getByLabel("Client (corporate identity at the bank)").selectOption("KYC-TI1");
   await form.getByLabel("Custody account reference").fill(ref);
   await form.getByLabel("Client instruction reference").fill(`INS-${ref}`);
@@ -58,6 +60,17 @@ test("staff admit a custodied client in one action, through a lagging RPC, withi
   // Pool grant, registry grant, trading approvals, and the two anchoring transactions (the
   // corporate identity's earlier batch and the wallet credential's).
   expect((await row.innerText()).match(/0x[0-9a-f]{8}…/g) ?? [], "five transactions recorded").toHaveLength(5);
+
+  // Offboarding asks for a reason, says what the corporate identity's revocation would withdraw,
+  // and leaves the row offboarded with both revocations linked (ADRs 0063, 0064).
+  await row.getByText("Revoke at the bank…").click();
+  await expect(row).toContainText("withdraws the KYB for 1 admitted wallet");
+  await row.getByText("Offboard…").click();
+  await row.getByLabel("Reason").first().fill("Client closed its account");
+  await row.getByRole("button", { name: "Offboard", exact: true }).click();
+  await expect(row.locator(".pill")).toHaveText("offboarded", { timeout: 30_000 });
+  await expect(row).toContainText("Offboarded by operator@example.org");
+  await expect(row).toContainText("Client closed its account");
 
   await page.getByRole("link", { name: "Onboard" }).click();
   await expect(page).toHaveURL(/\/onboard$/);

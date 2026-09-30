@@ -6,6 +6,8 @@ import { confirm, currentOperator, currentRegistrant, decide, register, requestS
 import {
   admitCustodied,
   advanceAdmission,
+  offboardAdmission,
+  revokeAtBank,
   cancelAdmission,
   finishCustodied,
   decideAdmission,
@@ -141,6 +143,22 @@ export async function admitCustodiedAction(f: FormData) {
         clientRef: field(f, "clientRef").trim(),
         record: bankRecord(f),
       }),
+    "/operator",
+  );
+}
+
+export async function offboardAction(f: FormData) {
+  const op = await currentOperator();
+  if (!op) throw new Error("Not permitted.");
+  await recorded(() => offboardAdmission(op, field(f, "id"), field(f, "reason")), "/operator");
+}
+
+export async function revokeAtBankAction(f: FormData) {
+  const op = await currentOperator();
+  if (!op) throw new Error("Not permitted.");
+  const which = field(f, "which") === "corporate" ? "corporate" : "wallet";
+  await recorded(
+    () => revokeAtBank(op, field(f, "id"), which, field(f, "reason"), which === "corporate" ? Number(field(f, "affected")) : undefined),
     "/operator",
   );
 }

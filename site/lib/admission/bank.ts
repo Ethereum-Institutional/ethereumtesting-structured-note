@@ -129,3 +129,8 @@ export type WalletAttested = { credentialId: Hex; walletAddress: string; attesta
 export function completeWalletAttestation(b: BankConfig, challengeId: string, walletAddress: string, addressType: "eoa" | "smart_contract", signature: Hex) {
   return call<WalletAttested>(b, "/v1/wallet-attestation/eth/complete", { v: 1, challengeId, walletAddress, addressType, signature });
 }
+
+/** Revokes a credential at the bank (ADR 0064). The bank records the revocation in the protocol's registry. */
+export function revokeCredential(b: BankConfig, credentialId: string, reason: string) {
+  return call<Record<string, unknown>>(b, `/v1/credentials/${encodeURIComponent(credentialId)}/revoke`, { v: 1, reason });
+}
