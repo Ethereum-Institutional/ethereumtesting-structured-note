@@ -484,6 +484,13 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   0055). The key in use carries more scopes than the site needs; the owner chose to keep it. The
   bank sends integers in typed data as decimal strings, so the site signs them as numbers
   (`normaliseTypedData`).
+- **Clients are entered once** (ADR 0066). Under Operator → Clients, staff add a corporate client's
+  facts. The site has the bank's issuer server sign and anchor them as its corporate identity
+  (`credentials:issue`), and keeps the claims. Routes 1 and 2 then take only the client and, for
+  custody, two references. **Re-screen** issues again when the 30-day screening lapses.
+- **Offboarding and revocation** (ADRs 0063, 0064). **Offboard** revokes both grants, with a
+  reason. **Revoke at the bank** revokes the wallet credential, or the corporate identity as its
+  own confirmed step.
 - **Grants wait for anchoring** (ADR 0060). On every route, the grants are written only once each
   credential they rest on is anchored in the bank's registry: reported by the bank, and its
   `updateRoot` transaction checked on-chain. The admission shows `awaiting-anchor` for about a

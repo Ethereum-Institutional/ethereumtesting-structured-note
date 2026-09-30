@@ -72,4 +72,5 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0062](0062-client-routes-stay-open.md) | A client can always onboard another wallet; the bank's custodied admissions never block it | Accepted |
 | [0063](0063-offboard-by-revoking-both-grants.md) | Staff offboard an account by revoking both of its grants, with a written reason | Accepted |
 | [0064](0064-revoke-at-the-bank-separately.md) | Revoking at the bank is separate from offboarding, and the corporate identity is its own confirmed step | Accepted |
-| [0065](0065-new-clients-at-the-bank.md) | New corporate clients are added in the bank's own console, linked from the Operator page | Accepted |
+| [0065](0065-new-clients-at-the-bank.md) | New corporate clients are added in the bank's own console, linked from the Operator page | Superseded by 0066 |
+| [0066](0066-site-issues-client-identities.md) | The site is the bank's onboarding system: staff enter a client once, and the issuer server signs and anchors it | Accepted |

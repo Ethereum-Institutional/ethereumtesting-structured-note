@@ -41,7 +41,7 @@ const lagging = await startLaggingRpc(LAGGING_RPC_PORT, CHAIN); // the site read
 const log = createWriteStream(SERVER_LOG);
 const next = spawn("npx", ["next", "start", "-p", String(PORT)], {
   cwd: SITE_DIR,
-  env: { ...process.env, ...standIns.env(lagging.url, MANIFEST, SITE), BANK_CONSOLE_URL: `${standIns.url}/console`, ALLOW_FILE_STORE: "1", FILE_STORE_DIR: STORE_DIR },
+  env: { ...process.env, ...standIns.env(lagging.url, MANIFEST, SITE), ALLOW_FILE_STORE: "1", FILE_STORE_DIR: STORE_DIR },
   stdio: ["ignore", "pipe", "pipe"],
 });
 next.stdout.pipe(log);

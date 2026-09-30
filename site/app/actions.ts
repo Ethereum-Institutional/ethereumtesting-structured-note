@@ -20,6 +20,7 @@ import {
   submitSelfCustodySignature,
 } from "@/lib/admission/service";
 import { getStore } from "@/lib/store";
+import { addClient, rescreenClient } from "@/lib/admission/clients";
 import { MailUnavailable } from "@/lib/mail";
 import { siteOrigin } from "@/lib/origin";
 
@@ -119,19 +120,6 @@ export async function decideAdmissionAction(f: FormData) {
   }, "/operator");
 }
 
-/** The bank's statement of a client's details, from its own file (ADR 0054). */
-function bankRecord(f: FormData) {
-  const screened = field(f, "screenedOn");
-  return {
-    legalName: field(f, "legalName").trim(),
-    kycReference: field(f, "kycReference").trim(),
-    jurisdiction: field(f, "jurisdiction").trim().toUpperCase(),
-    status: field(f, "status") || "active",
-    screenedAt: screened ? Math.floor(Date.parse(`${screened}T00:00:00Z`) / 1000) : Math.floor(Date.now() / 1000),
-    ...(field(f, "investorClass") ? { investorClass: field(f, "investorClass") } : {}),
-  };
-}
-
 export async function admitCustodiedAction(f: FormData) {
   const op = await currentOperator();
   if (!op) throw new Error("Not permitted.");
@@ -141,10 +129,44 @@ export async function admitCustodiedAction(f: FormData) {
         kycReference: field(f, "kycReference").trim(),
         instructionRef: field(f, "instructionRef").trim(),
         clientRef: field(f, "clientRef").trim(),
-        record: bankRecord(f),
       }),
     "/operator",
   );
+}
+
+/** Adds a corporate client; the bank issues its corporate identity from what staff enter (ADR 0066). */
+export async function addClientAction(_prev: { ok?: string; error?: string }, f: FormData): Promise<{ ok?: string; error?: string }> {
+  const op = await currentOperator();
+  if (!op) return { error: "Not permitted." };
+  const get = (k: string) => field(f, k).trim();
+  try {
+    const c = await addClient(op, {
+      kycReference: get("kycReference"),
+      subjectDid: get("subjectDid"),
+      legalName: get("legalName"),
+      legalForm: get("legalForm"),
+      registrationNumber: get("registrationNumber"),
+      jurisdiction: get("jurisdiction"),
+      incorporationDate: get("incorporationDate"),
+      status: get("status"),
+      investorClass: get("investorClass"),
+      ceoOfficerDid: get("ceoOfficerDid"),
+      cooOfficerDid: get("cooOfficerDid"),
+      cfoOfficerDid: get("cfoOfficerDid"),
+    });
+    return { ok: `Added ${c.claims.legalName} (${c.kycReference}). The bank issued its corporate identity; it is anchored within about a minute.` };
+  } catch (e) {
+    console.error(e);
+    return { error: (e as Error).message };
+  } finally {
+    revalidatePath("/operator");
+  }
+}
+
+export async function rescreenClientAction(f: FormData) {
+  const op = await currentOperator();
+  if (!op) throw new Error("Not permitted.");
+  await recorded(() => rescreenClient(op, field(f, "id")), "/operator");
 }
 
 export async function offboardAction(f: FormData) {
@@ -175,7 +197,7 @@ export async function reviewSelfCustodyAction(f: FormData) {
   const d = field(f, "decision");
   await recorded(async () => {
     if (d !== "approve" && d !== "decline") throw new Error(`Unknown decision: ${d || "none"}.`);
-    await reviewSelfCustody(op, field(f, "id"), d, d === "approve" ? bankRecord(f) : undefined);
+    await reviewSelfCustody(op, field(f, "id"), d, d === "approve" ? field(f, "kycReference").trim() : undefined);
   }, "/operator");
 }
 

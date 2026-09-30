@@ -28,6 +28,7 @@ type Issued = {
   credentialId: Hex; schema: string; subjectDid: string; state: string; issuedAt: number; expiresAt: number;
   kycReference?: string; rootHex: Hex; rootAnchorTxHash: Hex | null; rootAnchorChain: string | null; revokedAt: number | null;
   anchorAt: number;
+  claims?: Record<string, unknown>;
 };
 
 export type StandInOptions = {
@@ -64,6 +65,8 @@ export async function startStandIns(port: number, rpc: string, options: StandInO
   const cid = (s: string) => keccak256(toBytes(`${s}/${now}`));
   const lodged = new Map<string, any>();
   const challenges = new Map<string, any>();
+  const issuances = new Map<string, any>();
+  let issuanceCount = 0;
   let lastLodged: any = null;
   const anchorDelayMs = options.anchorDelayMs ?? 3000;
 
@@ -147,7 +150,7 @@ export async function startStandIns(port: number, rpc: string, options: StandInO
     if (req.method === "GET" && req.url === "/v1/issuer/corporate-identity") return send(200, corporateIdentity());
 
     // The bank's issuer operator API (ADR 0054), behind its service key (ADR 0055).
-    if (req.url?.startsWith("/v1/admin/") || req.url?.startsWith("/v1/wallet-attestation/") || req.url?.startsWith("/v1/credentials/")) {
+    if (["/v1/admin/", "/v1/wallet-attestation/", "/v1/credentials/", "/v1/issuance/"].some((p) => req.url?.startsWith(p))) {
       if (!authorised) return send(401, { error: { code: "unauthenticated", message: "unauthenticated" } });
     }
     if (req.method === "GET" && req.url?.startsWith("/v1/admin/credentials")) {
@@ -156,9 +159,34 @@ export async function startStandIns(port: number, rpc: string, options: StandInO
       const list = [...issued.values()]
         .filter((c) => !q.has("kycReference") || c.kycReference === q.get("kycReference"))
         .filter((c) => !q.has("schema") || c.schema === q.get("schema"))
-        .map(({ anchorAt: _a, ...c }) => c);
+        .map(({ anchorAt: _a, claims: _c, ...c }) => c);
       return send(200, { v: 1, credentials: list });
     }
+    // Issuance from claims the site supplies (ADR 0066), in the real server's two steps.
+    if (req.method === "POST" && req.url === "/v1/issuance/initiate") {
+      const b = JSON.parse(body || "{}");
+      if (b.v !== 1) return send(400, { error: { code: "bad_version", message: "v must be 1" } });
+      if (!/^did:elabify:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+:[A-Za-z0-9_:.x-]+$/.test(b.subjectDid ?? "")) return send(400, { error: { code: "bad_request", message: `Invalid subject DID: ${b.subjectDid}` } });
+      if (!Object.values(SCHEMAS).includes(b.schema)) return send(400, { error: { code: "unknown_schema", message: `Schema not registered: ${b.schema}` } });
+      const issuanceId = `iss_${++issuanceCount}_${now}`;
+      issuances.set(issuanceId, b);
+      return send(200, { v: 1, issuanceId, state: "initiated", expiresAt: now + 3600 });
+    }
+    const completing = req.method === "POST" ? req.url?.match(/^\/v1\/issuance\/([^/]+)\/complete$/) : null;
+    if (completing) {
+      const b = JSON.parse(body || "{}");
+      const started = issuances.get(decodeURIComponent(completing[1]));
+      if (!started) return send(404, { error: { code: "not_found", message: "Unknown issuance" } });
+      if (b.v !== 1) return send(400, { error: { code: "bad_version", message: "v must be 1" } });
+      const required = started.schema === SCHEMAS.corporateIdentity ? ["id", "legalName", "legalForm", "registrationNumber", "jurisdiction", "incorporationDate", "status"] : [];
+      const missing = required.filter((k) => !(k in (b.claimsOverride ?? {})));
+      if (missing.length) return send(400, { error: { code: "missing_claims", message: `Schema ${started.schema} requires claims that were not supplied (${missing.join(", ")})` } });
+      issuances.delete(decodeURIComponent(completing[1]));
+      const credentialId = keccak256(toBytes(`issued ${completing[1]} ${JSON.stringify(b.claimsOverride)}`));
+      issue(credentialId, started.schema, started.subjectDid, { kycReference: started.kycReference, claims: b.claimsOverride, expiresAt: Math.floor(Date.now() / 1000) + (started.validitySeconds ?? 365 * 86_400) });
+      return send(200, { v: 1, issuanceId: completing[1], credentialId, state: "signed_pending_anchor", pickupUrl: `${url}/v1/issuance/pickup/${credentialId.slice(2, 18)}`, estimatedAnchorAt: now + 60 });
+    }
+
     // Revocation (ADR 0064): as the real bank, a versioned body; the revocation is recorded on-chain.
     const revoking = req.method === "POST" ? req.url?.match(/^\/v1\/credentials\/(0x[0-9a-fA-F]{64})\/revoke$/) : null;
     if (revoking) {

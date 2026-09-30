@@ -1,87 +1,48 @@
 import { notFound } from "next/navigation";
 import { currentOperator } from "@/lib/access";
-import { getStore, type Registrant } from "@/lib/store";
+import { getStore, type Client, type Registrant } from "@/lib/store";
 import { explorerAddress, explorerTx } from "@/lib/explorer";
-import { bankConfig, corporateIdentities, type IssuedCredential } from "@/lib/admission/bank";
-import { policyConfig } from "@/lib/admission/protocol";
-import { admitCustodiedAction, advanceAdmissionAction, decideAction, decideAdmissionAction, finishCustodiedAction, offboardAction, revokeAtBankAction, reviewSelfCustodyAction } from "../actions";
+import { bankConfig, issuedCredentials, type IssuedCredential } from "@/lib/admission/bank";
+import { clientsIssuedElsewhere, CORPORATE_STATUSES, LEGAL_FORMS } from "@/lib/admission/clients";
+import {
+  addClientAction,
+  admitCustodiedAction,
+  advanceAdmissionAction,
+  decideAction,
+  decideAdmissionAction,
+  finishCustodiedAction,
+  offboardAction,
+  rescreenClientAction,
+  revokeAtBankAction,
+  reviewSelfCustodyAction,
+} from "../actions";
 import { AnchorWatch } from "../AnchorWatch";
 import { PendingButton } from "../PendingButton";
 import { Bar } from "../Bar";
-import { NUMERIC } from "@/lib/admission/assess";
-import { JurisdictionSelect, ScreeningDate } from "./RecordFields";
+import { NUMERIC, SCREENING_MAX_AGE } from "@/lib/admission/assess";
+import { AddClientForm } from "./AddClientForm";
 
 export const dynamic = "force-dynamic";
 
-/** The pool gate's screening maximum age (script/01_DeployVenue.s.sol, SCREENING_MAX_AGE). */
-const SCREENING_MAX_AGE_DAYS = 30;
+const day = (iso: string) => iso.slice(0, 10);
+const ageDays = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
 
-/** What the bank states from its own file about the client (ADR 0054). */
-function BankRecordFields() {
-  return (
-    <>
-      <label>Legal name<input name="legalName" required maxLength={200} /></label>
-      <JurisdictionSelect allowed={Object.keys(NUMERIC)} />
-      <label>
-        Status
-        <select name="status" defaultValue="active"><option value="active">Active</option><option value="suspended">Suspended</option></select>
-      </label>
-      <ScreeningDate maxAgeDays={SCREENING_MAX_AGE_DAYS} />
-      <label>
-        Investor class
-        <select name="investorClass" defaultValue=""><option value="">Institutional (by policy)</option><option value="professional">Professional</option></select>
-      </label>
-    </>
-  );
-}
-
-type Clients = { list: IssuedCredential[] } | { error: string };
-
-/** The bank's clients with a live corporate identity, for its staff to choose from (ADR 0057). */
-async function bankClients(): Promise<Clients> {
-  try {
-    const list = await corporateIdentities(bankConfig(), policyConfig().schemas.corporateIdentity, Math.floor(Date.now() / 1000));
-    return { list };
-  } catch (e) {
-    return { error: (e as Error).message };
+/** The client an admission is for: chosen from the clients added on this site (ADR 0066). */
+function ClientReference({ clients, known }: { clients: Client[]; known?: string }) {
+  if (!clients.length) {
+    return <p className="muted">No client has been added yet: add one under Clients above.</p>;
   }
-}
-
-/** Where the bank's staff issue a new client's corporate identity (ADR 0065); set per deployment. */
-function IssueAtBank() {
-  const url = process.env.BANK_CONSOLE_URL?.trim();
-  if (!url) return null;
-  return (
-    <span className="muted">
-      Client not listed? <a href={url} target="_blank" rel="noreferrer">Issue its corporate identity at the bank</a>, then reload this page.
-    </span>
-  );
-}
-
-/** The client's reference at the bank: chosen from the bank's own list, typed only if the list is unavailable. */
-function ClientReference({ clients, known }: { clients: Clients; known?: string }) {
-  if ("error" in clients) {
-    return (
-      <label>
-        Client reference at the bank
-        <input name="kycReference" required maxLength={200} defaultValue={known} />
-        <span className="muted">The bank's client list is unavailable ({clients.error}).</span>
-      </label>
-    );
-  }
-  const day = (sec: number) => new Date(sec * 1000).toISOString().slice(0, 10);
   return (
     <label>
-      Client (corporate identity at the bank)
-      <select name="kycReference" required defaultValue={clients.list.some((c) => c.kycReference === known) ? known : ""}>
+      Client
+      <select name="kycReference" required defaultValue={clients.some((c) => c.kycReference === known) ? known : ""}>
         <option value="" disabled>Choose the client…</option>
-        {clients.list.map((c) => (
-          <option key={c.kycReference} value={c.kycReference}>
-            {c.kycReference}, issued {day(c.issuedAt)}, to {day(c.expiresAt)}
+        {clients.map((c) => (
+          <option key={c.id} value={c.kycReference}>
+            {String(c.claims.legalName)} ({c.kycReference}), {String(c.claims.jurisdiction)}, screened {day(c.issuedAt)}
           </option>
         ))}
       </select>
-      <IssueAtBank />
     </label>
   );
 }
@@ -149,11 +110,19 @@ function Decide({ r, self }: { r: Registrant; self: boolean }) {
   return <div className="actions">{buttons}</div>;
 }
 
-export default async function Operator() {
+export default async function Operator({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const op = await currentOperator();
   if (!op) notFound();
   const store = getStore();
-  const [rows, log, admissions, clients] = await Promise.all([store.listRegistrants(), store.auditLog(50), store.listAdmissions(30), bankClients()]);
+  const params = await searchParams;
+  const [rows, log, admissions, clients] = await Promise.all([store.listRegistrants(), store.auditLog(50), store.listAdmissions(30), store.listClients()]);
+  // The bank's view of each credential (anchored or not), and the clients it holds that this site did not add.
+  const [bankView, elsewhere] = await Promise.all([
+    issuedCredentials(bankConfig()).then((l) => ({ list: l })).catch((e: Error) => ({ error: e.message, list: [] as IssuedCredential[] })),
+    clientsIssuedElsewhere().catch(() => [] as IssuedCredential[]),
+  ]);
+  const stateOf = new Map(bankView.list.map((c) => [c.credentialId.toLowerCase(), c]));
+  const prefill = params.prefill ? elsewhere.find((c) => c.kycReference === params.prefill) : undefined;
   const queue = admissions.filter((a) => a.route === "self-custody" && a.status === "awaiting-bank-review");
   // How many admitted wallets rest on each corporate identity: what revoking it would withdraw.
   const resting = new Map<string, number>();
@@ -191,18 +160,93 @@ export default async function Operator() {
           </tbody>
         </table>
       </div>
+      <h2 id="clients">Clients</h2>
+      <section className="panel">
+        <p className="muted">
+          The bank's corporate clients. Their facts are entered once, here; the bank's issuer server signs and anchors
+          them as the client's corporate identity, and every route reads them from here.
+        </p>
+        {"error" in bankView && <p className="notice err">The bank could not be reached: {bankView.error}</p>}
+        {clients.length > 0 && (
+          <div className="table-wrap">
+            <table style={{ whiteSpace: "nowrap" }}>
+              <thead>
+                <tr><th>Client</th><th>Reference</th><th>Form</th><th>Jurisdiction</th><th>Status</th><th>Class</th><th>DID</th><th>Screened</th><th>Corporate identity</th><th>Pickup</th><th /></tr>
+              </thead>
+              <tbody>
+                {clients.map((c) => {
+                  const bank = stateOf.get(c.credentialId.toLowerCase());
+                  const age = ageDays(c.issuedAt);
+                  const stale = age * 86_400 > SCREENING_MAX_AGE;
+                  return (
+                    <tr key={c.id}>
+                      <td>{String(c.claims.legalName)}</td>
+                      <td>{c.kycReference}</td>
+                      <td>{String(c.claims.legalForm)}</td>
+                      <td>{String(c.claims.jurisdiction)}</td>
+                      <td>{String(c.claims.status)}</td>
+                      <td>{String(c.claims.investorClass ?? "institutional by policy")}</td>
+                      <td>{c.subjectDid}</td>
+                      <td>
+                        {day(c.issuedAt)} {stale ? <span className="pill revoked">over 30 days: re-screen</span> : <span className="muted">({age} d)</span>}
+                      </td>
+                      <td>
+                        {c.credentialId.slice(0, 10)}… <span className={`pill ${bank?.revokedAt ? "revoked" : bank?.rootAnchorTxHash ? "approved" : "pending"}`}>{bank?.revokedAt ? "revoked" : bank?.rootAnchorTxHash ? "anchored" : bank ? "pending anchor" : "not at the bank"}</span>
+                      </td>
+                      <td><input readOnly value={c.pickupUrl} aria-label={`Pickup URL for ${c.kycReference}`} style={{ width: "14rem", fontSize: "0.75rem" }} /></td>
+                      <td>
+                        <form action={rescreenClientAction}>
+                          <input type="hidden" name="id" value={c.id} />
+                          <PendingButton className="quiet" working="Issuing again…">Re-screen</PendingButton>
+                        </form>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {elsewhere.length > 0 && (
+          <>
+            <h3>Issued outside this site</h3>
+            <p className="muted">The bank holds these corporate identities, but this site does not know their facts. Re-issue a client here before onboarding it.</p>
+            <ul>
+              {elsewhere.map((c) => (
+                <li key={c.credentialId}>
+                  {c.kycReference}, issued {new Date(c.issuedAt * 1000).toISOString().slice(0, 10)}, to {c.subjectDid}{" "}
+                  <a href={`?prefill=${encodeURIComponent(c.kycReference ?? "")}#add-client`}>Re-issue here</a>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <div id="add-client">
+          <h3>Add a corporate client</h3>
+          <div>
+            <AddClientForm
+              action={addClientAction}
+              allowed={Object.keys(NUMERIC)}
+              legalForms={LEGAL_FORMS}
+              statuses={CORPORATE_STATUSES}
+              prefill={prefill ? { kycReference: prefill.kycReference, subjectDid: prefill.subjectDid } : undefined}
+            />
+          </div>
+        </div>
+      </section>
+
       <h2 id="custodied">Admit a custodied client</h2>
       <section className="panel">
         <p className="muted">
           On the client's instruction: opens a segregated custody account, mints its wallet credential under the client's
-          existing corporate identity, writes both grants, and makes the account ready to trade.
+          corporate identity, writes both grants once the bank has anchored it, and makes the account ready to trade.
+          The client's facts come from Clients above.
         </p>
         <form action={admitCustodiedAction} className="stack">
           <div className="fields">
             <ClientReference clients={clients} />
             <label>Custody account reference<input name="clientRef" required maxLength={64} /></label>
             <label>Client instruction reference<input name="instructionRef" required maxLength={200} /></label>
-            <BankRecordFields />
           </div>
           <div className="actions">
             <PendingButton working="Opening the custody account, binding its wallet with the bank, writing both grants and setting its trading approvals. This takes up to a minute; keep this page open.">
@@ -225,7 +269,6 @@ export default async function Operator() {
               <input type="hidden" name="decision" value="approve" />
               <div className="fields">
                 <ClientReference clients={clients} known={r.knownReference ?? r.kycReference} />
-                <BankRecordFields />
               </div>
               <div className="actions">
                 <PendingButton working="Finding the client's corporate identity at the bank…">Confirm the client's KYB</PendingButton>

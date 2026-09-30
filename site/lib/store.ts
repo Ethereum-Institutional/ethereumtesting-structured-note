@@ -64,6 +64,28 @@ export type Admission = {
   data: Record<string, unknown>;
 };
 
+/**
+ * A corporate client as the bank's onboarding records it (ADR 0066): the facts staff entered once,
+ * and the corporate identity the bank's issuer server signed and anchored from them.
+ */
+export type Client = {
+  id: string;
+  /** The bank's own reference for the client. */
+  kycReference: string;
+  subjectDid: string;
+  /** The claims sent for issuance, exactly as sent. */
+  claims: Record<string, unknown>;
+  credentialId: string;
+  issuanceId: string;
+  pickupUrl: string;
+  /** When the current credential was issued: the client's screening date (ADR 0033). */
+  issuedAt: string;
+  issuedBy: string;
+  createdAt: string;
+  /** Earlier credentials for the same client, superseded by a re-screen. */
+  previous: Array<{ credentialId: string; issuedAt: string }>;
+};
+
 export interface Store {
   registrantByEmail(email: string): Promise<Registrant | null>;
   registrantById(id: string): Promise<Registrant | null>;
@@ -97,6 +119,12 @@ export interface Store {
   latestAdmissionFor(registrantId: string, routes?: AdmissionRoute[]): Promise<Admission | null>;
   /** Every admission the registrant started, newest first. */
   admissionsFor(registrantId: string): Promise<Admission[]>;
+
+  putClient(c: Client): Promise<void>;
+  updateClient(c: Client): Promise<void>;
+  clientById(id: string): Promise<Client | null>;
+  clientByReference(kycReference: string): Promise<Client | null>;
+  listClients(): Promise<Client[]>;
 }
 
 // --------------------------------------------------------------------------------------------
@@ -127,6 +155,12 @@ create table if not exists sessions (
   hash text primary key,
   registrant_id text not null references registrants(id),
   expires_at timestamptz not null
+);
+create table if not exists clients (
+  id text primary key,
+  kyc_reference text not null unique,
+  created_at timestamptz not null,
+  data jsonb not null
 );
 create table if not exists admissions (
   id text primary key,
@@ -296,8 +330,32 @@ function postgresStore(url: string): Store {
       const s = await q();
       return (await s`select * from admissions where registrant_id = ${registrantId} order by created_at desc limit 100`).map(toAdmission);
     },
+    async putClient(c) {
+      const s = await q();
+      await s`insert into clients (id, kyc_reference, created_at, data) values (${c.id}, ${c.kycReference}, ${c.createdAt}, ${s.json(c as any)})`;
+    },
+    async updateClient(c) {
+      const s = await q();
+      await s`update clients set data = ${s.json(c as any)} where id = ${c.id}`;
+    },
+    async clientById(id) {
+      const s = await q();
+      const [r] = await s`select data from clients where id = ${id}`;
+      return r ? (toJson(r.data) as Client) : null;
+    },
+    async clientByReference(kycReference) {
+      const s = await q();
+      const [r] = await s`select data from clients where kyc_reference = ${kycReference}`;
+      return r ? (toJson(r.data) as Client) : null;
+    },
+    async listClients() {
+      const s = await q();
+      return (await s`select data from clients order by created_at desc`).map((r) => toJson(r.data) as Client);
+    },
   };
 }
+
+const toJson = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v);
 
 // --------------------------------------------------------------------------------------------
 // File, development only
@@ -309,6 +367,7 @@ type FileData = {
   sessions: { hash: string; registrantId: string; expiresAt: string }[];
   audit: AuditEntry[];
   admissions?: Admission[];
+  clients?: Client[];
 };
 
 function fileStore(dir: string): Store {
@@ -415,6 +474,26 @@ function fileStore(dir: string): Store {
     },
     async admissionsFor(registrantId) {
       return [...(load().admissions ?? [])].filter((a) => a.registrantId === registrantId).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
+    },
+    async putClient(c) {
+      edit((d) => {
+        if ((d.clients ?? []).some((x) => x.kycReference === c.kycReference)) throw new Error(`a client with reference ${c.kycReference} already exists`);
+        d.clients = [...(d.clients ?? []), c];
+      });
+    },
+    async updateClient(c) {
+      edit((d) => {
+        d.clients = (d.clients ?? []).map((x) => (x.id === c.id ? c : x));
+      });
+    },
+    async clientById(id) {
+      return (load().clients ?? []).find((c) => c.id === id) ?? null;
+    },
+    async clientByReference(kycReference) {
+      return (load().clients ?? []).find((c) => c.kycReference === kycReference) ?? null;
+    },
+    async listClients() {
+      return [...(load().clients ?? [])].sort((x, y) => y.createdAt.localeCompare(x.createdAt));
     },
   };
 }

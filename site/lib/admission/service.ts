@@ -21,6 +21,7 @@ import { assessBankAdmission, type BankAdmissionInput, type BankRecord } from ".
 import { bankConfig, completeWalletAttestation, corporateIdentityFor, revokeCredential, startWalletAttestation, type WalletChallenge } from "./bank.ts";
 import { custodyAccountFor, openCustodyAccount, poolAllows, readyToTrade, signAsCustodyAccount } from "./custody.ts";
 import { anchoringOf, type Anchor } from "./anchoring.ts";
+import { recordOf } from "./clients.ts";
 import { createHash } from "node:crypto";
 import { policyConfig } from "./protocol.ts";
 import type { Address, Hex } from "viem";
@@ -285,6 +286,13 @@ function extract(body: unknown): Presentation | null {
 
 const PURPOSE = "Admission to the conversion pool";
 
+/** The bank's current corporate identity for a client must be the one this site issued (ADR 0066). */
+function issuedHere(found: string, ours: string, kycReference: string) {
+  if (found.toLowerCase() !== ours.toLowerCase()) {
+    throw new Error(`The bank's newest corporate identity for ${kycReference} (${found}) was not issued from this site; re-screen the client here to issue a current one.`);
+  }
+}
+
 /**
  * Route 1, custodied: the bank's staff admit a client on its instruction. The custodian opens a
  * custody account; the account signs the wallet-control message; the bank mints the wallet
@@ -292,14 +300,17 @@ const PURPOSE = "Admission to the conversion pool";
  */
 export async function admitCustodied(
   staff: Registrant,
-  input: { kycReference: string; instructionRef: string; clientRef: string; record: Omit<BankRecord, "kycReference"> },
+  input: { kycReference: string; instructionRef: string; clientRef: string },
 ): Promise<Admission> {
   if (!isOperator(staff.email)) throw new Error("Not permitted.");
   const store = getStore();
+  // The client's facts are the bank's own, entered once when the client was added (ADR 0066).
+  const client = await store.clientByReference(input.kycReference);
+  if (!client) throw new Error(`No client ${input.kycReference} has been added: add it under Clients first.`);
   const policy = policyConfig();
   const bank = bankConfig();
   const chainId = loadManifest().chainId;
-  const record: BankRecord = { ...input.record, kycReference: input.kycReference };
+  const record: BankRecord = recordOf(client);
   const a: Admission = {
     id: `adm_${randomBytes(9).toString("base64url")}`,
     registrantId: staff.id,
@@ -314,6 +325,7 @@ export async function admitCustodied(
   let progress = a.data as Record<string, unknown>; // what is kept if a later step fails
   try {
     const corporate = await corporateIdentityFor(bank, input.kycReference, policy.schemas.corporateIdentity, nowSec());
+    issuedHere(corporate.credentialId, client.credentialId, client.kycReference);
     const account = await openCustodyAccount(input.clientRef);
     const challenge = await startWalletAttestation(bank, corporate.subjectDid, `eip155:${chainId}`, account, PURPOSE);
     const signature = await signAsCustodyAccount(challenge.typedData);
@@ -499,7 +511,7 @@ export async function reviewSelfCustody(
   staff: Registrant,
   id: string,
   outcome: "approve" | "decline",
-  record?: BankRecord,
+  kycReference?: string,
 ): Promise<void> {
   if (!isOperator(staff.email)) throw new Error("Not permitted.");
   const store = getStore();
@@ -511,12 +523,16 @@ export async function reviewSelfCustody(
     await store.audit({ at: now(), actor: staff.email, action: "declined a self-custody request", subject: a.id });
     return;
   }
-  if (!record?.kycReference) throw new Error("Choose the client's reference at the bank.");
+  if (!kycReference) throw new Error("Choose the client's reference at the bank.");
+  const client = await store.clientByReference(kycReference);
+  if (!client) throw new Error(`No client ${kycReference} has been added: add it under Clients first.`);
+  const record = recordOf(client);
   const policy = policyConfig();
   const bank = bankConfig();
   let corporate;
   try {
     corporate = await corporateIdentityFor(bank, record.kycReference, policy.schemas.corporateIdentity, nowSec());
+    issuedHere(corporate.credentialId, client.credentialId, client.kycReference);
   } catch (e) {
     await store.updateAdmission({ ...a, status: "refused", data: { ...d, reviewedBy: staff.email, error: (e as Error).message } }, a.status);
     throw e;

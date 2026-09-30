@@ -1,23 +1,30 @@
 import { test, expect, expectHealthy, signedIn, PEOPLE } from "./fixtures.ts";
 
-const day = (offsetDays: number) => new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+const CLIENT = "BR-CLIENT-1";
 
-test("staff are warned before submitting a jurisdiction or screening date the pool refuses", async ({ browser }) => {
+test("staff add a corporate client once, warned before a jurisdiction the pool refuses; the bank issues it", async ({ browser }) => {
   const page = await signedIn(browser, PEOPLE.operator);
   await page.goto("/operator");
-  const form = page.locator("form").filter({ has: page.getByLabel("Custody account reference") });
+  // The bank's own client, issued elsewhere, is listed to be re-issued here (ADR 0066).
+  await expect(page.getByText("Issued outside this site")).toBeVisible();
+  const form = page.locator("form").filter({ has: page.getByLabel("Registration number") });
 
   await form.getByLabel("Jurisdiction").selectOption({ label: "United States of America - US" });
   await expect(form.getByRole("alert")).toContainText("United States of America (US) is outside the pool's jurisdictions");
   await form.getByLabel("Jurisdiction").selectOption("LU");
   await expect(form.getByRole("alert")).toHaveCount(0);
 
-  await form.getByLabel("Last sanctions screening").fill(day(2));
-  await expect(form.getByRole("alert")).toContainText("in the future");
-  await form.getByLabel("Last sanctions screening").fill(day(-45));
-  await expect(form.getByRole("alert")).toContainText("older than 30 days");
-  await form.getByLabel("Last sanctions screening").fill(day(0));
-  await expect(form.getByRole("alert")).toHaveCount(0);
+  await form.getByLabel("Client reference at the bank").fill(CLIENT);
+  await form.getByLabel("Legal name").fill("Browser Test Institution SA");
+  await form.getByLabel("Legal form").selectOption("PLC");
+  await form.getByLabel("Registration number").fill("B 998 877");
+  await form.getByLabel("Incorporation date").fill("2003-04-05");
+  await form.getByRole("button", { name: "Add client and issue its corporate identity" }).click();
+  await expect(form.getByRole("status")).toContainText(`Added Browser Test Institution SA (${CLIENT})`);
+
+  const row = page.locator("#clients + .panel tbody tr").filter({ hasText: CLIENT });
+  await expect(row).toContainText("did:elabify:local:client:BR-CLIENT-1");
+  await expect(row).toContainText(/pending anchor|anchored/);
   await expectHealthy(page);
 });
 
@@ -26,14 +33,10 @@ test("staff admit a custodied client in one action, through a lagging RPC, withi
   await page.goto("/operator");
   const form = page.locator("form").filter({ has: page.getByLabel("Custody account reference") });
   const ref = `SEG-${Date.now()}`;
-  // A client the bank has not issued yet is added in the bank's own console (ADR 0065).
-  await expect(form.getByRole("link", { name: "Issue its corporate identity at the bank" })).toBeVisible();
-  await form.getByLabel("Client (corporate identity at the bank)").selectOption("KYC-TI1");
+  // Only the client and the two references: the client's facts come from Clients (ADR 0066).
+  await form.locator('select[name="kycReference"]').selectOption(CLIENT);
   await form.getByLabel("Custody account reference").fill(ref);
   await form.getByLabel("Client instruction reference").fill(`INS-${ref}`);
-  await form.getByLabel("Legal name").fill("Test Institution One");
-  await form.getByLabel("Jurisdiction").selectOption("LU");
-  await form.getByLabel("Last sanctions screening").fill(day(0));
 
   const started = Date.now();
   await form.getByRole("button", { name: "Admit" }).click();

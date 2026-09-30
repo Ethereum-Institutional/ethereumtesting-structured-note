@@ -24,15 +24,14 @@ test("self-custody: the client asks, the bank declines, the client asks again, t
   await expect(client.getByText("Step 1 of 2")).toBeVisible();
   await staff.reload();
   panel = staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email });
-  await panel.getByLabel("Client (corporate identity at the bank)").selectOption("KYC-TI1");
-  await panel.getByLabel("Legal name").fill("Test Institution One");
-  await panel.getByLabel("Jurisdiction").selectOption("LU");
+  // Only the client: its facts come from Clients (ADR 0066).
+  await panel.locator('select[name="kycReference"]').selectOption("BR-CLIENT-1");
   await panel.getByRole("button", { name: "Confirm the client's KYB" }).click();
   await expect(staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email })).toHaveCount(0);
 
   // The client's page updates by itself, shows the bank's reference, and binding opens.
   await expect(client.getByText("Step 2 of 2: your bank has confirmed your KYB.")).toBeVisible({ timeout: 20_000 });
-  await expect(client.getByText("Your bank's reference for you: KYC-TI1")).toBeVisible();
+  await expect(client.getByText("Your bank's reference for you: BR-CLIENT-1, Browser Test Institution SA")).toBeVisible();
   await client.getByLabel("Wallet address").fill(wallet);
   await client.getByRole("button", { name: "Bind wallet" }).click();
   await client.getByRole("button", { name: "Sign with browser wallet" }).click();

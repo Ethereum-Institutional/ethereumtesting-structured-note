@@ -1,6 +1,6 @@
 # 0065. New corporate clients are added in the bank's own console, linked from the Operator page
 
-- **Status:** Accepted (owner, 30 September 2026)
+- **Status:** Superseded by ADR 0066 (30 September 2026)
 - **Date:** 30 September 2026
 
 ## Context
