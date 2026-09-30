@@ -5,7 +5,9 @@ test("holder wallet, another way: the wallet-control credential is presented by 
   const wallet = getAddress(`0x${keccak256(toBytes(`browser holder wallet ${Date.now()}`)).slice(26)}`);
   const client = await signedIn(browser, PEOPLE.holder);
   await client.goto("/onboard");
-  await client.getByRole("button", { name: "Present from a holder wallet" }).click();
+  // Onboarded once already (the spec before): the client binds a new wallet, by the same route (ADR 0069).
+  await expect(client.getByRole("button", { name: "Present from a holder wallet" })).toHaveCount(0);
+  await client.getByRole("button", { name: "Bind a new wallet" }).click();
   await expect(client.getByText("Step 1 of 2: present your officer credential.")).toBeVisible();
   await holderPresents("officer");
   await expect(client.getByText("Step 2 of 2: your officer credential is verified.")).toBeVisible({ timeout: 20_000 });
@@ -16,7 +18,8 @@ test("holder wallet, another way: the wallet-control credential is presented by 
 
   const staff = await signedIn(browser, PEOPLE.operator);
   await staff.goto("/operator");
-  const row = staff.locator("#admissions + .table-wrap tbody tr").filter({ hasText: wallet });
+  // The wallet it replaces is listed too, "replaced by" this one: this admission's own row is the other.
+  const row = staff.locator("#admissions + .table-wrap tbody tr").filter({ hasText: wallet, hasNotText: "replaced by" });
   await row.getByRole("button", { name: "Approve and write grants" }).click();
   await expect(row.locator(".pill")).toHaveText("admitted", { timeout: 60_000 });
   await expectHealthy(client);

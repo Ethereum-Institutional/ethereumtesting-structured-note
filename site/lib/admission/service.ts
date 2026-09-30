@@ -321,6 +321,7 @@ export async function advanceAdmission(id: string): Promise<Advance> {
     }
     await store.updateAdmission({ ...a, status: "admitted", data: progress }, "failed");
     await store.audit({ at: now(), actor: "site", action: `admitted ${assessment.summary.wallet} to the pool, its credentials anchored`, subject: a.id });
+    await replacePrevious(a.id);
     return "admitted";
   } catch (e) {
     await store.updateAdmission({ ...a, status: "failed", data: { ...progress, error: (e as Error).message } }, "failed");
@@ -476,6 +477,75 @@ export async function offboardAdmission(staff: Registrant, id: string, reason: s
     await store.updateAdmission({ ...a, status: "admitted", data: { ...d, error: `offboarding failed: ${(e as Error).message}` } }, "failed");
     throw e;
   }
+}
+
+/**
+ * One wallet per KYB (ADR 0069): once a wallet is admitted, any other admitted wallet of the same
+ * client (the same corporation DID, whichever route) is offboarded, its two grants revoked.
+ */
+async function replacePrevious(id: string): Promise<void> {
+  const store = getStore();
+  const a = (await store.admissionById(id))!;
+  const summary = (a.data as Record<string, any>).assessment?.summary;
+  if (!summary?.corporationDid) return;
+  const others = (await store.listAdmissions(500)).filter(
+    (x) =>
+      x.id !== a.id &&
+      x.status === "admitted" &&
+      (x.data as Record<string, any>).assessment?.summary?.corporationDid === summary.corporationDid &&
+      walletOf(x).toLowerCase() !== String(summary.wallet).toLowerCase(),
+  );
+  for (const old of others) {
+    const d = old.data as Record<string, any>;
+    if (!(await store.updateAdmission({ ...old, status: "failed", data: { ...d, error: "offboarding" } }, "admitted"))) continue;
+    try {
+      const removed = await removeGrants(walletOf(old));
+      const offboarded = { by: "site", at: now(), reason: `replaced by ${summary.wallet} (one wallet per KYB)`, replacedBy: a.id, ...removed };
+      await store.updateAdmission({ ...old, status: "offboarded", data: { ...d, offboarded, error: undefined } }, "failed");
+      await store.audit({ at: now(), actor: "site", action: `offboarded ${walletOf(old)}: replaced by ${summary.wallet}`, subject: old.id });
+    } catch (e) {
+      await store.updateAdmission({ ...old, status: "admitted", data: { ...d, error: `replacing it failed: ${(e as Error).message}` } }, "failed");
+    }
+  }
+}
+
+/**
+ * Binds a new wallet under the client's confirmed KYB, with no second review (ADR 0069): the
+ * client's record is read afresh, so a re-screen at the bank counts, and the wallet it replaces is
+ * offboarded once the new one is admitted.
+ */
+export async function bindNewWallet(client: Registrant): Promise<Admission> {
+  const store = getStore();
+  const mine = await store.admissionsFor(client.id);
+  const confirmed = mine.find((x) => x.route === "self-custody" && (x.data as Record<string, any>).record?.kycReference && ["admitted", "offboarded", "kyb-confirmed", "awaiting-signature", "awaiting-anchor"].includes(x.status));
+  if (!confirmed) throw new Error("Your bank has not confirmed your KYB yet.");
+  const open = mine.find((x) => ["kyb-confirmed", "awaiting-signature", "awaiting-anchor"].includes(x.status));
+  if (open) return open;
+  const prior = confirmed.data as Record<string, any>;
+  const c = await store.clientByReference(prior.record.kycReference);
+  if (!c) throw new Error(`Your bank's client ${prior.record.kycReference} is no longer on record.`);
+  const corporate = await corporateIdentityFor(bankConfig(), c.kycReference, policyConfig().schemas.corporateIdentity, nowSec());
+  issuedHere(corporate.credentialId, c.credentialId, c.kycReference);
+  const a: Admission = {
+    id: `adm_${randomBytes(9).toString("base64url")}`,
+    registrantId: client.id,
+    route: "self-custody",
+    status: "kyb-confirmed",
+    createdAt: now(),
+    officerRequestId: null,
+    walletRequestId: null,
+    data: {
+      request: { requestedBy: client.email, organisation: client.organisation, knownReference: c.kycReference },
+      record: recordOf(c),
+      corporate,
+      reviewedBy: prior.reviewedBy,
+      confirmedAt: prior.confirmedAt,
+      replaces: prior.assessment?.summary?.wallet ?? null,
+    },
+  };
+  await store.putAdmission(a);
+  await store.audit({ at: now(), actor: client.email, action: "started binding a new wallet under its confirmed KYB", subject: a.id });
+  return a;
 }
 
 /** The admitted accounts resting on a corporate identity: what revoking it would withdraw. */

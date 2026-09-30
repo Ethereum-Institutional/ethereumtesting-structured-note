@@ -2,7 +2,8 @@ import { test, expect, expectHealthy, holderPresents, installWallet, signedIn, P
 
 test("holder wallet: the officer scans once, the officer's wallet signs in MetaMask, the bank approves", async ({ browser }) => {
   const client = await signedIn(browser, PEOPLE.holder);
-  const wallet = await installWallet(client, `browser officer wallet ${Date.now()}`);
+  // The wallet reports the pool's chain while it would sign on Base: the site must switch anyway.
+  const wallet = await installWallet(client, `browser officer wallet ${Date.now()}`, { reportsPoolChain: "0x7a69" });
   await client.goto("/onboard");
   await client.getByRole("button", { name: "Present from a holder wallet" }).click();
   await expect(client.getByText("Step 1 of 2: present your officer credential.")).toBeVisible();

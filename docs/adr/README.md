@@ -76,3 +76,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0066](0066-site-issues-client-identities.md) | The site is the bank's onboarding system: staff enter a client once, and the issuer server signs and anchors it | Accepted |
 | [0067](0067-site-assigns-references.md) | The site assigns client and custody references | Accepted |
 | [0068](0068-browser-wallet-binds-in-one-click.md) | A browser wallet binds in one click: address read, chain switched or added, message proposed | Accepted |
+| [0069](0069-one-wallet-per-kyb.md) | One wallet per KYB, a new wallet replaces the old, and the Onboard page shows three stages | Accepted |

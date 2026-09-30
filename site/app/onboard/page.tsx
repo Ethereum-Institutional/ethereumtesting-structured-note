@@ -6,6 +6,7 @@ import { Bar } from "../Bar";
 import {
   bindWalletAction,
   advanceAdmissionAction,
+  bindNewWalletAction,
   browserWalletFinishAction,
   browserWalletStartAction,
   cancelAdmissionAction,
@@ -48,6 +49,33 @@ const STATUS: Record<Admission["status"], string> = {
   failed: "The admission could not be completed.",
 };
 
+/** The three stages every client route passes through, shown at the top of the page (ADR 0069). */
+const STAGES = ["Complete bank onboarding", "Sign message from wallet", "Granted access"] as const;
+
+function stageOf(status: Admission["status"] | undefined, onboarded: boolean): { at: number; done: boolean } {
+  if (status === "admitted") return { at: 2, done: true };
+  if (status === "ready" || status === "awaiting-anchor") return { at: 2, done: false };
+  if (status === "kyb-confirmed" || status === "awaiting-signature" || status === "awaiting-wallet") return { at: 1, done: false };
+  if (!status || ["cancelled", "offboarded", "failed", "declined", "refused"].includes(status)) return onboarded ? { at: 2, done: true } : { at: 0, done: false };
+  return { at: 0, done: false };
+}
+
+function Progress({ at, done }: { at: number; done: boolean }) {
+  return (
+    <ol className="progress" aria-label="Onboarding progress">
+      {STAGES.map((label, i) => {
+        const state = i < at || (i === at && done) ? "done" : i === at ? "current" : "todo";
+        return (
+          <li key={label} className={state} aria-current={state === "current" ? "step" : undefined}>
+            <span className="mark">{state === "done" ? "✓" : i + 1}</span>
+            {label}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 /** The routes a client takes itself. A custodied admission is the bank's own act and is shown to staff (ADR 0062). */
 const CLIENT_ROUTES = ["self-custody", "holder-wallet"] as const;
 
@@ -60,6 +88,12 @@ export default async function Onboard() {
   const d = (a?.data ?? {}) as Record<string, any>;
   const chain = chainParams(loadManifest().chainId);
   const open = a && !["refused", "admitted", "declined", "cancelled", "offboarded", "failed"].includes(a.status);
+  // Onboarded once, by either route: the client binds a new wallet rather than starting over (ADR 0069).
+  const hasKyb = mine.some((x) => x.route === "self-custody" && (x.data as Record<string, any>).record?.kycReference && ["admitted", "offboarded"].includes(x.status));
+  const viaHolder = mine.some((x) => x.route === "holder-wallet" && ["admitted", "offboarded"].includes(x.status));
+  const returning = hasKyb || viaHolder;
+  const current = onboarded[0];
+  const stage = stageOf(a?.status, onboarded.length > 0);
 
   return (
     <div className="wrap">
@@ -71,9 +105,10 @@ export default async function Onboard() {
         <h1 style={{ fontSize: "2.25rem" }}>Onboard</h1>
         <p className="lede">
           If your bank or custodian holds your account, ask them to onboard it: there is nothing for you to do here.
-          Already onboarded by your bank? You can add a wallet you hold yourself at any time, by either route below.
+          Otherwise your bank confirms the KYB it already holds, you sign once with your wallet, and the wallet is granted access.
         </p>
       </header>
+      <Progress {...stage} />
 
       {a && (
         <section className="panel">
@@ -93,7 +128,16 @@ export default async function Onboard() {
               </details>
             </>
           )}
-          {a.status === "awaiting-signature" && <SignStep a={a} d={d} />}
+          {a.status === "awaiting-signature" && (
+            <>
+              {/* A failed or abandoned browser-wallet attempt can simply be run again. */}
+              <BrowserWallet id={a.id} chain={chain} label="Connect MetaMask and bind this wallet" start={browserWalletStartAction} finish={browserWalletFinishAction} />
+              <details style={{ marginTop: "1rem" }}>
+                <summary className="muted">Or sign the message with another signer</summary>
+                <div style={{ marginTop: "0.75rem" }}><SignStep a={a} d={d} /></div>
+              </details>
+            </>
+          )}
           {a.status === "awaiting-officer" && <QrStep a={a} d={d} />}
           {a.status === "awaiting-wallet" && (
             <>
@@ -117,7 +161,7 @@ export default async function Onboard() {
 
       {onboarded.length > 0 && (
         <section className="panel">
-          <h2>Your onboarded wallets</h2>
+          <h2>Your onboarded wallet</h2>
           <div className="table-wrap">
             <table>
               <thead><tr><th>Wallet</th><th>Route</th><th>Onboarded</th><th>Grant runs to</th></tr></thead>
@@ -140,7 +184,20 @@ export default async function Onboard() {
         </section>
       )}
 
-      {!open && (
+      {!open && returning && (
+        <section className="panel">
+          <h2>Bind a new wallet</h2>
+          <p className="muted">
+            One wallet per KYB. Your bank's confirmation still stands, so you only sign with the new wallet.
+            {current ? ` Once it is granted access, the current one (${(current.data as Record<string, any>).assessment?.summary?.wallet}) is offboarded.` : ""}
+          </p>
+          <form action={hasKyb ? bindNewWalletAction : startAdmissionAction}>
+            <button type="submit">Bind a new wallet</button>
+          </form>
+        </section>
+      )}
+
+      {!open && !returning && (
         <div className="cols">
           <section className="panel">
             <h2>A wallet you hold</h2>

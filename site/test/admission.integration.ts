@@ -282,6 +282,30 @@ test("route 2: a wrong signature fails the binding, and the client can bind agai
   assert.equal(a.status, "admitted", "bound on the second try, with no second review");
 });
 
+test("one wallet per KYB: a new wallet binds under the confirmed KYB, and the old one is offboarded once it is in", async () => {
+  const before = (await store.admissionsFor(registrant.id)).find((x) => x.route === "self-custody" && x.status === "admitted")!;
+  const oldWallet = (before.data as any).assessment.summary.wallet as Hex;
+  assert.equal((await readPool(oldWallet)).allowed, true);
+
+  let a = await service.bindNewWallet(registrant as any);
+  assert.equal(a.status, "kyb-confirmed", "no second review by the bank");
+  assert.equal((a.data as any).record.kycReference, CLIENT);
+  const key = privateKeyToAccount(keccak256(toBytes(`replacement wallet ${NOW}`)));
+  await service.startWalletBinding(registrant as any, a.id, { walletAddress: key.address, addressType: "eoa" });
+  a = (await store.admissionById(a.id))!;
+  const td = (a.data as any).challenge.typedData;
+  const { EIP712Domain: _d, ...types } = td.types;
+  await service.submitSelfCustodySignature(registrant as any, a.id, await key.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message: td.message }));
+  a = await untilAnchored(a.id);
+  assert.equal(a.status, "admitted", JSON.stringify((a.data as any).error));
+
+  const old = (await store.admissionById(before.id))!;
+  assert.equal(old.status, "offboarded", "the previous wallet is offboarded");
+  assert.match((old.data as any).offboarded.reason, /replaced by .* \(one wallet per KYB\)/);
+  assert.equal((await readPool(oldWallet)).allowed, false);
+  assert.equal((await readPool(key.address)).allowed, true);
+});
+
 test("a client that started with a holder wallet can cancel and ask its bank instead", async () => {
   const a = await service.startAdmission(registrant, "https://site.example");
   const officerRequest = (a.data as any).officerRequest;
@@ -345,7 +369,8 @@ test("staff offboard an admitted account: both grants go, with the reason record
 });
 
 test("revoking a wallet credential at the bank lets anyone void its pool grant", async () => {
-  const a = (await store.listAdmissions(50)).find((x: any) => x.route === "self-custody" && x.status === "admitted")!;
+  // One wallet per KYB leaves one admitted wallet per client; the holder-wallet one is still in.
+  const a = (await store.listAdmissions(50)).find((x: any) => x.route === "holder-wallet" && x.status === "admitted")!;
   const account = (a.data as any).assessment.summary.wallet as Hex;
   await service.revokeAtBank(operator as any, a.id, "wallet", "Wallet reported compromised");
   const credential = (a.data as any).assessment.attestation.walletCredential.toLowerCase();

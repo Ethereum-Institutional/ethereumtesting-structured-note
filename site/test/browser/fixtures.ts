@@ -49,36 +49,54 @@ export async function expectHealthy(page: Page) {
  * Ethereum mainnet, does not know the pool's chain until asked to add it (4902), and signs typed
  * data only on the chain its domain names. Every request is recorded in window.__walletCalls.
  */
-export async function installWallet(page: Page, seed: string) {
+export type WalletQuirks = {
+  /**
+   * MetaMask with networks per site: it reports the pool's chain (hex) as the site's, while the
+   * chain it signs on is another (Base, 8453), until the site asks to switch.
+   */
+  reportsPoolChain?: string;
+  /** The user declines the first signature request (4001). */
+  declineFirstSignature?: boolean;
+};
+
+export async function installWallet(page: Page, seed: string, quirks: WalletQuirks = {}) {
   const account = privateKeyToAccount(keccak256(toBytes(seed)));
   await page.exposeFunction("__testSignTypedData", async (json: string) => {
     const td = JSON.parse(json);
     const { EIP712Domain: _d, ...types } = td.types;
     return account.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message: td.message });
   });
-  await page.addInitScript((address) => {
+  await page.addInitScript(({ address, quirks }) => {
     const w = window as any;
     w.__walletCalls = [];
-    let chainId = "0x1";
-    const known = new Set(["0x1"]);
+    let chainId = quirks.reportsPoolChain ? "0x2105" : "0x1";
+    let reported: string | null = quirks.reportsPoolChain ?? null;
+    let declines = quirks.declineFirstSignature ? 1 : 0;
+    const known = new Set(["0x1", "0x2105", ...(quirks.reportsPoolChain ? [quirks.reportsPoolChain] : [])]);
     w.ethereum = {
       request: async ({ method, params }: { method: string; params?: any[] }) => {
         w.__walletCalls.push(method);
         if (method === "eth_requestAccounts" || method === "eth_accounts") return [address];
-        if (method === "eth_chainId") return chainId;
+        if (method === "eth_chainId") return reported ?? chainId;
         if (method === "wallet_switchEthereumChain") {
           const wanted = String(params![0].chainId).toLowerCase();
           if (!known.has(wanted)) throw Object.assign(new Error("Unrecognized chain ID"), { code: 4902 });
           chainId = wanted;
+          reported = null;
           return null;
         }
         if (method === "wallet_addEthereumChain") {
           const added = String(params![0].chainId).toLowerCase();
           known.add(added);
           chainId = added;
+          reported = null;
           return null;
         }
         if (method === "eth_signTypedData_v4") {
+          if (declines > 0) {
+            declines--;
+            throw Object.assign(new Error("User rejected the request."), { code: 4001 });
+          }
           const td = JSON.parse(params![1]);
           if (td.domain?.chainId !== undefined && `0x${Number(td.domain.chainId).toString(16)}` !== chainId) {
             throw new Error(`Provided chainId "${td.domain.chainId}" must match the active chainId "${parseInt(chainId, 16)}"`);
@@ -88,7 +106,7 @@ export async function installWallet(page: Page, seed: string) {
         throw new Error(`the test wallet does not support ${method}`);
       },
     };
-  }, account.address);
+  }, { address: account.address, quirks });
   return account.address;
 }
 

@@ -140,6 +140,13 @@ th { font-family: var(--sans); font-size: 0.75rem; letter-spacing: 0.01em; color
 .pill.approved { background: var(--ok-bg); color: var(--ok); }
 .pill.revoked { background: var(--seal-bg); color: var(--seal); }
 .fields { display: grid; gap: 0.9rem 1.25rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); align-items: start; }
+.progress { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; padding: 0; margin: 0 0 1.5rem; counter-reset: none; }
+.progress li { display: flex; align-items: center; gap: 0.6rem; color: var(--fg3); font-size: 0.9375rem; }
+.progress .mark { display: inline-grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: 999px; border: 1px solid var(--border2); font-size: 0.8125rem; }
+.progress li.current { color: var(--fg); font-weight: 600; }
+.progress li.current .mark { background: var(--cream); color: var(--ink); border-color: var(--cream); }
+.progress li.done { color: var(--fg2); }
+.progress li.done .mark { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
 .stack-actions { display: grid; gap: 0.5rem; min-width: 20rem; white-space: normal; }
 .stack-actions summary { cursor: pointer; color: var(--fg2); font-size: 0.875rem; }
 .stack-actions details[open] { background: var(--bg3); border-radius: 12px; padding: 0.75rem 0.9rem; }

@@ -45,21 +45,24 @@ export function BrowserWallet({
       const [address] = await eth.request({ method: "eth_requestAccounts" });
       if (!address) throw new Error("The wallet shared no account.");
 
-      setStep("switching");
-      const current = await eth.request({ method: "eth_chainId" });
-      if (String(current).toLowerCase() !== chain.chainId) {
-        try {
-          await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain.chainId }] });
-        } catch (e: any) {
-          // 4902: the wallet does not know the chain; add it, which also switches to it.
-          if (e?.code !== 4902 && e?.data?.originalError?.code !== 4902) throw e;
-          await eth.request({ method: "wallet_addEthereumChain", params: [chain] });
-        }
-      }
-
       setStep("preparing");
       const prepared = await start(id, address);
       if (prepared.error || !prepared.typedData) throw new Error(prepared.error ?? "The bank prepared no message.");
+
+      // Asked every time, immediately before signing: what a wallet reports as its chain need not
+      // be the one it signs on (MetaMask's networks per site), and it may have changed meanwhile.
+      setStep("switching");
+      try {
+        await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain.chainId }] });
+      } catch (e: any) {
+        // 4902: the wallet does not know the chain; add it, which also switches to it.
+        if (e?.code !== 4902 && e?.data?.originalError?.code !== 4902) throw e;
+        await eth.request({ method: "wallet_addEthereumChain", params: [chain] });
+      }
+      const now = String(await eth.request({ method: "eth_chainId" })).toLowerCase();
+      if (now !== chain.chainId) {
+        throw new Error(`The wallet is on chain ${parseInt(now, 16)}, not ${chain.chainName} (${parseInt(chain.chainId, 16)}). Switch it to ${chain.chainName} and try again.`);
+      }
 
       setStep("signing");
       const signature = await eth.request({ method: "eth_signTypedData_v4", params: [address, JSON.stringify(prepared.typedData)] });
@@ -71,7 +74,13 @@ export function BrowserWallet({
       router.refresh();
     } catch (e: any) {
       setStep("idle");
-      setError(e?.code === 4001 ? "You declined in the wallet. Try again when ready." : e?.message ?? "The wallet did not complete.");
+      const message = String(e?.message ?? "");
+      const wrongChain = message.match(/must match the active chainId "(\d+)"/);
+      setError(
+        e?.code === 4001 ? "You declined in the wallet. Try again when ready."
+        : wrongChain ? `The wallet signed on chain ${wrongChain[1]}, not ${chain.chainName} (${parseInt(chain.chainId, 16)}). Choose ${chain.chainName} for this site in the wallet, then try again.`
+        : message || "The wallet did not complete.",
+      );
     }
   }
 

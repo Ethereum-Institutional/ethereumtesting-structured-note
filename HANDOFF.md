@@ -492,6 +492,10 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   MetaMask supplies the address, is switched to the pool's chain or has it added, and signs the
   bank's message. This applies on route 2, and on route 3 after the officer's scan, where the bank
   issues the wallet credential to the officer. The older ways remain, folded away.
+- **One wallet per KYB** (ADR 0069). Admitting a wallet offboards the client's previous one, on
+  any route. An onboarded client sees **Bind a new wallet**, with no second review, and the Onboard
+  page shows three stages. MetaMask is always asked to switch to the pool's chain just before
+  signing: with networks per site, the chain it reports is not always the one it signs on.
 - **Offboarding and revocation** (ADRs 0063, 0064). **Offboard** revokes both grants, with a
   reason. **Revoke at the bank** revokes the wallet credential, or the corporate identity as its
   own confirmed step.

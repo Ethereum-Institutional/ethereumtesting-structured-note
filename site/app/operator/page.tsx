@@ -240,7 +240,8 @@ export default async function Operator({ searchParams }: { searchParams: Promise
         <p className="muted">
           On the client's instruction: opens a segregated custody account, mints its wallet credential under the client's
           corporate identity, writes both grants once the bank has anchored it, and makes the account ready to trade.
-          The client's facts come from Clients above; the site assigns the custody account's reference.
+          The client's facts come from Clients above; the site assigns the custody account's reference. One wallet
+          per client: once the new account is admitted, the client's current wallet, by any route, is offboarded.
         </p>
         <form action={admitCustodiedAction} className="stack">
           <div className="fields">

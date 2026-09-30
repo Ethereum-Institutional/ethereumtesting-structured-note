@@ -6,6 +6,7 @@ import { confirm, currentOperator, currentRegistrant, decide, register, requestS
 import {
   admitCustodied,
   advanceAdmission,
+  bindNewWallet,
   completeOfficerWalletBinding,
   startOfficerWalletBinding,
   offboardAdmission,
@@ -238,6 +239,13 @@ export async function browserWalletFinishAction(id: string, signature: string): 
   } finally {
     revalidatePath("/onboard");
   }
+}
+
+/** An onboarded client binds a new wallet under its confirmed KYB (ADR 0069). */
+export async function bindNewWalletAction() {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
+  await recorded(() => bindNewWallet(who), "/onboard");
 }
 
 export async function bindWalletAction(f: FormData) {
