@@ -82,3 +82,6 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0072](0072-demonstration-notes.md) | Demonstration notes: a second note on the same code, a calendar chosen at issuance, scenario levels, site-held test keys, and Reg S approval per client | Accepted |
 | [0073](0073-operator-console-and-note-calendars.md) | The Operator console in sections, "notes" without qualification, and a calendar configured by observations and interval | Accepted |
 | [0074](0074-third-party-wallets.md) | The self-custody route is shown as Third party | Accepted |
+| [0075](0075-reg-s-approval-and-placement.md) | Approval for the note under Reg S, and placement by DvP from the site | Accepted |
+| [0076](0076-onboard-console.md) | The client's Onboard pages: a navigation column, an account card, unbinding, and asking for custody | Accepted |
+| [0077](0077-unconfirmed-registrations.md) | Unconfirmed registrations: staff resend the link, or approve ahead of confirmation | Accepted |

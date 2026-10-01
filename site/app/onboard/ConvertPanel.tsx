@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ChainParams } from "@/lib/chains";
 import type { QuoteView } from "../actions";
+import { confirmed, onChain, watchToken, walletError } from "../wallet";
 
 type Prepared = { error?: string; approvals?: Array<{ to: string; data: string; label: string }>; swap?: { to: string; data: string }; quote?: QuoteView };
 
@@ -45,18 +46,6 @@ export function ConvertPanel({
     return () => clearTimeout(t);
   }, [direction, amount, quote]);
 
-  async function receipt(eth: any, hash: string) {
-    for (let i = 0; i < 120; i++) {
-      const r = await eth.request({ method: "eth_getTransactionReceipt", params: [hash] });
-      if (r) {
-        if (r.status !== "0x1") throw new Error(`The transaction failed on-chain (${hash}).`);
-        return;
-      }
-      await new Promise((ok) => setTimeout(ok, 1500));
-    }
-    throw new Error(`The transaction was not confirmed in time (${hash}).`);
-  }
-
   async function run() {
     setError(null);
     const eth = (window as any).ethereum;
@@ -69,29 +58,24 @@ export function ConvertPanel({
       const plan = await prepare(direction, amount, address);
       if (plan.error || !plan.swap) throw new Error(plan.error ?? "The conversion could not be prepared.");
       setStatus("Asking your wallet to switch to the pool's network…");
-      try {
-        await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain.chainId }] });
-      } catch (e: any) {
-        if (e?.code !== 4902 && e?.data?.originalError?.code !== 4902) throw e;
-        await eth.request({ method: "wallet_addEthereumChain", params: [chain] });
-      }
+      await onChain(eth, chain);
       for (const [i, a] of (plan.approvals ?? []).entries()) {
         setStatus(`Approval ${i + 1} of ${plan.approvals!.length}: ${a.label}. Confirm in your wallet.`);
         const hash = await eth.request({ method: "eth_sendTransaction", params: [{ from: address, to: a.to, data: a.data }] });
         setStatus(`Approval ${i + 1} of ${plan.approvals!.length}: waiting for it to confirm…`);
-        await receipt(eth, hash);
+        await confirmed(eth, hash);
       }
       setStatus("Confirm the conversion in your wallet.");
       const hash = await eth.request({ method: "eth_sendTransaction", params: [{ from: address, to: plan.swap.to, data: plan.swap.data }] });
       setStatus("Waiting for the conversion to confirm…");
-      await receipt(eth, hash);
+      await confirmed(eth, hash);
       await done(hash, `${plan.quote?.amountIn} ${plan.quote?.paid} into ${plan.quote?.received}`);
       setStatus(`Converted ${plan.quote?.amountIn} ${plan.quote?.paid} into at least ${plan.quote?.minimumOut} ${plan.quote?.received}.`);
       setAmount("");
       router.refresh();
     } catch (e: any) {
       setStatus(null);
-      setError(e?.code === 4001 ? "You declined in the wallet." : e?.message ?? "The conversion did not complete.");
+      setError(walletError(e, chain, "The conversion did not complete."));
     } finally {
       setBusy(false);
     }
@@ -103,16 +87,10 @@ export function ConvertPanel({
     const eth = (window as any).ethereum;
     if (!eth) return setError("No browser wallet was found. Install MetaMask first.");
     try {
-      try {
-        await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain.chainId }] });
-      } catch (e: any) {
-        if (e?.code !== 4902 && e?.data?.originalError?.code !== 4902) throw e;
-        await eth.request({ method: "wallet_addEthereumChain", params: [chain] });
-      }
-      const added = await eth.request({ method: "wallet_watchAsset", params: { type: "ERC20", options: { address: asset.address, symbol: asset.symbol, decimals: asset.decimals } } });
+      const added = await watchToken(eth, chain, asset);
       setStatus(added ? `${asset.symbol} is in your wallet's list on ${chain.chainName}.` : `${asset.symbol} was not added.`);
     } catch (e: any) {
-      setError(e?.code === 4001 ? "You declined in the wallet." : e?.message ?? `${asset.symbol} could not be added.`);
+      setError(walletError(e, chain, `${asset.symbol} could not be added.`));
     }
   }
 

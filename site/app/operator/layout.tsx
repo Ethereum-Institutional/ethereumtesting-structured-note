@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { currentOperator } from "@/lib/access";
+import { getStore } from "@/lib/store";
 import { Bar } from "../Bar";
 import { OperatorNav } from "./OperatorNav";
 
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function OperatorLayout({ children }: { children: React.ReactNode }) {
   const op = await currentOperator();
   if (!op) notFound();
+  const custodyRequests = (await getStore().listClients()).filter((c) => c.custodyRequest).length;
   return (
     <div className="wrap">
       <Bar who={op} operator />
@@ -17,7 +19,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
         <h1 style={{ fontSize: "2.25rem" }}>Operator</h1>
       </header>
       <div className="console">
-        <OperatorNav />
+        <OperatorNav custodyRequests={custodyRequests} />
         <div className="console-main">{children}</div>
       </div>
     </div>

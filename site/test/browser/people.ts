@@ -16,7 +16,7 @@ export const SERVER_LOG = join(WORK, "server.log");
 /** In production the session cookie carries the __Host- prefix. */
 export const COOKIE = "__Host-session";
 
-export type Person = { id: string; email: string; name: string; organisation: string; status: "approved" | "pending"; sid: string };
+export type Person = { id: string; email: string; name: string; organisation: string; status: "approved" | "pending" | "unverified"; sid: string };
 
 export const PEOPLE = {
   operator: { id: "reg_operator", email: "operator@example.org", name: "Bank Operator", organisation: "The Bank", status: "approved", sid: "sid-operator-0123456789abcdef" },
@@ -24,4 +24,5 @@ export const PEOPLE = {
   holder: { id: "reg_holder", email: "officer@corp.example", name: "Officer", organisation: "Test Institution One", status: "approved", sid: "sid-holder-wallet-0123456789a" },
   applicant: { id: "reg_applicant", email: "applicant@newco.example", name: "New Applicant", organisation: "Newco", status: "pending", sid: "sid-applicant-0123456789abcd" },
   declined: { id: "reg_declined", email: "declined@newco.example", name: "Declined Applicant", organisation: "Newco", status: "pending", sid: "sid-declined-0123456789abcde" },
+  unconfirmed: { id: "reg_unconfirmed", email: "unconfirmed@newco.example", name: "Unconfirmed Applicant", organisation: "Newco", status: "unverified", sid: "sid-unconfirmed-0123456789ab" },
 } satisfies Record<string, Person>;

@@ -495,14 +495,26 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
 - **Notes** (ADRs 0072, 0073). Staff issue a note on the live note's implementation from
   `/operator/notes`. They choose a scenario from the payoff model, the number of observations and
   the time between them; the page previews the calendar and drives the 17 issuance steps. The
-  Operator console now has a navigation column and a page per section. Next: approving clients
-  for the note (Reg S) and placing by DvP, then determinations, payments and closure.
+  Operator console now has a navigation column and a page per section.
+- **Placement** (ADR 0075; S-08, S-09). "Approve for the note…" in Admissions adds the Reg S flag
+  to an account's registry grant. Notes → Place units offers units by DvP against the deposit:
+  - a custody account accepts through the custodian at once;
+  - a client's own wallet accepts on its Notes page in MetaMask, in two transactions;
+  - an account without Reg S is refused before anything is sent.
+
+  Next: determinations, payments and closure.
+- **Unconfirmed registrations** (ADR 0077). Access requests says when someone hasn't confirmed
+  their email yet; staff can resend the link, or approve or decline ahead of confirmation.
+- **Onboard pages** (ADR 0076). The client has a navigation column with Account, Convert and
+  Notes. The account card carries **Bind a new wallet**, **Unbind this wallet…** (immediate) and
+  **Ask my bank to hold it in custody**. Staff see that request first under Custody → Custodial
+  and admit it in one click; the client's own wallet is then unbound (one wallet per KYB).
 - **Ledger** (ADR 0071; S-35, S-36). `/ledger` shows every approved user the lifecycle decoded
   from the chain, read through Alchemy (`LEDGER_RPC_URL`). Staff also see the register
   reconciliation. The tests check that every call is recognised, and scan every transaction and
   event for personal data.
 - **Convert** (ADR 0070; S-27, S-28).
-  - An onboarded wallet converts EURC and EURTD both ways from the Onboard page in MetaMask, with
+  - An onboarded wallet converts EURC and EURTD both ways from Onboard → Convert in MetaMask, with
     one-time approvals, a quote, and a 0.5% minimum-received.
   - Staff convert for custody accounts and credit EURTD through the gateway from the Operator page.
   - The quote maths is unit-tested; conversions are tested on the local chain through the lagging RPC.
@@ -526,6 +538,8 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   - `test/lagging-rpc.ts` answers reads from a block behind just after a receipt, which
     reproduces the lagging-RPC failure;
   - `test/standins.ts` plays the bank and the verifier, including their known quirks.
+  - the chain is reset between the integration and browser suites: each has its own store, and
+    the Ledger names only the contracts of notes in its own store.
 
   Nothing is tested on a public chain.
 

@@ -18,7 +18,8 @@ export async function sendMail(to: string, subject: string, text: string): Promi
     console.log(`\n[mail, development only] to ${to}\nsubject: ${subject}\n\n${text}\n`);
     return;
   }
-  const res = await fetch("https://api.resend.com/emails", {
+  // RESEND_API_URL is for the tests' stand-in only; production always posts to Resend.
+  const res = await fetch(process.env.RESEND_API_URL ?? "https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ from, to, subject, text }),

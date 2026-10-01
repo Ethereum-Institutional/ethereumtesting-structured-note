@@ -416,6 +416,8 @@ export async function admitCustodied(
       return (await store.admissionById(a.id))!;
     }
     // The wallet credential is minted; the grants follow once the bank has anchored it (ADR 0060).
+    // A client's request for custody is answered by this admission (ADR 0076).
+    if (client.custodyRequest) await store.updateClient({ ...client, custodyRequest: undefined });
     await store.updateAdmission({ ...a, status: "awaiting-anchor", data: { ...data, account, anchorSince: now(), error: undefined } }, "failed");
     await store.audit({ at: now(), actor: staff.email, action: `opened custody account ${account} for ${record.legalName}; waiting for the bank to anchor its credential`, subject: a.id });
   } catch (e) {
@@ -467,6 +469,24 @@ export async function offboardAdmission(staff: Registrant, id: string, reason: s
   const store = getStore();
   const a = await store.admissionById(id);
   if (!a || a.status !== "admitted") throw new Error("Only an admitted account can be offboarded.");
+  await offboard(a, staff.email, reason.trim());
+}
+
+/**
+ * The client unbinds its own wallet (ADR 0076): at once, as staff offboarding does. Its KYB at the
+ * bank stands, so binding a wallet again needs only a signature.
+ */
+export async function unbindWallet(client: Registrant, id: string): Promise<void> {
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.registrantId !== client.id || a.route === "custodied") throw new Error("That is not your wallet.");
+  if (a.status !== "admitted") throw new Error("Only an onboarded wallet can be unbound.");
+  await offboard(a, client.email, "unbound by the client");
+}
+
+/** Revokes an admitted account's two grants, claimed first so two clicks cannot both send. */
+async function offboard(a: Admission, by: string, reason: string): Promise<void> {
+  const store = getStore();
   const d = a.data as Record<string, any>;
   // Claimed first, so two clicks cannot both send.
   if (!(await store.updateAdmission({ ...a, status: "failed", data: { ...d, error: "offboarding" } }, "admitted"))) {
@@ -474,9 +494,9 @@ export async function offboardAdmission(staff: Registrant, id: string, reason: s
   }
   try {
     const removed = await removeGrants(walletOf(a));
-    const offboarded = { by: staff.email, at: now(), reason: reason.trim(), ...removed };
+    const offboarded = { by, at: now(), reason, ...removed };
     await store.updateAdmission({ ...a, status: "offboarded", data: { ...d, offboarded, error: undefined } }, "failed");
-    await store.audit({ at: now(), actor: staff.email, action: `offboarded ${walletOf(a)}: ${reason.trim()}`, subject: a.id });
+    await store.audit({ at: now(), actor: by, action: `offboarded ${walletOf(a)}: ${reason}`, subject: a.id });
   } catch (e) {
     // Nothing is lost: the admission is admitted again and the error shown, to be retried.
     await store.updateAdmission({ ...a, status: "admitted", data: { ...d, error: `offboarding failed: ${(e as Error).message}` } }, "failed");
@@ -512,6 +532,46 @@ async function replacePrevious(id: string): Promise<void> {
       await store.updateAdmission({ ...old, status: "admitted", data: { ...d, error: `replacing it failed: ${(e as Error).message}` } }, "failed");
     }
   }
+}
+
+/** The bank's reference for the client, from the KYB its bank confirmed for it here, if any. */
+export async function kybReferenceOf(client: Registrant): Promise<string | null> {
+  const mine = await getStore().admissionsFor(client.id);
+  const confirmed = mine.find((x) => x.route === "self-custody" && (x.data as Record<string, any>).record?.kycReference);
+  return confirmed ? String((confirmed.data as Record<string, any>).record.kycReference) : null;
+}
+
+/** The custody accounts the bank holds for the client: custodied admissions on its KYB. */
+export async function custodyFor(client: Registrant): Promise<Admission[]> {
+  const ref = await kybReferenceOf(client);
+  if (!ref) return [];
+  return (await getStore().listAdmissions(500)).filter((x) => x.route === "custodied" && (x.data as Record<string, any>).record?.kycReference === ref);
+}
+
+/**
+ * The client asks its bank to hold its account in custody (ADR 0076). Staff admit it under
+ * Custody; once the custody account is admitted, the client's own wallet is offboarded (one
+ * wallet per KYB).
+ */
+export async function requestCustody(client: Registrant): Promise<void> {
+  const store = getStore();
+  const ref = await kybReferenceOf(client);
+  if (!ref) throw new Error("Your bank has not confirmed a KYB for you here; ask it directly to hold your account.");
+  const c = await store.clientByReference(ref);
+  if (!c) throw new Error("Your bank no longer lists you as a client; ask it directly.");
+  if (c.custodyRequest) return;
+  await store.updateClient({ ...c, custodyRequest: { registrantId: client.id, email: client.email, at: now() } });
+  await store.audit({ at: now(), actor: client.email, action: `asked the bank to hold ${ref}'s account in custody`, subject: c.id });
+}
+
+/** The client withdraws its request before staff act on it. */
+export async function withdrawCustodyRequest(client: Registrant): Promise<void> {
+  const store = getStore();
+  const ref = await kybReferenceOf(client);
+  const c = ref ? await store.clientByReference(ref) : null;
+  if (!c?.custodyRequest || c.custodyRequest.registrantId !== client.id) return;
+  await store.updateClient({ ...c, custodyRequest: undefined });
+  await store.audit({ at: now(), actor: client.email, action: `withdrew the request to hold ${ref}'s account in custody`, subject: c.id });
 }
 
 /**

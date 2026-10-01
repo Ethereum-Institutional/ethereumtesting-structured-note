@@ -20,12 +20,15 @@ test("holder wallet: the officer scans once, the officer's wallet signs in MetaM
   await row.getByRole("button", { name: "Approve and write grants" }).click();
   await expect(row.locator(".pill")).toHaveText("admitted", { timeout: 60_000 });
   await client.reload();
-  await expect(client.getByText("Admitted to the conversion pool.")).toBeVisible();
+  await expect(client.getByRole("region", { name: "Your wallet" })).toContainText(wallet);
+  await expect(client.getByRole("region", { name: "Your wallet" })).toContainText("Holder wallet");
 
-  // S-27 from the page: a quote as the amount is typed, then the approvals and the swap in MetaMask.
+  // S-27 from the Convert page: a quote as the amount is typed, then the approvals and the swap in MetaMask.
   await fundWallet(wallet as `0x${string}`, 50_000_000n); // 50 EURPT
-  await client.reload();
-  await expect(client.getByText(/Your wallet holds 50(\.00)? EURPT/)).toBeVisible();
+  await client.getByRole("navigation", { name: "Onboard" }).getByRole("link", { name: "Convert" }).click();
+  await expect(client).toHaveURL(/\/onboard\/convert$/);
+  const held = client.locator(".facts dd");
+  await expect(held.nth(0)).toHaveText("50.00");
   // Both tokens added to the wallet's list in a click each (EIP-747).
   await client.getByRole("button", { name: "Add EURPT to MetaMask" }).click();
   await expect(client.getByRole("status")).toContainText("EURPT is in your wallet's list");
@@ -38,7 +41,8 @@ test("holder wallet: the officer scans once, the officer's wallet signs in MetaM
   await expect(client.getByRole("status").filter({ hasText: "Converted 10.000000 EURPT into at least" })).toBeVisible({ timeout: 60_000 });
   const sent = (await client.evaluate(() => (window as any).__walletCalls as string[])).filter((m) => m === "eth_sendTransaction");
   expect(sent, "two approvals, then the swap").toHaveLength(3);
-  await expect(client.getByText(/Your wallet holds 40(\.00)? EURPT, 9\.\d\d EURTD/)).toBeVisible({ timeout: 20_000 });
+  await expect(held.nth(0)).toHaveText("40.00", { timeout: 20_000 });
+  await expect(held.nth(1)).toHaveText(/^9\.\d\d$/);
   await expectHealthy(client);
   await expectHealthy(staff);
 });

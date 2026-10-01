@@ -43,22 +43,25 @@ test("third-party wallet: the client asks, the bank declines, the client asks ag
   await expect(client.getByRole("alert").filter({ hasText: "You declined in the wallet" })).toBeVisible();
   await client.getByRole("button", { name: "Connect MetaMask and bind this wallet" }).click();
   await expect(client.getByText("Almost there: waiting for your bank to anchor the credential")).toBeVisible({ timeout: 30_000 });
-  await expect(client.getByText("Admitted to the conversion pool.")).toBeVisible({ timeout: 60_000 });
+  // Admitted, the request gives way to the account card (ADR 0076).
+  const card = client.getByRole("region", { name: "Your wallet" });
+  await expect(card).toContainText(wallet, { timeout: 60_000 });
   const calls: string[] = await client.evaluate(() => (window as any).__walletCalls);
   expect(calls).toEqual(expect.arrayContaining(["eth_requestAccounts", "wallet_switchEthereumChain", "wallet_addEthereumChain", "eth_signTypedData_v4"]));
 
-  // Onboarded: every stage is done, and the client binds a new wallet rather than starting over (ADR 0069).
+  // Onboarded: the client binds a new wallet beside the current one rather than starting over (ADR 0069).
   await client.reload();
-  await expect(client.locator(".progress li.done")).toHaveCount(3);
-  await expect(client.getByRole("row").filter({ hasText: wallet })).toContainText("Third party");
+  await expect(card).toContainText("Third-party wallet");
+  await expect(client.locator(".progress")).toHaveCount(0);
   await expect(client.getByRole("button", { name: "Ask my bank to confirm my KYB" })).toHaveCount(0);
-  await expect(client.getByText(`the current one (${wallet}) is offboarded`)).toBeVisible();
-  await client.getByRole("button", { name: "Bind a new wallet" }).click();
+  await expect(card).toContainText("once a new wallet or a custody account is onboarded, this wallet is unbound");
+  await expect(card.getByRole("button", { name: "Ask my bank to hold it in custody" })).toBeVisible();
+  await card.getByRole("button", { name: "Bind a new wallet" }).click();
   // Straight to the signing stage: the bank's confirmation still stands.
   await expect(client.locator(".progress li.current")).toHaveText(/Sign message from wallet/);
   await expect(client.getByRole("button", { name: "Connect MetaMask and bind this wallet" })).toBeVisible();
   await client.getByRole("button", { name: "Cancel this request" }).click();
-  await expect(client.getByRole("button", { name: "Bind a new wallet" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Bind a new wallet" })).toBeVisible();
   await expectHealthy(client);
   await expectHealthy(staff);
 });

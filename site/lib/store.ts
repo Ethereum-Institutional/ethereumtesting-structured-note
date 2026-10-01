@@ -84,6 +84,8 @@ export type Client = {
   createdAt: string;
   /** Earlier credentials for the same client, superseded by a re-screen. */
   previous: Array<{ credentialId: string; issuedAt: string }>;
+  /** The client asked, from Onboard, for its account to be held in custody (ADR 0076). */
+  custodyRequest?: { registrantId: string; email: string; at: string };
 };
 
 /** A note issued from the site (ADRs 0072, 0073): its terms, its contracts as they are deployed, and its life. */

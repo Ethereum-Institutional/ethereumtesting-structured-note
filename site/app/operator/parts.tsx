@@ -3,10 +3,13 @@ import {
   creditDepositAction,
   custodyConvertAction,
   decideAction,
+  resendLinkAction,
   offboardAction,
+  approveForNoteAction,
   revokeAtBankAction,
 } from "../actions";
 import { PendingButton } from "../PendingButton";
+import { ResendLink } from "./ResendLink";
 
 /** What the Operator pages share (ADR 0073): the client picker, an admitted account's actions, links and times. */
 
@@ -34,9 +37,27 @@ export function ClientReference({ clients, known }: { clients: Client[]; known?:
 }
 
 /** Offboarding and revocation for an admitted account (ADRs 0063, 0064): each folded away until wanted. */
-export function AdmittedActions({ id, affected, custodied, symbols, notes }: { id: string; affected: number; custodied: boolean; symbols: { payment: string; deposit: string }; notes: string[] }) {
+export function AdmittedActions({ id, affected, custodied, symbols, notes, regS }: { id: string; affected: number; custodied: boolean; symbols: { payment: string; deposit: string }; notes: string[]; regS?: { by: string; at: string } }) {
   return (
     <div className="stack-actions">
+      {regS ? (
+        <span className="muted">Approved for the note under Reg S by {regS.by}, {day(regS.at)}</span>
+      ) : (
+        <details>
+          <summary>Approve for the note…</summary>
+          <form action={approveForNoteAction} className="stack">
+            <input type="hidden" name="id" value={id} />
+            <p className="muted">
+              The note is sold only outside the United States, under Regulation S. The Access Issuer adds the Reg S flag to the
+              account's registry grant, keeping its expiry; without it the note refuses to move to the account (S-09).
+            </p>
+            <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <input type="checkbox" required /> The client is not a U.S. person and takes the note outside the United States.
+            </label>
+            <PendingButton working="Writing the Reg S flag…">Approve for the note</PendingButton>
+          </form>
+        </details>
+      )}
       <details>
         <summary>Credit deposit…</summary>
         <form action={creditDepositAction} className="stack">
@@ -117,6 +138,7 @@ export function Decide({ r, self }: { r: Registrant; self: boolean }) {
   );
   const buttons =
     r.status === "pending" ? <>{act("approve", "Approve")}{act("revoke", "Decline")}</>
+    : r.status === "unverified" ? <><ResendLink id={r.id} email={r.email} action={resendLinkAction} />{act("approve", "Approve")}{act("revoke", "Decline")}</>
     : r.status === "approved" && !self ? act("revoke", "Revoke")
     : r.status === "revoked" ? act("approve", "Reinstate")
     : null;

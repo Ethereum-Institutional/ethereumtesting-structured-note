@@ -2,7 +2,12 @@ import { getStore } from "@/lib/store";
 import { explorerAddress } from "@/lib/explorer";
 import { loadManifest } from "@/lib/chain/manifest";
 import { ISSUANCE_STEPS, SCENARIOS } from "@/lib/notes/issue";
-import { advanceNoteAction, startNoteAction } from "../../actions";
+import { advanceNoteAction, cancelPlacementAction, placeUnitsAction, startNoteAction } from "../../actions";
+import { routeLabel } from "@/lib/routes";
+import { explorerTx } from "@/lib/explorer";
+import { inventoryOf, type Placement } from "@/lib/notes/place";
+import { PendingButton } from "../../PendingButton";
+import { PlaceForm, type Placeable } from "./PlaceForm";
 import { AnchorWatch } from "../../AnchorWatch";
 import { Linked, when } from "../parts";
 import { NoteForm } from "./NoteForm";
@@ -10,8 +15,20 @@ import { NoteForm } from "./NoteForm";
 export const dynamic = "force-dynamic";
 
 export default async function Notes() {
-  const notes = await getStore().listNotes();
+  const store = getStore();
+  const notes = await store.listNotes();
   const chainId = loadManifest().chainId;
+  const issued = notes.filter((n) => n.status === "issued");
+  // The accounts units can be placed with: every admitted account, by any route.
+  const accounts: Placeable[] = (await store.listAdmissions(500))
+    .filter((a) => a.status === "admitted")
+    .map((a) => {
+      const d = a.data as Record<string, any>;
+      const s = d.assessment?.summary;
+      return { id: a.id, label: `${s?.corporation ?? d.record?.legalName ?? "Account"}, ${routeLabel(a.route)}, ${String(s?.wallet ?? "").slice(0, 10)}…`, regS: Boolean(d.regS) };
+    });
+  // The Issuer's inventory of each note: what is left to place.
+  const inventories = await Promise.all(issued.map((n) => inventoryOf(n).catch(() => n.units)));
   return (
     <>
       <h2 id="notes">Notes</h2>
@@ -53,6 +70,47 @@ export default async function Notes() {
             </table>
           </div>
         )}
+        {issued.map((n, i) => {
+          const placements = ((n.data.placements ?? []) as Placement[]).slice().reverse();
+          const euros = (c: string) => `€${(Number(c) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
+          return (
+            <div key={n.id} id={`place-${n.series}`}>
+              <h3>Place {n.name}</h3>
+              <p className="muted">The Issuer holds {inventories[i]} of its {n.units} units. Each placement settles by DvP against the deposit, within 24 hours.</p>
+              <PlaceForm noteId={n.id} accounts={accounts} inventory={inventories[i]} action={placeUnitsAction} />
+              {placements.length > 0 && (
+                <div className="table-wrap" style={{ marginTop: "1rem" }}>
+                  <table>
+                    <thead><tr><th>Trade</th><th>Account</th><th>Units</th><th>Price</th><th>Status</th><th>Transactions</th><th /></tr></thead>
+                    <tbody>
+                      {placements.map((p) => (
+                        <tr key={p.id}>
+                          <td>{p.id}</td>
+                          <td>{p.buyer.slice(0, 10)}…, {routeLabel(p.route)}</td>
+                          <td>{p.units}</td>
+                          <td>{euros(p.priceCents)}</td>
+                          <td><span className={`pill ${p.status === "settled" ? "approved" : p.status === "offered" ? "pending" : "revoked"}`}>{p.status}</span></td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            {Object.entries(p.txs).map(([k, h]) => <span key={k}>{k}: <Linked href={explorerTx(chainId, h)}>{`${h.slice(0, 10)}…`}</Linked><br /></span>)}
+                          </td>
+                          <td>
+                            {p.status === "offered" && (
+                              <form action={cancelPlacementAction} className="actions">
+                                <input type="hidden" name="noteId" value={n.id} />
+                                <input type="hidden" name="tradeId" value={p.id} />
+                                <PendingButton className="quiet" working="Withdrawing the offer…">Withdraw</PendingButton>
+                              </form>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
         <h3>Issue a note</h3>
         <NoteForm action={startNoteAction} scenarios={SCENARIOS.map((s) => ({ name: s.name, summary: s.summary }))} />
       </section>

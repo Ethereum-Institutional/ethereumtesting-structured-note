@@ -100,3 +100,73 @@ test("a note with six observations, an hour apart, is issued with that schedule"
   assert.equal(Number(last.date) - Number(fifth.date), 3600);
   assert.equal(Number(last.recordTime) - Number(last.date), 720, "a fifth of an hour");
 });
+
+// --- selling restrictions and placement (ADR 0075; S-08, S-09) ---
+
+const place = await import("../lib/notes/place.ts");
+const { privateKeyToAccount } = await import("viem/accounts");
+const { createWalletClient, keccak256, toBytes } = await import("viem");
+const LOCAL = JSON.parse((await import("node:fs")).readFileSync(join(REPO, "ops", "addresses.json"), "utf8"));
+const GATEWAY = parseAbi(["function credit(address account, uint256 amount, bytes32 bookingRef)"]);
+const BAL = parseAbi(["function balanceOf(address) view returns (uint256)"]);
+
+/** An admitted account as the site records it, for an account the local deployment onboarded without Reg S. */
+async function admitted(id: string, route: "custodied" | "self-custody", wallet: Address, registrantId: string) {
+  await store.putAdmission({
+    id, registrantId, route, status: "admitted", createdAt: new Date().toISOString(), officerRequestId: null, walletRequestId: null,
+    data: { assessment: { ok: true, summary: { wallet, corporation: "Test Institution One" } } },
+  });
+  return id;
+}
+async function credit(account: Address, cents: bigint) {
+  const agent = createWalletClient({ account: privateKeyToAccount("0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6"), transport: http(RPC) });
+  const h = await agent.writeContract({ address: LOCAL.instruments.gateway, abi: GATEWAY, functionName: "credit", args: [account, cents, keccak256(toBytes(`test credit ${account} ${Date.now()}`))], chain: null });
+  await client.waitForTransactionReceipt({ hash: h });
+}
+const client3p = { ...operator, id: "reg_client_c", email: "treasury@corp.example" };
+
+test("S-09, then S-08: an unapproved wallet is refused; once approved, it accepts the Issuer's offer in two transactions", async () => {
+  const n = (await store.listNotes()).find((x) => x.observations === 6 && x.status === "issued")!;
+  const investorC = LOCAL.parties.investorC as Address;
+  const id = await admitted("adm_test_c", "self-custody", investorC, client3p.id);
+  await credit(investorC, 1_000_000n); // €10,000.00
+  const before = await client.readContract({ address: LOCAL.assets.deposit.address, abi: BAL, functionName: "balanceOf", args: [investorC] });
+
+  await assert.rejects(place.placeUnits(operator as any, n.id, id, 2, 100_000n), /lacks the Reg S flag \(S-09\)/);
+  assert.equal(await place.hasRegS(investorC), false);
+  await place.approveForNote(operator as any, id);
+  assert.equal(await place.hasRegS(investorC), true);
+  await assert.rejects(place.approveForNote(operator as any, id), /already approved/);
+
+  const offered = await place.placeUnits(operator as any, n.id, id, 2, 100_000n);
+  assert.equal(offered.status, "offered", "a client's own wallet accepts itself");
+  assert.equal(offered.priceCents, "200000");
+  await assert.rejects(place.acceptanceFor(operator as any, n.id, offered.id, investorC), /not yours/);
+
+  const txs = await place.acceptanceFor(client3p as any, n.id, offered.id, investorC);
+  assert.equal(txs.length, 2, "the price's allowance, then the acceptance");
+  const wallet = createWalletClient({ account: privateKeyToAccount("0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba"), transport: http(RPC) });
+  let last: `0x${string}` = "0x";
+  for (const t of txs) {
+    last = await wallet.sendTransaction({ to: t.to, data: t.data, chain: null });
+    await client.waitForTransactionReceipt({ hash: last });
+  }
+  const after = await place.refreshPlacement(n.id, offered.id, last);
+  assert.equal(after?.status, "settled");
+  assert.equal(await client.readContract({ address: n.addresses.note as Address, abi: BAL, functionName: "balanceOf", args: [investorC] }), 2n);
+  assert.equal(await client.readContract({ address: LOCAL.assets.deposit.address, abi: BAL, functionName: "balanceOf", args: [investorC] }), before - 200_000n, "paid €2,000 for two units");
+});
+
+test("S-08 for a custody account: the custodian accepts in the same action, and both legs settle", async () => {
+  const n = (await store.listNotes()).find((x) => x.observations === 6 && x.status === "issued")!;
+  const account = LOCAL.custody.accounts["SEG-0003"] as Address;
+  const id = await admitted("adm_test_seg3", "custodied", account, operator.id);
+  await credit(account, 200_000n);
+  await place.approveForNote(operator as any, id);
+  const p = await place.placeUnits(operator as any, n.id, id, 1, 100_000n);
+  assert.equal(p.status, "settled");
+  assert.ok(p.txs.accepted);
+  assert.equal(await client.readContract({ address: n.addresses.note as Address, abi: BAL, functionName: "balanceOf", args: [account] }), 1n);
+  const recorded = ((await store.noteById(n.id))!.data.placements as any[]).map((x) => `${x.id}:${x.status}`);
+  assert.deepEqual(recorded.sort(), ["1:settled", "2:settled"]);
+});

@@ -68,6 +68,7 @@ export async function startStandIns(port: number, rpc: string, options: StandInO
   const issuances = new Map<string, any>();
   let issuanceCount = 0;
   let lastLodged: any = null;
+  const mails: Array<{ to: string | string[]; subject: string; text: string }> = [];
   const anchorDelayMs = options.anchorDelayMs ?? 3000;
 
   // The bank's register of what it issued. It issues at once and anchors in batches, as the real
@@ -129,6 +130,12 @@ export async function startStandIns(port: number, rpc: string, options: StandInO
 
     // For the browser tests, which play the holder wallet: the request the site last lodged.
     if (req.method === "GET" && req.url === "/test/last-lodged") return send(lastLodged ? 200 : 404, lastLodged ?? {});
+    // Outbound mail, as Resend would accept it; the tests read what was sent.
+    if (req.method === "POST" && req.url === "/emails") {
+      mails.push(JSON.parse(body));
+      return send(200, { id: `mail_${mails.length}` });
+    }
+    if (req.method === "GET" && req.url === "/test/mails") return send(200, mails);
 
     if (req.method === "POST" && req.url === "/v1/verifier-request") {
       if (!authorised) return send(401, { error: { code: "unauthenticated", message: "unauthenticated" } });
@@ -250,6 +257,9 @@ export async function startStandIns(port: number, rpc: string, options: StandInO
     env: (chainRpc, manifestPath, siteUrl) => ({
       SITE_URL: siteUrl,
       OPERATOR_EMAILS: "operator@example.org",
+      RESEND_API_KEY: "re_test_standin",
+      MAIL_FROM: "Structured Note <no-reply@example.org>",
+      RESEND_API_URL: `${url}/emails`,
       CREDENTIAL_VERIFIER_URL: url,
       ADMISSION_VERIFIER_DID: "did:example:access-issuer",
       ADMISSION_VERIFIER_SEED: bytesToHex(new Uint8Array(32).fill(5)),

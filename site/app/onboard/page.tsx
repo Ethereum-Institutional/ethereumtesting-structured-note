@@ -1,17 +1,13 @@
 import { redirect } from "next/navigation";
 import { routeLabel } from "@/lib/routes";
 import QRCode from "qrcode";
-import { currentRegistrant, isOperator } from "@/lib/access";
-import { getStore, type Admission } from "@/lib/store";
-import { Bar } from "../Bar";
+import { currentRegistrant } from "@/lib/access";
+import type { Admission } from "@/lib/store";
 import {
   bindWalletAction,
   advanceAdmissionAction,
   bindNewWalletAction,
   browserWalletFinishAction,
-  conversionDoneAction,
-  prepareConversionAction,
-  quoteAction,
   browserWalletStartAction,
   cancelAdmissionAction,
   renewAdmissionAction,
@@ -19,13 +15,16 @@ import {
   requestSelfCustodyAction,
   startAdmissionAction,
   submitSignatureAction,
+  unbindWalletAction,
+  requestCustodyAction,
+  withdrawCustodyRequestAction,
 } from "../actions";
 import { SignWallet } from "./SignWallet";
 import { AutoRefresh } from "../AutoRefresh";
 import { AnchorWatch } from "../AnchorWatch";
 import { BrowserWallet } from "./BrowserWallet";
-import { ConvertPanel } from "./ConvertPanel";
-import { balances, tokens } from "@/lib/pool/convert";
+import { PendingButton } from "../PendingButton";
+import { accountOf, walletOf } from "./account";
 import { chainParams } from "@/lib/chains";
 import { loadManifest } from "@/lib/chain/manifest";
 import { CANCELLABLE } from "@/lib/admission/service";
@@ -33,10 +32,10 @@ import { CANCELLABLE } from "@/lib/admission/service";
 export const dynamic = "force-dynamic";
 
 /**
- * Admission to the conversion pool, as the client sees it (ADR 0054). Most clients are admitted by
- * their bank or custodian and never visit this page. Here a client can ask for its own wallet to
- * be admitted under the KYB its bank already holds, with one signature; or present credentials from
- * a holder wallet.
+ * The client's account (ADRs 0054, 0076). Most clients are admitted by their bank or custodian and
+ * never visit this page. Here a client can ask for its own wallet to be admitted under the KYB its
+ * bank already holds, with one signature, or present credentials from a holder wallet; and once
+ * onboarded, bind a new wallet, unbind it, or ask the bank to hold the account in custody instead.
  */
 
 const STATUS: Record<Admission["status"], string> = {
@@ -82,49 +81,39 @@ function Progress({ at, done }: { at: number; done: boolean }) {
   );
 }
 
-/** The routes a client takes itself. A custodied admission is the bank's own act and is shown to staff (ADR 0062). */
-const CLIENT_ROUTES = ["self-custody", "holder-wallet"] as const;
+const day = (iso: string) => iso.slice(0, 10);
 
-export default async function Onboard() {
+export default async function Account() {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  const store = getStore();
-  const [a, mine] = await Promise.all([store.latestAdmissionFor(who.id, [...CLIENT_ROUTES]), store.admissionsFor(who.id)]);
-  const onboarded = mine.filter((x) => x.status === "admitted" && (CLIENT_ROUTES as readonly string[]).includes(x.route));
+  const acct = await accountOf(who);
+  const { latest: a, open, wallet, held, kyb } = acct;
   const d = (a?.data ?? {}) as Record<string, any>;
   const chain = chainParams(loadManifest().chainId);
-  const open = a && !["refused", "admitted", "declined", "cancelled", "offboarded", "failed"].includes(a.status);
-  // Onboarded once, by either route: the client binds a new wallet rather than starting over (ADR 0069).
-  const hasKyb = mine.some((x) => x.route === "self-custody" && (x.data as Record<string, any>).record?.kycReference && ["admitted", "offboarded"].includes(x.status));
-  const viaHolder = mine.some((x) => x.route === "holder-wallet" && ["admitted", "offboarded"].includes(x.status));
-  const returning = hasKyb || viaHolder;
-  const current = onboarded[0];
-  const stage = stageOf(a?.status, onboarded.length > 0);
-  // The onboarded wallet's holdings, for converting (ADR 0070).
-  const currentWallet = (current?.data as Record<string, any> | undefined)?.assessment?.summary?.wallet as `0x${string}` | undefined;
-  const t = tokens();
-  const held = currentWallet ? await balances(currentWallet).catch(() => null) : null;
-  const show = (v: bigint, decimals: number) => (Number(v) / 10 ** decimals).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: decimals });
+  const onboarded = Boolean(wallet || held);
+  const returning = Boolean(kyb) || acct.viaHolder;
+  const stage = stageOf(a?.status, onboarded);
+  // A request is shown while it runs, and once it has ended badly; an ended one that worked is the account card.
+  const showRequest = a && (open || !["admitted", "offboarded"].includes(a.status)) && !(a.status === "cancelled" && onboarded);
 
   return (
-    <div className="wrap">
-      {open && a.status !== "awaiting-signature" && a.status !== "kyb-confirmed" && a.status !== "awaiting-anchor" && <AutoRefresh />}
+    <>
+      {open && !["awaiting-signature", "kyb-confirmed", "awaiting-anchor"].includes(open.status) && <AutoRefresh />}
       {a?.status === "awaiting-anchor" && <AnchorWatch ids={[a.id]} advance={advanceAdmissionAction} />}
-      <Bar who={who} operator={isOperator(who.email)} />
-      <header className="masthead" style={{ paddingBottom: "1rem" }}>
-        <p className="eyebrow">Conversion pool</p>
-        <h1 style={{ fontSize: "2.25rem" }}>Onboard</h1>
-        <p className="lede">
-          If your bank or custodian holds your account, ask them to onboard it: there is nothing for you to do here.
-          Otherwise your bank confirms the KYB it already holds, you sign once with your wallet, and the wallet is granted access.
-        </p>
-      </header>
-      <Progress {...stage} />
+      <h2 id="account">Account</h2>
+      {(!onboarded || open) && (
+        <>
+          <p className="lede" style={{ marginTop: 0 }}>
+            If your bank or custodian holds your account, ask them to onboard it: there is nothing for you to do here.
+            Otherwise your bank confirms the KYB it already holds, you sign once with your wallet, and the wallet is granted access.
+          </p>
+          <Progress {...stage} />
+        </>
+      )}
 
-      {a && (
+      {showRequest && (
         <section className="panel">
           <p><strong>{STATUS[a.status]}</strong> {a.status === "refused" && problems(d)} {a.status === "failed" && d.error}</p>
-          {a.status === "admitted" && <p className="muted">{d.assessment?.summary?.wallet} may now convert in the pool.</p>}
           {d.record?.kycReference && a.route === "self-custody" && (
             <p className="muted">Your bank's reference for you: {d.record.kycReference}{d.record.legalName ? `, ${d.record.legalName}` : ""}.</p>
           )}
@@ -170,71 +159,72 @@ export default async function Onboard() {
         </section>
       )}
 
-      {onboarded.length > 0 && (
-        <section className="panel">
-          <h2>Your onboarded wallet</h2>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Wallet</th><th>Route</th><th>Onboarded</th><th>Grant runs to</th></tr></thead>
-              <tbody>
-                {onboarded.map((x) => {
-                  const xd = x.data as Record<string, any>;
-                  const to = xd.written?.poolGrantExpiresAt;
-                  return (
-                    <tr key={x.id}>
-                      <td>{xd.assessment?.summary?.wallet}</td>
-                      <td>{routeLabel(x.route)}</td>
-                      <td>{x.createdAt.slice(0, 10)}</td>
-                      <td>{to ? new Date(to * 1000).toISOString().slice(0, 10) : ""}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {wallet && (
+        <section className="panel" aria-label="Your wallet">
+          <p className="eyebrow">{wallet.route === "holder-wallet" ? "Holder wallet" : "Third-party wallet"}</p>
+          <Facts a={wallet} />
+          <div className="account-actions">
+            {!open && (
+              <form action={kyb ? bindNewWalletAction : startAdmissionAction}>
+                <button type="submit">Bind a new wallet</button>
+              </form>
+            )}
+            <CustodyRequest kyb={kyb} request={acct.custodyRequest} />
+            <details>
+              <summary>Unbind this wallet…</summary>
+              <form action={unbindWalletAction} className="stack">
+                <input type="hidden" name="id" value={wallet.id} />
+                <p className="muted">
+                  Revokes the wallet's pool grant and its Identity Registry grant at once. Whatever it holds stays in it,
+                  but it can no longer convert, or receive or move the deposit or the note. Your KYB at the bank stands:
+                  you can bind a wallet again with one signature.
+                </p>
+                <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <input type="checkbox" required /> Unbind {walletOf(wallet)}
+                </label>
+                <div className="actions"><PendingButton className="quiet" working="Revoking both grants…">Unbind</PendingButton></div>
+              </form>
+            </details>
+          </div>
+          {kyb && <p className="muted" style={{ marginBottom: 0 }}>One wallet per KYB: once a new wallet or a custody account is onboarded, this wallet is unbound.</p>}
+        </section>
+      )}
+
+      {held && (
+        <section className="panel" aria-label="Held in custody">
+          <p className="eyebrow">Held in custody by your bank</p>
+          <Facts a={held} />
+          <div className="account-actions">
+            <p className="muted" style={{ margin: 0, flex: 1 }}>
+              Your bank holds this account for you and acts in it on your instruction: crediting the deposit, converting, and
+              accepting the notes it places with you.
+            </p>
+            {kyb && !open && !wallet && (
+              <form action={bindNewWalletAction}>
+                <button type="submit" className="quiet">Bind a wallet of your own instead</button>
+              </form>
+            )}
           </div>
         </section>
       )}
 
-      {currentWallet && (
+      {!onboarded && !open && returning && (
         <section className="panel">
-          <h2>Convert</h2>
-          <p className="muted">
-            {held
-              ? <>Your wallet holds {show(held.payment, t.payment.decimals)} {t.payment.symbol}, {show(held.deposit, t.deposit.decimals)} {t.deposit.symbol} and {show(held.eth, 18)} ETH for fees.</>
-              : "The wallet's balances could not be read just now."}
-            {chain.chainId === "0x14a34" && (
-              <> Test {t.payment.symbol}: <a href="https://faucet.circle.com" target="_blank" rel="noreferrer">Circle's faucet</a>. Test ETH for fees: <a href="https://docs.base.org/base-chain/tools/network-faucets" target="_blank" rel="noreferrer">Base Sepolia faucets</a>. {t.deposit.symbol} is credited by your bank.</>
-            )}
-          </p>
-          <ConvertPanel
-            wallet={currentWallet}
-            chain={chain}
-            symbols={{ payment: t.payment.symbol, deposit: t.deposit.symbol }}
-            assets={[t.payment, t.deposit]}
-            quote={quoteAction}
-            prepare={prepareConversionAction}
-            done={conversionDoneAction}
-          />
+          <h3 style={{ marginTop: 0 }}>No account onboarded</h3>
+          <p className="muted">Your bank's confirmation of your KYB still stands: bind a wallet with one signature, or ask your bank to hold the account for you.</p>
+          <div className="account-actions" style={{ borderTop: 0, paddingTop: 0 }}>
+            <form action={kyb ? bindNewWalletAction : startAdmissionAction}>
+              <button type="submit">Bind a wallet</button>
+            </form>
+            <CustodyRequest kyb={kyb} request={acct.custodyRequest} />
+          </div>
         </section>
       )}
 
-      {!open && returning && (
-        <section className="panel">
-          <h2>Bind a new wallet</h2>
-          <p className="muted">
-            One wallet per KYB. Your bank's confirmation still stands, so you only sign with the new wallet.
-            {current ? ` Once it is granted access, the current one (${(current.data as Record<string, any>).assessment?.summary?.wallet}) is offboarded.` : ""}
-          </p>
-          <form action={hasKyb ? bindNewWalletAction : startAdmissionAction}>
-            <button type="submit">Bind a new wallet</button>
-          </form>
-        </section>
-      )}
-
-      {!open && !returning && (
+      {!onboarded && !open && !returning && (
         <div className="cols">
           <section className="panel">
-            <h2>A third-party wallet</h2>
+            <h3 style={{ marginTop: 0 }}>A third-party wallet</h3>
             <p className="muted">
               A wallet you control: your own, or one another custodian holds for you. First your bank confirms the KYB
               it already holds for you; then you bind the wallet with one signature.
@@ -247,7 +237,7 @@ export default async function Onboard() {
             </div>
           </section>
           <section className="panel">
-            <h2>Credentials in a holder wallet</h2>
+            <h3 style={{ marginTop: 0 }}>Credentials in a holder wallet</h3>
             <p className="muted">For clients who carry their credentials: scan with the holder wallet.</p>
             <form action={startAdmissionAction}>
               <button type="submit" className="quiet">Present from a holder wallet</button>
@@ -255,7 +245,65 @@ export default async function Onboard() {
           </section>
         </div>
       )}
-    </div>
+
+      {acct.earlier.length > 0 && (
+        <details className="panel">
+          <summary>Earlier wallets ({acct.earlier.length})</summary>
+          <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+            <table>
+              <thead><tr><th>Wallet</th><th>Route</th><th>Onboarded</th><th>Ended</th><th>Why</th></tr></thead>
+              <tbody>
+                {acct.earlier.map((x) => {
+                  const o = (x.data as Record<string, any>).offboarded;
+                  return (
+                    <tr key={x.id}>
+                      <td>{walletOf(x)}</td>
+                      <td>{routeLabel(x.route)}</td>
+                      <td>{day(x.createdAt)}</td>
+                      <td>{o?.at ? day(o.at) : ""}</td>
+                      <td>{o?.reason ?? ""}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+    </>
+  );
+}
+
+/** An onboarded account's facts: its address, when, how long its grant runs, and whether it may take the notes. */
+function Facts({ a }: { a: Admission }) {
+  const d = a.data as Record<string, any>;
+  const to = d.written?.poolGrantExpiresAt;
+  return (
+    <dl className="facts">
+      <dt>Address</dt><dd><code>{walletOf(a)}</code></dd>
+      <dt>Onboarded</dt><dd>{day(a.createdAt)}</dd>
+      <dt>Grant runs to</dt><dd>{to ? new Date(to * 1000).toISOString().slice(0, 10) : ""}</dd>
+      <dt>Notes</dt>
+      <dd>{d.regS ? `Approved under Regulation S on ${day(d.regS.at)}` : "Not yet approved: your bank approves you for its notes before offering them."}</dd>
+    </dl>
+  );
+}
+
+/** Asking the bank to hold the account in custody (ADR 0076), or the request already made. */
+function CustodyRequest({ kyb, request }: { kyb: string | null; request?: { at: string } }) {
+  if (!kyb) return null;
+  if (request) {
+    return (
+      <form action={withdrawCustodyRequestAction} className="actions">
+        <span className="muted">You asked your bank to hold your account in custody on {day(request.at)}.</span>
+        <button type="submit" className="quiet">Withdraw the request</button>
+      </form>
+    );
+  }
+  return (
+    <form action={requestCustodyAction}>
+      <button type="submit" className="quiet">Ask my bank to hold it in custody</button>
+    </form>
   );
 }
 

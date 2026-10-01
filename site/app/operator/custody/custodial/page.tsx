@@ -1,14 +1,41 @@
 import { getStore } from "@/lib/store";
 import { admitCustodiedAction } from "../../../actions";
 import { PendingButton } from "../../../PendingButton";
-import { ClientReference } from "../../parts";
+import { ClientReference, day } from "../../parts";
 
 export const dynamic = "force-dynamic";
 
 export default async function Custodial() {
   const clients = await getStore().listClients();
+  const requests = clients.filter((c) => c.custodyRequest);
   return (
     <>
+      {requests.length > 0 && (
+        <>
+          <h2 id="custody-requests">Asked for by clients</h2>
+          <div className="table-wrap panel">
+            <table>
+              <thead><tr><th>Client</th><th>Asked by</th><th>On</th><th /></tr></thead>
+              <tbody>
+                {requests.map((c) => (
+                  <tr key={c.id}>
+                    <td>{String(c.claims.legalName)} ({c.kycReference})</td>
+                    <td>{c.custodyRequest!.email}</td>
+                    <td>{day(c.custodyRequest!.at)}</td>
+                    <td>
+                      <form action={admitCustodiedAction} className="actions">
+                        <input type="hidden" name="kycReference" value={c.kycReference} />
+                        <PendingButton working="Opening the custody account and writing its grants: up to a minute.">Admit</PendingButton>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted">Once the custody account is admitted, the client's own wallet is unbound: one wallet per KYB.</p>
+        </>
+      )}
       <h2 id="custodied">Admit a custodied client</h2>
       <section className="panel">
         <p className="muted">

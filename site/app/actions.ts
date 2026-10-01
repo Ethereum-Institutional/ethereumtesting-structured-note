@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { confirm, currentOperator, currentRegistrant, decide, register, requestSignIn, signOut } from "@/lib/access";
+import { confirm, currentOperator, currentRegistrant, decide, register, requestSignIn, resendConfirmation, signOut } from "@/lib/access";
 import {
   admitCustodied,
   advanceAdmission,
@@ -21,6 +21,9 @@ import {
   reviewSelfCustody,
   startAdmission,
   submitSelfCustodySignature,
+  unbindWallet,
+  requestCustody,
+  withdrawCustodyRequest,
 } from "@/lib/admission/service";
 import { getStore } from "@/lib/store";
 import { addClient, rescreenClient } from "@/lib/admission/clients";
@@ -82,6 +85,19 @@ export async function decideAction(f: FormData) {
   if (d !== "approve" && d !== "revoke") throw new Error("Unknown decision.");
   await decide(field(f, "id"), d, await siteOrigin());
   revalidatePath("/operator", "layout");
+}
+
+/** Staff resend the confirmation link; whether the mail went is said on the row. */
+export async function resendLinkAction(_prev: FormState, f: FormData): Promise<FormState> {
+  try {
+    await resendConfirmation(field(f, "id"), await siteOrigin());
+    return { sent: true };
+  } catch (e) {
+    console.error(e);
+    return { error: e instanceof MailUnavailable ? "Email delivery is unavailable: the link was not sent." : (e as Error).message };
+  } finally {
+    revalidatePath("/operator", "layout");
+  }
 }
 
 export async function startAdmissionAction() {
@@ -414,4 +430,84 @@ export async function advanceNoteAction(id: string) {
   if (!op) return;
   const { advanceIssuance } = await import("@/lib/notes/issue");
   await recorded(() => advanceIssuance(id), "/operator/notes");
+}
+
+/** The client unbinds its onboarded wallet (ADR 0076). */
+export async function unbindWalletAction(f: FormData) {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
+  await recorded(() => unbindWallet(who, field(f, "id")), "/onboard");
+}
+
+/** The client asks its bank to hold its account in custody, or withdraws the request (ADR 0076). */
+export async function requestCustodyAction() {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
+  await recorded(() => requestCustody(who), "/onboard");
+}
+
+export async function withdrawCustodyRequestAction() {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
+  await recorded(() => withdrawCustodyRequest(who), "/onboard");
+}
+
+/** Staff approve an admitted account for the note under Regulation S (ADR 0075). */
+export async function approveForNoteAction(f: FormData) {
+  const op = await currentOperator();
+  if (!op) throw new Error("Not permitted.");
+  await recorded(async () => (await import("@/lib/notes/place")).approveForNote(op, field(f, "id")), "/operator/admissions");
+}
+
+/** Staff place units with an account (S-08); the note's refusal, such as S-09's, comes back to the form. */
+export async function placeUnitsAction(_prev: { ok?: string; error?: string }, f: FormData): Promise<{ ok?: string; error?: string }> {
+  const op = await currentOperator();
+  if (!op) return { error: "Not permitted." };
+  try {
+    const place = await import("@/lib/notes/place");
+    const count = Number(field(f, "units"));
+    const p = await place.placeUnits(op, field(f, "noteId"), field(f, "admission"), count, units(field(f, "price"), 2));
+    return {
+      ok: p.status === "settled"
+        ? `Settled: ${p.units} units against €${(Number(p.priceCents) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}, accepted by the custodian.`
+        : `Offered as trade ${p.id}: the client accepts from its wallet on its Notes page, within 24 hours.`,
+    };
+  } catch (e) {
+    console.error(e);
+    return { error: (e as Error).message };
+  } finally {
+    revalidatePath("/operator", "layout");
+  }
+}
+
+export async function cancelPlacementAction(f: FormData) {
+  const op = await currentOperator();
+  if (!op) throw new Error("Not permitted.");
+  await recorded(async () => (await import("@/lib/notes/place")).cancelPlacement(op, field(f, "noteId"), field(f, "tradeId")), "/operator/notes");
+}
+
+/** The two transactions a client's wallet sends to accept an offer. */
+export async function prepareAcceptanceAction(noteId: string, tradeId: string, address: string): Promise<{ txs?: Array<{ to: string; data: string; label: string }>; error?: string }> {
+  const who = await currentRegistrant();
+  if (!who) return { error: "Sign in again." };
+  try {
+    return { txs: await (await import("@/lib/notes/place")).acceptanceFor(who, noteId, tradeId, address) };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+export async function acceptanceDoneAction(noteId: string, tradeId: string, tx: string): Promise<{ status?: string; error?: string }> {
+  const who = await currentRegistrant();
+  if (!who) return { error: "Sign in again." };
+  try {
+    const place = await import("@/lib/notes/place");
+    const p = await place.refreshPlacement(noteId, tradeId, tx);
+    if (p?.status === "settled") await getStore().audit({ at: new Date().toISOString(), actor: who.email, action: `accepted trade ${tradeId}: ${p.units} units settled`, subject: noteId });
+    return { status: p?.status };
+  } catch (e) {
+    return { error: (e as Error).message };
+  } finally {
+    revalidatePath("/onboard", "layout");
+  }
 }

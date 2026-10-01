@@ -20,7 +20,11 @@ export default async function AccessRequests() {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
-                <td><span className={`pill ${r.status}`}>{r.status}</span></td>
+                <td>
+                  <span className={`pill ${r.status}`}>{r.status}</span>
+                  {r.status === "unverified" && <><br /><span className="muted">Hasn't confirmed their email yet</span></>}
+                  {r.status === "pending" && <><br /><span className="muted">Email confirmed; awaiting approval</span></>}
+                </td>
                 <td>{r.name}</td>
                 <td>{r.organisation}</td>
                 <td>{r.email}</td>

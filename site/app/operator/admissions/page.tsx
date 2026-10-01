@@ -81,6 +81,7 @@ export default async function Admissions() {
                         id={a.id}
                         affected={resting.get(String(d.assessment?.attestation?.primaryCredential ?? "").toLowerCase()) ?? 1}
                         custodied={a.route === "custodied"}
+                        regS={d.regS}
                         symbols={symbols}
                         notes={[
                           ...((d.credits ?? []) as Array<{ amount: string; bookingRef: string }>).slice(-1).map((c) => `Last credit: ${c.amount} ${symbols.deposit}, ${c.bookingRef}`),

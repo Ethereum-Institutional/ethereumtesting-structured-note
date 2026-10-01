@@ -25,7 +25,7 @@ const expires = new Date(Date.now() + 86_400_000).toISOString();
 writeFileSync(
   join(STORE_DIR, "store.json"),
   JSON.stringify({
-    registrants: Object.values(PEOPLE).map(({ sid: _sid, ...p }) => ({ ...p, createdAt: created, verifiedAt: created, decidedAt: null, decidedBy: null })),
+    registrants: Object.values(PEOPLE).map(({ sid: _sid, ...p }) => ({ ...p, createdAt: created, verifiedAt: p.status === "unverified" ? null : created, decidedAt: null, decidedBy: null })),
     links: [],
     sessions: Object.values(PEOPLE).map((p) => ({ hash: sha256(p.sid), registrantId: p.id, expiresAt: expires })),
     audit: [],
