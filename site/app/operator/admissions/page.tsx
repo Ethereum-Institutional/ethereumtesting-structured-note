@@ -1,4 +1,5 @@
 import { getStore } from "@/lib/store";
+import { routeLabel } from "@/lib/routes";
 import { explorerAddress, explorerTx } from "@/lib/explorer";
 import { tokens } from "@/lib/pool/convert";
 import { advanceAdmissionAction, decideAdmissionAction, finishCustodiedAction } from "../../actions";
@@ -54,7 +55,7 @@ export default async function Admissions() {
               return (
                 <tr key={a.id}>
                   <td>{when(a.createdAt)}</td>
-                  <td>{a.route}</td>
+                  <td>{routeLabel(a.route)}</td>
                   <td><span className={`pill ${a.status === "ready" || a.status === "awaiting-anchor" ? "pending" : a.status === "admitted" ? "approved" : a.status === "offboarded" ? "revoked" : ""}`}>{a.status}</span></td>
                   <td>{s?.corporation ?? d.record?.legalName ?? ""}</td>
                   <td>{s?.officerDid ? `${s.role}, ${s.officerDid}` : ""}</td>

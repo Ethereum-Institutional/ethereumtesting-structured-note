@@ -1,6 +1,6 @@
 import { test, expect, expectHealthy, chooseClient, installWallet, signedIn, PEOPLE } from "./fixtures.ts";
 
-test("self-custody: the client asks, the bank declines, the client asks again, the bank confirms, the client binds with one signature", async ({ browser }) => {
+test("third-party wallet: the client asks, the bank declines, the client asks again, the bank confirms, the client binds with one signature", async ({ browser }) => {
   const client = await signedIn(browser, PEOPLE.selfCustody);
   const wallet = await installWallet(client, `browser self-custody ${Date.now()}`, { declineFirstSignature: true });
   const staff = await signedIn(browser, PEOPLE.operator);
@@ -13,7 +13,10 @@ test("self-custody: the client asks, the bank declines, the client asks again, t
   await expect(client.getByRole("button", { name: "Bind wallet" })).toBeDisabled();
 
   // The bank declines the first request.
+  // The route is shown as Third party (ADR 0074); its old address still works.
   await staff.goto("/operator/custody/self-custody");
+  await expect(staff).toHaveURL(/\/operator\/custody\/third-party$/);
+  await expect(staff.getByRole("heading", { name: "Third-party requests" })).toBeVisible();
   let panel = staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email });
   await panel.getByRole("button", { name: "Decline" }).click();
   await expect(staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email })).toHaveCount(0);
@@ -47,7 +50,7 @@ test("self-custody: the client asks, the bank declines, the client asks again, t
   // Onboarded: every stage is done, and the client binds a new wallet rather than starting over (ADR 0069).
   await client.reload();
   await expect(client.locator(".progress li.done")).toHaveCount(3);
-  await expect(client.getByRole("row").filter({ hasText: wallet })).toContainText("Wallet you hold");
+  await expect(client.getByRole("row").filter({ hasText: wallet })).toContainText("Third party");
   await expect(client.getByRole("button", { name: "Ask my bank to confirm my KYB" })).toHaveCount(0);
   await expect(client.getByText(`the current one (${wallet}) is offboarded`)).toBeVisible();
   await client.getByRole("button", { name: "Bind a new wallet" }).click();

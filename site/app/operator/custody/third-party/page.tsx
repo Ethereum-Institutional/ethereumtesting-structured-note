@@ -11,7 +11,7 @@ export default async function SelfCustody() {
   const queue = admissions.filter((a) => a.route === "self-custody" && a.status === "awaiting-bank-review");
   return (
     <>
-      <h2 id="self-custody">Self-custody requests</h2>
+      <h2 id="third-party">Third-party requests</h2>
       {queue.length === 0 && <p className="muted panel">No client is waiting for its KYB to be confirmed.</p>}
       {queue.map((a) => {
         const r = (a.data as Record<string, any>).request;

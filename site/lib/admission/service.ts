@@ -638,7 +638,7 @@ export async function requestSelfCustody(client: Registrant): Promise<Admission>
     data: { request: { requestedBy: client.email, organisation: client.organisation, ...(knownReference ? { knownReference } : {}) } },
   };
   await getStore().putAdmission(a);
-  await getStore().audit({ at: now(), actor: client.email, action: "asked the bank to confirm its KYB for a self-custody wallet", subject: a.id });
+  await getStore().audit({ at: now(), actor: client.email, action: "asked the bank to confirm its KYB for a third-party wallet", subject: a.id });
   return a;
 }
 
@@ -660,7 +660,7 @@ export async function reviewSelfCustody(
   const d = a.data as Record<string, any>;
   if (outcome === "decline") {
     await store.updateAdmission({ ...a, status: "declined", data: { ...d, reviewedBy: staff.email } }, a.status);
-    await store.audit({ at: now(), actor: staff.email, action: "declined a self-custody request", subject: a.id });
+    await store.audit({ at: now(), actor: staff.email, action: "declined a third-party wallet request", subject: a.id });
     return;
   }
   if (!kycReference) throw new Error("Choose the client's reference at the bank.");
@@ -681,7 +681,7 @@ export async function reviewSelfCustody(
     { ...a, status: "kyb-confirmed", data: { ...d, record, corporate, reviewedBy: staff.email, confirmedAt: now() } },
     a.status,
   );
-  await store.audit({ at: now(), actor: staff.email, action: "confirmed a client's KYB for self-custody", subject: a.id });
+  await store.audit({ at: now(), actor: staff.email, action: "confirmed a client's KYB for a third-party wallet", subject: a.id });
 }
 
 /**
@@ -747,7 +747,7 @@ export async function submitSelfCustodySignature(client: Registrant, id: string,
     } else {
       // The wallet is bound; the grants follow once the bank has anchored its credential (ADR 0060).
       await store.updateAdmission({ ...a, status: "awaiting-anchor", data: { ...data, anchorSince: now() } }, "failed");
-      await store.audit({ at: now(), actor: client.email, action: `bound self-custody wallet ${walletAddress}; waiting for the bank to anchor its credential`, subject: a.id });
+      await store.audit({ at: now(), actor: client.email, action: `bound third-party wallet ${walletAddress}; waiting for the bank to anchor its credential`, subject: a.id });
     }
   } catch (e) {
     // The KYB is still confirmed; only this binding failed. The client can bind again at once.

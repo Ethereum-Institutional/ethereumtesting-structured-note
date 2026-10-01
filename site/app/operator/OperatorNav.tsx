@@ -12,7 +12,7 @@ const ITEMS: Array<{ href: string; label: string; children?: Array<{ href: strin
     label: "Custody",
     children: [
       { href: "/operator/custody/custodial", label: "Custodial" },
-      { href: "/operator/custody/self-custody", label: "Self-custody" },
+      { href: "/operator/custody/third-party", label: "Third party" },
     ],
   },
   { href: "/operator/admissions", label: "Admissions" },

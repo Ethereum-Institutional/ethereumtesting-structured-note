@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { routeLabel } from "@/lib/routes";
 import QRCode from "qrcode";
 import { currentRegistrant, isOperator } from "@/lib/access";
 import { getStore, type Admission } from "@/lib/store";
@@ -182,7 +183,7 @@ export default async function Onboard() {
                   return (
                     <tr key={x.id}>
                       <td>{xd.assessment?.summary?.wallet}</td>
-                      <td>{x.route === "self-custody" ? "Wallet you hold" : "Holder wallet"}</td>
+                      <td>{routeLabel(x.route)}</td>
                       <td>{x.createdAt.slice(0, 10)}</td>
                       <td>{to ? new Date(to * 1000).toISOString().slice(0, 10) : ""}</td>
                     </tr>
@@ -233,10 +234,10 @@ export default async function Onboard() {
       {!open && !returning && (
         <div className="cols">
           <section className="panel">
-            <h2>A wallet you hold</h2>
+            <h2>A third-party wallet</h2>
             <p className="muted">
-              Your own wallet, or one a third party holds for you. First your bank confirms the KYB it already holds
-              for you; then you bind the wallet with one signature.
+              A wallet you control: your own, or one another custodian holds for you. First your bank confirms the KYB
+              it already holds for you; then you bind the wallet with one signature.
             </p>
             <div className="actions">
               <form action={requestSelfCustodyAction}>

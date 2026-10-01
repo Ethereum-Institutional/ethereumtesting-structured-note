@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { routeLabel } from "@/lib/routes";
 import { currentRegistrant, isOperator } from "@/lib/access";
 import { explorerAddress, explorerTx } from "@/lib/explorer";
 import { readLedger, reconcile, type LedgerView, type RegisterRow } from "@/lib/ledger";
@@ -125,7 +126,7 @@ export default async function Ledger() {
                         <td>{units(r.onChain.deposit, m.assets.deposit?.decimals ?? 2)}</td>
                         <td>{String(r.onChain.note)}</td>
                         <td>{r.site?.client ?? ""}</td>
-                        <td>{r.site?.route ?? ""}</td>
+                        <td>{routeLabel(r.site?.route)}</td>
                         <td>{r.site?.status ?? ""}</td>
                         <td style={{ whiteSpace: "normal", minWidth: "16rem" }}>
                           {r.finding ? <span className="notice err" style={{ display: "block" }}>{r.finding}</span> : <span className="muted">{r.note ?? "agrees"}</span>}

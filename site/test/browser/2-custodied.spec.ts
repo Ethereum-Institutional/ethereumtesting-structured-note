@@ -63,7 +63,7 @@ test("staff admit a custodied client in one action, through a lagging RPC, withi
   await own.close();
   await expect(row.locator(".pill")).toHaveText("admitted", { timeout: 60_000 });
   expect(Date.now() - started, "a custodied admission completes within 30 s on one-second blocks").toBeLessThan(30_000);
-  await expect(row).toContainText("custodied");
+  await expect(row).toContainText("Custodial");
   // Pool grant, registry grant and trading approvals: each a transaction (plain on the local chain, which has no explorer).
   // Pool grant, registry grant, trading approvals, and the two anchoring transactions (the
   // corporate identity's earlier batch and the wallet credential's).
