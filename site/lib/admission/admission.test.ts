@@ -228,6 +228,7 @@ const bankRefusals: Array<[string, BankAdmissionInput, RegExp]> = [
   ["a client the bank records as suspended", bankInput({}, { status: "suspended" }), /records the client as suspended/],
   ["a jurisdiction outside the allowlist", bankInput({}, { jurisdiction: "US" }), /outside the pool's allowlist \(US\)/],
   ["no instruction reference", bankInput({ instructionRef: " " }), /instruction reference is missing/],
+  ["a screening older than 30 days", bankInput({}, { screenedAt: NOW - 31 * 86_400 }), /older than 30 days: re-screen/],
   ["an expired corporate identity", bankInput({ corporateIdentity: { credentialId: cid("c"), subjectDid: CORP, schema: "schema:corporate/v1", issuedAt: 0, expiresAt: NOW } }), /has expired/],
   ["a credential of another schema", bankInput({ corporateIdentity: { credentialId: cid("c"), subjectDid: CORP, schema: "schema:passport/v1", issuedAt: 0, expiresAt: NOW + 1000 } }), /not a corporate identity/],
 ];
@@ -258,4 +259,19 @@ test("the bank's decimal-string integers are signed as the numbers they are", ()
   const { EIP712Domain: _d, ...types } = n.types;
   const expected = hashTypedData({ domain: { name: "Bank", version: "1", chainId: 84532 }, types, primaryType: "Attestation", message: { issuedAt: 1790355225n, who: "123" } });
   assert.equal(hashTypedData({ domain: n.domain, types, primaryType: "Attestation", message: n.message }), expected);
+});
+
+// --- clients (ADR 0066) ---
+
+test("a client's facts become the corporate identity's claims, with a DID made where the client has none", async () => {
+  const { claimsFor, clientDid } = await import("./client-claims.ts");
+  const input = { kycReference: "ACME 001", legalName: "Acme SA", legalForm: "PLC", registrationNumber: "B123", jurisdiction: "lu", incorporationDate: "2001-02-03", status: "active" };
+  const out = claimsFor(input, "did:elabify:sepolia:issuer:examplebank", "2026-09-30");
+  assert.ok("claims" in out);
+  assert.equal(out.subjectDid, "did:elabify:sepolia:client:ACME-001");
+  assert.deepEqual(out.claims, { id: out.subjectDid, legalName: "Acme SA", legalForm: "PLC", registrationNumber: "B123", jurisdiction: "LU", incorporationDate: "2001-02-03", status: "active" });
+  assert.equal(clientDid("did:example:credential-issuer", "X"), "did:elabify:local:client:X");
+  const bad = claimsFor({ ...input, legalForm: "Ltd", jurisdiction: "ZZ", incorporationDate: "2099-01-01", subjectDid: "did:web:x", ceoOfficerDid: "nope" }, "did:elabify:sepolia:issuer:examplebank", "2026-09-30");
+  assert.ok("problems" in bad);
+  assert.equal(bad.problems.length, 5, bad.problems.join(" | "));
 });

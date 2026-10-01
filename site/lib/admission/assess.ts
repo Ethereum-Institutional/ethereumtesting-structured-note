@@ -71,6 +71,8 @@ export const CHECK_SANCTIONS_CLEAN = 16;
 
 /** The screening schema's investor classes, in its order (ADR 0033). */
 export const INVESTOR_CLASSES = ["sophisticated", "professional", "institutional", "retail"];
+/** The pool gate's screening maximum age (script/01_DeployVenue.s.sol, SCREENING_MAX_AGE). */
+export const SCREENING_MAX_AGE = 30 * 86_400;
 const INSTITUTIONAL = 2;
 
 /** ISO 3166-1 numeric for the pool's allowlist, as the Identity Registry records jurisdiction. */
@@ -259,6 +261,7 @@ export function assessBankAdmission(
   const investorClass = r.investorClass == null || r.investorClass === "" ? INSTITUTIONAL : INVESTOR_CLASSES.indexOf(r.investorClass);
   if (investorClass < 0) fail(`unknown investor class (${r.investorClass})`);
   if (!(r.screenedAt <= nowSec)) fail("the screening date is in the future");
+  if (nowSec - r.screenedAt > SCREENING_MAX_AGE) fail("the client's screening is older than 30 days: re-screen the client first");
   if (!i.instructionRef.trim()) fail("the client's instruction reference is missing");
   const address = isAddress(i.wallet.address) ? getAddress(i.wallet.address) : null;
   if (!address) fail("the wallet address is not valid");

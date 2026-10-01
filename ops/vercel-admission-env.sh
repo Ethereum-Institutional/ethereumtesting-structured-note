@@ -15,7 +15,20 @@ TEAM="${VERCEL_TEAM:-team_ZL9r7lekuStIElkLskhD8X3t}"
 AUTH="$HOME/Library/Application Support/com.vercel.cli/auth.json"
 
 set -a; source "$KEYS"; set +a
+# Two owners of the Agent's 2-of-3 servicing wallet, which pays (ADR 0072): mnemonic indices 19 and 20 (Ceremony).
+export SERVICING1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 19)"
+export SERVICING2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 20)"
+# Two owners of each institution's 2-of-3 governance wallet (ADR 0082): the Agent's (10, 11), the
+# Issuer's (13, 14) and the co-signing institution's (16, 17).
+export AGENT_GOV1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 10)"
+export AGENT_GOV2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 11)"
+export ISSUER_GOV1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 13)"
+export ISSUER_GOV2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 14)"
+export COSIGNER1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 16)"
+export COSIGNER2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 17)"
 export MANIFEST NETWORK
+# The CLI's saved login expires after some hours; any CLI command renews it before it is read.
+npx --yes vercel whoami >/dev/null 2>&1 || { echo "Vercel CLI login failed: run 'npx vercel login'" >&2; exit 1; }
 export VERCEL_TOKEN="$(python3 -c "import json;print(json.load(open('$AUTH'))['token'])")"
 
 python3 - "$PROJECT" "$TEAM" <<'PY'
@@ -27,7 +40,15 @@ bank_key = json.load(open(adm["bankIssuerKeyFile"]))
 env = {
     "MANIFEST_JSON": json.dumps(json.load(open(os.environ["MANIFEST"])), separators=(",", ":")),
     "RPC_URL": net["rpcUrl"],
-    "SIGNER_KEYS": json.dumps({"accessIssuer": os.environ["ACCESS_ISSUER_PK"], "custodian": os.environ["CUSTODIAN_PK"]}),
+    "SIGNER_KEYS": json.dumps({
+        "accessIssuer": os.environ["ACCESS_ISSUER_PK"], "custodian": os.environ["CUSTODIAN_PK"], "depositAgent": os.environ["DEPOSIT_AGENT_PK"],
+        # The demonstration notes' roles (ADR 0072).
+        "issuer": os.environ["ISSUER_PK"], "agent": os.environ["AGENT_PK"], "calculationAgent": os.environ["CALCULATION_AGENT_PK"],
+        "servicing1": os.environ["SERVICING1_PK"], "servicing2": os.environ["SERVICING2_PK"],
+        "agentGov1": os.environ["AGENT_GOV1_PK"], "agentGov2": os.environ["AGENT_GOV2_PK"],
+        "issuerGov1": os.environ["ISSUER_GOV1_PK"], "issuerGov2": os.environ["ISSUER_GOV2_PK"],
+        "cosigner1": os.environ["COSIGNER1_PK"], "cosigner2": os.environ["COSIGNER2_PK"],
+    }),
     "ADMISSION_ISSUER_DID": net["credentialProtocol"]["issuerDid"],
     "ADMISSION_ISSUER_PUBKEY": bank_key["mlDsaPubkey"],
     "ADMISSION_SCHEMAS": json.dumps({k: net["schemas"][k] for k in ("officer", "walletControl", "corporateIdentity")}),
@@ -38,6 +59,11 @@ env = {
     "ADMISSION_VERIFIER_SEED": os.environ["ADMISSION_VERIFIER_SEED"],
     "ADMISSION_VERIFIER_INLINE_KEY": "1",  # self-signed: no registration with the protocol needed
 }
+# The Ledger reads history through Alchemy, whose log queries take the whole range (ADR 0071).
+ALCHEMY_NETWORKS = {84532: "base-sepolia", 8453: "base-mainnet", 11155111: "eth-sepolia"}
+chain_id = json.load(open(os.environ["MANIFEST"]))["chainId"]
+if os.environ.get("ALCHEMY_API_KEY") and chain_id in ALCHEMY_NETWORKS:
+    env["LEDGER_RPC_URL"] = f"https://{ALCHEMY_NETWORKS[chain_id]}.g.alchemy.com/v2/{os.environ['ALCHEMY_API_KEY']}"
 for k in ("BANK_ISSUER_URL", "BANK_ISSUER_API_KEY"):
     if os.environ.get(k):
         env[k] = os.environ[k]

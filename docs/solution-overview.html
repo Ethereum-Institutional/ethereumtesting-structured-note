@@ -1,74 +1,56 @@
 <title>Structured Note Technical PoC</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Literata:opsz,wght@7..72,300..600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
 
 <style>
 :root {
-  --bg:        #ffffff;
-  --bg2:       #f5f6f9;
-  --bg3:       #ebedf2;
-  --fg:        #14152b;
-  --fg2:       rgba(20, 21, 43, 0.74);
-  --fg3:       rgba(20, 21, 43, 0.48);
-  --border:    rgba(20, 21, 43, 0.10);
-  --border2:   rgba(20, 21, 43, 0.17);
-  --blue:      #6366f1;
+  /* The house style of the organisation's pages, as on the rest of the site (ADR 0061). */
+  --ink:       #14130f;
+  --cream:     #f2efe9;
+  --pine:      #1a5c4d;
+  --pine-deep: #123f35;
+  --bg:        #161511;
+  --bg2:       #1e1c18;
+  --bg3:       #29271f;
+  --fg:        #f2efe9;
+  --fg2:       rgba(242, 239, 233, 0.78);
+  --fg3:       rgba(242, 239, 233, 0.54);
+  --border:    rgba(242, 239, 233, 0.10);
+  --border2:   rgba(242, 239, 233, 0.20);
+  --blue:      #8fd3bd;
   --accent:    var(--blue);
-  --accent-bg: #eeeefd;
-  --seal:      #c0394a;
-  --seal-bg:   #fcf0f1;
-  --sim:       #8a6d1f;
-  --sim-bg:    #faf5e6;
-  --card-shadow: 0 1px 2px rgba(20, 21, 43, 0.05);
+  --accent-bg: #173f36;
+  --seal:      #f08a97;
+  --seal-bg:   #3a1a1f;
+  --sim:       #f8de6b;
+  --sim-bg:    #2e2a17;
+  --card-shadow: none;
 
-  --sans:  "Inter", "Helvetica Neue", Arial, sans-serif;
-  --disp:  "Archivo", "Helvetica Neue", Arial, sans-serif;
-  --mono:  "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+  --sans:  "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --disp:  "Literata", "Iowan Old Style", Georgia, serif;
+  --mono:  "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  --ls-eyebrow: 0.18em;
-  --radius-xs: 2px;
-  --radius-sm: 6px;
+  --ls-eyebrow: 0.01em;
+  --radius-xs: 6px;
+  --radius-sm: 12px;
+  --radius-panel: 16px;
 
   --measure: 66ch;
   --pad: clamp(1.25rem, 4vw, 3.25rem);
+  color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg:        #0b0c16;
-    --bg2:       #11131f;
-    --bg3:       #191b29;
-    --fg:        #eef0f6;
-    --fg2:       rgba(238, 240, 246, 0.76);
-    --fg3:       rgba(238, 240, 246, 0.50);
-    --border:    rgba(238, 240, 246, 0.09);
-    --border2:   rgba(238, 240, 246, 0.17);
-    --blue:      #8b8dfa;
-    --accent-bg: #181a2e;
-    --seal:      #f4909a;
-    --seal-bg:   #241419;
-    --sim:       #e0c473;
-    --sim-bg:    #221e12;
-    --card-shadow: none;
+/* Printed or saved as PDF: the same document on paper colours. */
+@media print {
+  :root {
+    --bg: #ffffff; --bg2: #f6f4ef; --bg3: #ece8df;
+    --fg: #14130f; --fg2: rgba(20, 19, 15, 0.78); --fg3: rgba(20, 19, 15, 0.55);
+    --border: rgba(20, 19, 15, 0.12); --border2: rgba(20, 19, 15, 0.2);
+    --blue: #1a5c4d; --accent-bg: #e3efe9; --seal: #a32b1e; --seal-bg: #f8e9e6; --sim: #8a5d0f; --sim-bg: #faf3dc;
+    color-scheme: light;
   }
-}
-:root[data-theme="dark"] {
-  --bg:        #0b0c16;
-  --bg2:       #11131f;
-  --bg3:       #191b29;
-  --fg:        #eef0f6;
-  --fg2:       rgba(238, 240, 246, 0.76);
-  --fg3:       rgba(238, 240, 246, 0.50);
-  --border:    rgba(238, 240, 246, 0.09);
-  --border2:   rgba(238, 240, 246, 0.17);
-  --blue:      #8b8dfa;
-  --accent-bg: #181a2e;
-  --seal:      #f4909a;
-  --seal-bg:   #241419;
-  --sim:       #e0c473;
-  --sim-bg:    #221e12;
-  --card-shadow: none;
 }
 
 * { box-sizing: border-box; }
@@ -347,7 +329,7 @@ figure .scroller {
 }
 figcaption { font-size: 0.875rem; color: var(--fg3); max-width: var(--measure); }
 svg { display: block; }
-svg text { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; }
+svg text { font-family: "Archivo", "Helvetica Neue", Arial, sans-serif; }
 .d-lane    { fill: var(--bg3); }
 .d-seam    { fill: var(--accent-bg); }
 .d-box     { fill: var(--bg); stroke: var(--border2); stroke-width: 1; }
@@ -369,6 +351,31 @@ footer {
   font-size: 0.8125rem; color: var(--fg3); display: flex;
   flex-wrap: wrap; gap: 0.5rem 2rem; justify-content: space-between;
 }
+
+
+/* ---- the house style (ADR 0061): serif headings, small sans labels, a pine title block, rounded panels ---- */
+h1, h2, .tier h4 { font-weight: 400; letter-spacing: -0.02em; }
+h1 { line-height: 1.06; max-width: 18ch; }
+header.masthead {
+  background: linear-gradient(180deg, var(--pine) 0%, var(--pine-deep) 100%);
+  border-radius: var(--radius-panel); margin-top: 2rem; padding: clamp(2.5rem, 6vw, 4.5rem) clamp(1.5rem, 4vw, 3rem) 2.25rem;
+}
+header.masthead .eyebrow { color: rgba(242, 239, 233, 0.7); }
+.eyebrow, .sec-label, .toc-head, .toc-group, th, .notice .lbl, .pane .cap, .tier .cap, tr.grp td, td .tag, .meta, .legend b, .toc-toggle, .swipe.on {
+  font-family: var(--sans); text-transform: none; letter-spacing: var(--ls-eyebrow);
+}
+.eyebrow, .sec-label, .toc-head { font-size: 0.8125rem; }
+.toc-group, th, .notice .lbl, .pane .cap, .tier .cap, tr.grp td { font-size: 0.75rem; font-weight: 600; }
+td .tag { font-size: 0.6875rem; border-radius: 999px; padding: 0.15em 0.6em; }
+.pane, .tier, figure .scroller { border-radius: var(--radius-panel); }
+.notice { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.toc-toggle { color: var(--ink); background: var(--cream); font-size: 0.875rem; }
+code { border-radius: var(--radius-xs); }
+a { color: var(--fg); text-decoration-color: var(--border2); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--fg); }
+.toc a { color: var(--fg2); }
+.toc a.active { color: var(--fg); border-left-color: var(--accent); }
+@media print { header.masthead { background: none; padding: 0; } }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
@@ -401,7 +408,14 @@ footer {
   .layout { display: block; padding: 0; }
   .doc { max-width: none; }
   section { break-inside: auto; page-break-inside: auto; }
-  figure, table { break-inside: avoid; }
+  figure, .notice { break-inside: avoid; }
+  /* A long table runs on to the next page between rows, its header repeated, not leaving a gap. */
+  table { break-inside: auto; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  h2, h3, .sec-label { break-after: avoid; }
+  /* On paper the masthead has no dark ground, so its label takes the body's quiet colour. */
+  header.masthead .eyebrow { color: var(--fg3); }
 }
 </style>
 
@@ -413,6 +427,7 @@ footer {
   <ul>
     <li><a href="#requirement" data-t="requirement"><span class="t-lbl">Requirement</span><span class="t-ttl">Requirement</span></a></li>
     <li><a href="#rationale" data-t="rationale"><span class="t-lbl">Rationale</span><span class="t-ttl">Basis for tokenization</span></a></li>
+    <li><a href="#status" data-t="status"><span class="t-lbl">Status</span><span class="t-ttl">Build status</span></a></li>
   </ul>
   <p class="toc-group">The design</p>
   <ul>
@@ -448,11 +463,11 @@ footer {
   <h1>Structured Note Smart Contract Issuance</h1>
   <p class="standfirst">
     The Agent acting as Issuing &amp; Paying Agent, Registrar &amp; Transfer Agent for a simulated
-    native Structured Note issuance on Ethereum Sepolia testnet.
+    native Structured Note issuance on the Base Sepolia testnet.
   </p>
   <div class="meta">
     <span><b>Status</b> Draft for review</span>
-    <span><b>Network</b> Sepolia testnet</span>
+    <span><b>Network</b> Base Sepolia testnet</span>
     <span><b>Notional</b> Zero, simulated</span>
     <span><b>Denomination</b> 1 unit = &euro;1,000</span>
     <span><b>Cryptocurrency</b> None</span>
@@ -593,6 +608,39 @@ footer {
       functions and distribution something specific to respond to, which is a materially better
       starting position than a design on paper.
     </p>
+  </section>
+
+<section id="status">
+    <p class="sec-label">Status</p>
+    <h2>Build status</h2>
+    <p class="lead">
+      As of 1 October 2026 the design is built end to end and runs under test on a local chain, and as
+      an integration deployment on Base Sepolia. The execution this document describes is deployed
+      afresh once the internal assurance review is complete, so that the evidence comes from the
+      version that passed review.
+    </p>
+    <div class="scroller stack">
+      <table>
+        <thead><tr><th>Area</th><th>Built and demonstrated</th><th>Scenarios</th></tr></thead>
+        <tbody>
+          <tr><td><b>Onboarding</b></td><td>Three routes: an account the bank holds in custody, a client's own wallet bound by one signature once the bank confirms its KYB, and credentials presented from a holder wallet. Grants are written only once the credentials they rest on are anchored. Offboarding, revocation at the bank, and one wallet per KYB</td><td>S&#8209;02, S&#8209;03</td></tr>
+          <tr><td><b>Issuance and placement</b></td><td>Notes issued from the Agent's console on the same contracts as the note under review, with a scenario's terms and a calendar chosen at issuance. Approval under Regulation S per client, then placement by delivery versus payment</td><td>S&#8209;07 to S&#8209;09</td></tr>
+          <tr><td><b>Lifecycle</b></td><td>Each date determined by the Calculation Agent's signature and recomputed on-chain, and checked against the independent payoff model. Coupons and redemptions paid by the Agent's multi-signature servicing wallet to the holders of record, with amounts held for a holder who cannot receive them. Early and final redemption, then closure</td><td>S&#8209;15, S&#8209;16, S&#8209;18, S&#8209;30, S&#8209;32, S&#8209;34</td></tr>
+          <tr><td><b>Trading</b></td><td>Transfers settle by offer, each side locked until it settles or ends: units frozen in the seller's own wallet, or the price held by the settlement contract. Offers are arranged by the bank or open to any approved client. Buy back into the Issuer's inventory, and reduction of the tranche bounded by that inventory</td><td>S&#8209;11 to S&#8209;14</td></tr>
+          <tr><td><b>Governance</b></td><td>Tier 1 register correction with its written reason; Tier 2 proposals with institution thresholds, the timelock and an execution window, each institution's wallet signing as itself. The Agent alone cannot force a transfer</td><td>S&#8209;22 to S&#8209;26</td></tr>
+          <tr><td><b>Conversion pool</b></td><td>A whitelisted wallet converts the euro payment token into the tokenized deposit and back; a wallet not whitelisted is refused at the pool</td><td>S&#8209;27, S&#8209;28</td></tr>
+          <tr><td><b>Evidence</b></td><td>The lifecycle reconstructed from chain events alone, the register reconciled against the chain, and every transaction and event scanned for personal data</td><td>S&#8209;35, S&#8209;36</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>Not yet complete</h3>
+    <ul class="plain">
+      <li><strong>Closure evidence (S-33).</strong> A redeemed note's supply reaches zero under test; the close-out statement confirming every position at zero is still to be produced.</li>
+      <li><strong>Proposal expiry on the integration deployment (S-24).</strong> Enforced under test; the integration deployment runs an earlier controller without an execution window until it is redeployed.</li>
+      <li><strong>Shown in contract tests only.</strong> The deployer's renunciation (S-01), reversal and restatement of a distribution (S-21), and non-transferable liquidity positions (S-29). The remaining scenarios (S-04 to S-06, S-10, S-17, S-19, S-20, S-31) are to be confirmed against the contract tests.</li>
+      <li><strong>The holder-wallet route for an officer</strong> waits on the bank's side, and an inclusion proof for each anchored credential on the protocol.</li>
+      <li><strong>Hardening before execution:</strong> a separate key for each capacity, the freeze of the contracts once the payoff items are confirmed by the Issuer and the Calculation Agent, the internal assurance review, and token naming.</li>
+    </ul>
   </section>
 
 <section id="architecture">
@@ -1191,7 +1239,7 @@ footer {
     <p class="sec-label">Lifecycle</p>
     <h2>Transaction lifecycle</h2>
     <ol class="steps">
-      <li><span class="n">01</span><div><div class="t">Governance Setup</div><div class="d">Agent appointed. Calculation &amp; Determination Agent designated. Guarantee documented off-chain. Smart contracts deployed on Sepolia. Transaction details anchored in token metadata. Source code verified on Etherscan.</div></div></li>
+      <li><span class="n">01</span><div><div class="t">Governance Setup</div><div class="d">Agent appointed. Calculation &amp; Determination Agent designated. Guarantee documented off-chain. Smart contracts deployed on Base Sepolia. Transaction details anchored in token metadata. Source code verified on the block explorer.</div></div></li>
       <li><span class="n">02</span><div><div class="t">KYB / KYC and whitelist</div><div class="d">The Agent completes KYB on the investing entity and KYC on its officers, then issues the corresponding credentials. The participant presents the claims required, proves control of the address, and receives a time-boxed grant carrying its rights. Sanctions screening is part of the check. No subsequent step can proceed for a party without a live grant.</div></div></li>
       <li><span class="n">03</span><div><div class="t">Issuance / Minting</div><div class="d">The Issuer instructs the Agent to authorise issuance. The Agent instructs the platform to create the contract. Strike Date Closing Levels are recorded on-chain as immutable Initial Levels. Notional mints to pending inventory, then settles to investors by DvP against digital monies.</div></div></li>
       <li><span class="n">04</span><div><div class="t">Secondary Transfer</div><div class="d">Identity Registry whitelist check, then atomic DvP against digital monies, then the Agent updates the on-chain and off-chain Register.</div></div></li>
@@ -1628,7 +1676,7 @@ footer {
       <table>
         <thead><tr><th>Element</th><th>Status</th><th>Note</th></tr></thead>
         <tbody>
-          <tr><td><b>Network</b></td><td><span class="tag testnet">Testnet</span></td><td>Public Ethereum test network, with source code verified on Etherscan. Test networks carry no monetary value by design</td></tr>
+          <tr><td><b>Network</b></td><td><span class="tag testnet">Testnet</span></td><td>Base Sepolia, a public test network of an Ethereum layer 2, with source code verified on the block explorer. Test networks carry no monetary value by design</td></tr>
           <tr><td><b>Euro payment token</b></td><td><span class="tag testnet">Testnet</span></td><td>Third-party fiat-referenced token, so one leg of the conversion pair is not issued by the transaction parties. Not a cryptocurrency. The testnet issuance has no value and is distributed without charge</td></tr>
           <tr><td><b>Network fees</b></td><td><span class="tag testnet">Testnet</span></td><td>Transaction fees are paid in valueless test network units obtained from a public faucet, which cannot be purchased, sold or exchanged</td></tr>
           <tr><td>Structured Note</td><td><span class="tag simulated">Simulated</span></td><td>Zero notional. Not an offer, a solicitation or a security</td></tr>

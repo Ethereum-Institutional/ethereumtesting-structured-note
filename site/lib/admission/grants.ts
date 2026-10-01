@@ -1,5 +1,5 @@
 import "server-only";
-import { defineChain, parseAbi, type Hex } from "viem";
+import { defineChain, parseAbi, type Address, type Hex } from "viem";
 import { loadManifest } from "../chain/manifest.ts";
 import { signers } from "../chain/signer.ts";
 import type { Attestation, RegistryGrant } from "./assess.ts";
@@ -18,6 +18,13 @@ const GATE = parseAbi([
 ]);
 const REGISTRY = parseAbi([
   "function grant(address account, uint32 flags, uint16 jurisdiction, uint40 expiresAt, bytes32 credentialRef, bytes32 commitment)",
+  "function revoke(address account)",
+  "function credentialRefOf(address) view returns (bytes32)",
+]);
+const GATE_REMOVAL = parseAbi([
+  "function revoke(address account)",
+  "function void(address account)",
+  "function grantOf(address) view returns ((uint40 expiresAt, uint8 path, bytes32 primaryCredential, bytes32 screeningCredential, bytes32 walletCredential, bytes32 authorityCredential, bytes32 evidence))",
 ]);
 
 // The Identity Registry's flags (instruments/src/IdentityRegistry.sol).
@@ -92,4 +99,33 @@ export async function writeGrants(issuerDid: string, a: Attestation, r: Registry
 async function succeeded(client: ReturnType<typeof signers>["publicClient"], hash: Hex, what: string) {
   const receipt = await client.getTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error(`the ${what} reverted (${hash})`);
+}
+
+export type Removed = { chainId: number; poolRevokeTx: Hex | null; registryRevokeTx: Hex | null };
+
+/**
+ * Offboards an account (ADR 0063): the Access Issuer revokes the pool grant it wrote and the
+ * Identity Registry grant it wrote. A grant already gone (voided, or expired and cleared) is
+ * skipped, so offboarding twice is harmless. Neither call carries a reason on-chain; the reason is
+ * kept with the admission and in the audit log.
+ */
+export async function removeGrants(account: Address): Promise<Removed> {
+  const d = deployment();
+  const s = signers(d.chain, d.rpc);
+  const from = s.address("accessIssuer");
+  const pool = await s.publicClient.readContract({ address: d.gate, abi: GATE_REMOVAL, functionName: "grantOf", args: [account] });
+  let poolRevokeTx: Hex | null = null;
+  if (pool.expiresAt !== 0) {
+    await s.publicClient.simulateContract({ address: d.gate, abi: GATE_REMOVAL, functionName: "revoke", args: [account], account: from });
+    poolRevokeTx = await s.send("accessIssuer", { address: d.gate, abi: GATE_REMOVAL, functionName: "revoke", args: [account] });
+    await succeeded(s.publicClient, poolRevokeTx, "pool revocation");
+  }
+  const ref = await s.publicClient.readContract({ address: d.registry, abi: REGISTRY, functionName: "credentialRefOf", args: [account] });
+  let registryRevokeTx: Hex | null = null;
+  if (!/^0x0+$/.test(ref)) {
+    await s.publicClient.simulateContract({ address: d.registry, abi: REGISTRY, functionName: "revoke", args: [account], account: from });
+    registryRevokeTx = await s.send("accessIssuer", { address: d.registry, abi: REGISTRY, functionName: "revoke", args: [account] });
+    await succeeded(s.publicClient, registryRevokeTx, "registry revocation");
+  }
+  return { chainId: d.chain.id, poolRevokeTx, registryRevokeTx };
 }

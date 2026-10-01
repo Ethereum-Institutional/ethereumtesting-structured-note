@@ -37,12 +37,12 @@ Three routes, one result: a pool grant and an Identity Registry grant, resting o
    custodian opens a segregated custody account, the account signs the wallet-control message
    (EIP-1271), the bank's issuer mints the wallet credential, both grants are written and the
    account is approved to trade. One action; the client does nothing.
-2. **Self-custody through the bank.** At `/admit` the client asks the bank to confirm its KYB and
+2. **Self-custody through the bank.** At `/onboard` the client asks the bank to confirm its KYB and
    enters nothing; bank staff choose the client from the bank's list of corporate identities at
    `/operator` (ADR 0057). Then the client binds a wallet:
    names it and signs the bank's message once, from a browser wallet or by pasting a signature from
    any other signer; the bank mints the wallet credential and the grants follow at once (ADR 0056).
-3. **Holder wallet.** At `/admit` an officer scans two QR codes with the holder wallet; the site
+3. **Holder wallet.** At `/onboard` an officer scans two QR codes with the holder wallet; the site
    receives each presentation at `/api/admission/callback` and an operator approves.
 
 In routes 1 and 2 the client's jurisdiction, status and screening are the bank's statement from its
@@ -75,6 +75,7 @@ npm test                                                   # chain library and a
 ../ops/reset.sh && npm run test:admission                  # the admission flow against the local chain
 ../ops/reset.sh && npm run test:browser                    # the pages, clicked through in Chromium
 npm run test:local                                         # all of the above except e2e, on a fresh chain
+(set -a; . ../ops/keys.base-sepolia-integration.env; set +a; node test/probe-route3.ts)  # route 3's real services, read-only
 ```
 
 Every test runs on the local chain; none sends a transaction to a public network (ADR 0059). The

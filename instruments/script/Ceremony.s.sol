@@ -45,6 +45,9 @@ contract Ceremony is Script {
     uint48 constant LOCAL_RECOVERY_DELAY = 4 hours;
     uint48 constant TARGET_TIER2_DELAY = 72 hours;
     uint48 constant TARGET_RECOVERY_DELAY = 14 days;
+    /// @dev A queued Tier 2 proposal expires this long after it becomes executable (S-24, ADR 0082).
+    uint48 constant LOCAL_EXECUTION_WINDOW = 1 days;
+    uint48 constant TARGET_EXECUTION_WINDOW = 7 days;
 
     struct Wallets {
         address agentGov;
@@ -92,6 +95,7 @@ contract Ceremony is Script {
             minSignatures: 4,
             tier2Delay: LOCAL_TIER2_DELAY,
             recoveryDelay: LOCAL_RECOVERY_DELAY,
+            executionWindow: LOCAL_EXECUTION_WINDOW,
             venue: _venue()
         });
     }
@@ -120,6 +124,8 @@ contract Ceremony is Script {
         vm.serializeUint(o, "tier2Delay", LOCAL_TIER2_DELAY);
         vm.serializeUint(o, "recoveryDelay", LOCAL_RECOVERY_DELAY);
         vm.serializeUint(o, "targetTier2Delay", TARGET_TIER2_DELAY);
+        vm.serializeUint(o, "executionWindow", LOCAL_EXECUTION_WINDOW);
+        vm.serializeUint(o, "targetExecutionWindow", TARGET_EXECUTION_WINDOW);
         vm.writeJson(vm.serializeUint(o, "targetRecoveryDelay", TARGET_RECOVERY_DELAY), _manifest(), ".governance");
     }
 

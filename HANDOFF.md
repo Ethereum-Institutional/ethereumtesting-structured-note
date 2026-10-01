@@ -23,14 +23,16 @@ the domain rule, everything gated, the architecture as the signed-in home page w
 component linked into the overview. Postgres is Neon in Frankfurt. Mail is Resend, sending from
 `noreply@ethereumtesting.com`. The domain rule's list and the operator list live only in the
 Vercel environment, not in this repository. See `site/README.md`. Since Wave 5 the site also
-admits participants to the conversion pool (`/admit`, `/operator`), against an integration
+admits participants to the conversion pool (`/onboard`, `/operator`), against an integration
 deployment on the public test network (section 5).
 The repository is a clone of the source demo with history preserved. **Wave 1 has stripped it to
 the venue** (section 5); nothing of the retired identity stack, the source console or the source
 hosting remains in the tree, only in history.
 
-`origin` is a **private** repository under the owner's personal account
-(`benjaminchodroff/structured-note-poc`), created 24 September 2026. `upstream` still points at
+`origin` is a **private** repository in the organisation's GitHub account
+(`Ethereum-Institutional/ethereumtesting-structured-note`). It was created under the owner's
+personal account on 24 September 2026 and transferred, under that new name, on 1 October 2026;
+GitHub redirects the old address. `upstream` still points at
 the source demo for reference, with its push URL set to `DISABLED` in the local clone, so nothing
 can be pushed there by accident. That setting is local: repeat it in any new clone that adds
 `upstream`.
@@ -430,7 +432,7 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   wallet credential by EIP-1271), **self-custody through the bank** (the client signs once), and
   the **holder wallet** below. Entities are institutional by policy (ADR 0053); the officer
   credential is a gate policy, off by default.
-- **Admission by QR** (ADRs 0045 to 0052, site `/admit`, now route 3): an officer scans two codes with the
+- **Admission by QR** (ADRs 0045 to 0052, site `/onboard`, now route 3): an officer scans two codes with the
   holder wallet, the officer credential then the wallet-control credential issued to that officer;
   the site verifies each through the protocol's hosted verifier, fetches the corporation's
   corporate identity, checks the chain wallet, officer, corporation, corporate identity, and an
@@ -460,7 +462,7 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   knows every Wave 5 call. Seven deliberate errors in the gate, one in the checker and four in the
   controller's venue acts were each caught.
 
-**Admission, built 26 to 28 September 2026** (site `/admit` and `/operator`; ADRs 0053 to 0059).
+**Admission, built 26 to 28 September 2026** (site `/onboard` and `/operator`; ADRs 0053 to 0059).
 
 - **Route 1, custodied: live on the test network.** Bank staff choose the client from the bank's
   own corporate identities and give the custody account and instruction references. One action
@@ -484,6 +486,78 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   0055). The key in use carries more scopes than the site needs; the owner chose to keep it. The
   bank sends integers in typed data as decimal strings, so the site signs them as numbers
   (`normaliseTypedData`).
+- **Clients are entered once** (ADR 0066). Under Operator → Clients, staff add a corporate client's
+  facts. The site has the bank's issuer server sign and anchor them as its corporate identity
+  (`credentials:issue`), and keeps the claims. Routes 1 and 2 then take only the client and, for
+  custody, two references. **Re-screen** issues again when the 30-day screening lapses.
+- **References are the site's** (ADR 0067), and **browser wallets bind in one click** (ADR 0068).
+  MetaMask supplies the address, is switched to the pool's chain or has it added, and signs the
+  bank's message. This applies on route 2, and on route 3 after the officer's scan, where the bank
+  issues the wallet credential to the officer. The older ways remain, folded away.
+- **Notes** (ADRs 0072, 0073). Staff issue a note on the live note's implementation from
+  `/operator/notes`. They choose a scenario from the payoff model, the number of observations and
+  the time between them; the page previews the calendar and drives the 17 issuance steps. The
+  Operator console now has a navigation column and a page per section.
+- **Placement** (ADR 0075; S-08, S-09). "Approve for the note…" in Admissions adds the Reg S flag
+  to an account's registry grant. Notes → Place units offers units by DvP against the deposit:
+  - a custody account accepts through the custodian at once;
+  - a client's own wallet accepts on its Notes page in MetaMask, in two transactions;
+  - an account without Reg S is refused before anything is sent.
+
+- **Lifecycle** (ADR 0078). Each note has its own page under Operator → Notes, with a card per
+  scheduled date. Each step can be clicked once its time comes:
+  - **Determine**: the scenario's Levels, editable, signed by the Calculation Agent and checked against the payoff model on four-date notes;
+  - **Pay the coupon** and **Pay the redemption**: run by the servicing wallet, a 2-of-3 Safe signed by two site keys;
+  - **Pay what is held**: for a holder the deposit could not credit.
+
+  A redemption closes the note. Clients see what was paid to them on Onboard → Notes.
+- **Trading** (ADR 0081; S-11 to S-14, S-16). Notes issued from now on settle through
+  `LockedSettlement`: an offer to sell freezes the seller's units in its own wallet, an offer to buy
+  has the contract hold the price, and acceptance moves both legs or neither.
+  - On the note's page: Arrange a transfer (named, or open), Buy back units, Cancel units from the inventory, and an Offers table to withdraw, take for a custody account, or release.
+  - Clients' Notes pages show what is offered to them, open offers, their own offers (made and withdrawn in MetaMask), and units locked in offers.
+  - Series 2 keeps the old DvP contract: placed only.
+
+- **Governance** (ADR 0082; S-22, S-24 to S-26). Operator → Governance:
+  - **Tier 1:** register correction with its written reason, grant and pool-access withdrawal, and an S-26 demonstration that the Agent alone cannot force a transfer.
+  - **Tier 2:** proposals, each institution's approval, the delay, Execute and Cancel, all signed by site-held owner keys of each 2-of-3 governance wallet.
+  - The controller now has an execution window (one day on the PoC, seven days targeted); a queued proposal not executed within it expires (S-24).
+  - Base Sepolia still runs the earlier controller, without a window, until a fresh deployment.
+
+  Next: Wave 6.
+- **ETH for fees** (ADR 0080). Operator → Keys lists every site key's ETH, with a Top up button
+  (0.003 ETH from the best-funded key). Every transaction is refused before signing if its key
+  cannot pay twice the estimated fees. A key below 0.001 ETH is warned about on every Operator
+  page. Client wallets are checked the same way before MetaMask is asked to send. On Base Sepolia
+  the Calculation Agent was funded once by hand (0.003 ETH from the Issuer) for the first live
+  determination.
+- **Unconfirmed registrations** (ADR 0077). Access requests says when someone hasn't confirmed
+  their email yet; staff can resend the link, or approve or decline ahead of confirmation.
+- **Onboard pages** (ADR 0076). The client has a navigation column with Account, Convert and
+  Notes. The account card carries **Bind a new wallet**, **Unbind this wallet…** (immediate) and
+  **Ask my bank to hold it in custody**. Staff see that request first under Custody → Custodial
+  and admit it in one click; the client's own wallet is then unbound (one wallet per KYB).
+- **Ledger** (ADR 0071; S-35, S-36). `/ledger` shows every approved user the lifecycle decoded
+  from the chain, read through Alchemy (`LEDGER_RPC_URL`). Staff also see the register
+  reconciliation. The tests check that every call is recognised, and scan every transaction and
+  event for personal data.
+- **Convert** (ADR 0070; S-27, S-28).
+  - An onboarded wallet converts EURC and EURTD both ways from Onboard → Convert in MetaMask, with
+    one-time approvals, a quote, and a 0.5% minimum-received.
+  - Staff convert for custody accounts and credit EURTD through the gateway from the Operator page.
+  - The quote maths is unit-tested; conversions are tested on the local chain through the lagging RPC.
+- **One wallet per KYB** (ADR 0069). Admitting a wallet offboards the client's previous one, on
+  any route. An onboarded client sees **Bind a new wallet**, with no second review, and the Onboard
+  page shows three stages. MetaMask is always asked to switch to the pool's chain just before
+  signing: with networks per site, the chain it reports is not always the one it signs on.
+- **Offboarding and revocation** (ADRs 0063, 0064). **Offboard** revokes both grants, with a
+  reason. **Revoke at the bank** revokes the wallet credential, or the corporate identity as its
+  own confirmed step.
+- **Grants wait for anchoring** (ADR 0060). On every route, the grants are written only once each
+  credential they rest on is anchored in the bank's registry: reported by the bank, and its
+  `updateRoot` transaction checked on-chain. The admission shows `awaiting-anchor` for about a
+  minute meanwhile. An inclusion proof for each credential is still to come from the protocol.
+- **The site looks like the organisation's event pages** (ADR 0061), with a crimson icon.
 - **Clients can cancel** at any step until grants are being written (ADR 0058). Staff are warned
   before submitting a jurisdiction outside the pool's 32, or a screening date in the future or
   older than 30 days.
@@ -492,6 +566,11 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   - `test/lagging-rpc.ts` answers reads from a block behind just after a receipt, which
     reproduces the lagging-RPC failure;
   - `test/standins.ts` plays the bank and the verifier, including their known quirks.
+  - the chain is reset between the integration and browser suites: each has its own store, and
+    the Ledger names only the contracts of notes in its own store.
+  - a reset restores a snapshot of the deployed chain in seconds (ADR 0079). It deploys afresh only
+    when the contracts or deployment change, or with `FRESH=1`. While developing, run only the
+    affected tests; run the full suite once before each deploy.
 
   Nothing is tested on a public chain.
 

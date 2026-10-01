@@ -1,0 +1,498 @@
+[
+ {
+  "name": "mer-first-date",
+  "clause": "S3",
+  "summary": "date 1: coupon €25.00 and early redemption at €1000.00",
+  "terms": {
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": {
+    "applies": false,
+    "upBps": 0,
+    "downBps": 0,
+    "capBps": 0
+   },
+   "schedule": [
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": false,
+     "barrier": true,
+     "isFinal": true,
+     "merTriggerBps": 0
+    }
+   ]
+  },
+  "levels": [
+   [
+    473760,
+    2184360,
+    30000
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ]
+  ],
+  "expected": [
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    },
+    {
+     "kind": "mer",
+     "perCaCents": 100000
+    }
+   ],
+   [],
+   [],
+   []
+  ]
+ },
+ {
+  "name": "mer-at-trigger",
+  "clause": "B2",
+  "summary": "date 1: coupon €25.00; date 2: coupon €25.00 and early redemption at €1000.00",
+  "terms": {
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": {
+    "applies": false,
+    "upBps": 0,
+    "downBps": 0,
+    "capBps": 0
+   },
+   "schedule": [
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": false,
+     "barrier": true,
+     "isFinal": true,
+     "merTriggerBps": 0
+    }
+   ]
+  },
+  "levels": [
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    451200,
+    2184360,
+    30000
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ]
+  ],
+  "expected": [
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    }
+   ],
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    },
+    {
+     "kind": "mer",
+     "perCaCents": 100000
+    }
+   ],
+   [],
+   []
+  ]
+ },
+ {
+  "name": "coupon-at-barrier",
+  "clause": "B1",
+  "summary": "date 1: coupon €25.00; date 2: coupon €25.00; date 3: coupon €25.00; date 4: coupon €25.00 and redemption at €1000.00",
+  "terms": {
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": {
+    "applies": false,
+    "upBps": 0,
+    "downBps": 0,
+    "capBps": 0
+   },
+   "schedule": [
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": false,
+     "barrier": true,
+     "isFinal": true,
+     "merTriggerBps": 0
+    }
+   ]
+  },
+  "levels": [
+   [
+    315840,
+    1729285,
+    23750
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ]
+  ],
+  "expected": [
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    }
+   ],
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    }
+   ],
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    }
+   ],
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    },
+    {
+     "kind": "redemption",
+     "perCaCents": 100000
+    }
+   ]
+  ]
+ },
+ {
+  "name": "final-one-unit-below-barrier",
+  "clause": "B3",
+  "summary": "date 1: coupon €25.00; date 2: coupon €25.00; date 3: coupon €25.00; date 4: redemption at €600.00",
+  "terms": {
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": {
+    "applies": false,
+    "upBps": 0,
+    "downBps": 0,
+    "capBps": 0
+   },
+   "schedule": [
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": false,
+     "barrier": true,
+     "isFinal": true,
+     "merTriggerBps": 0
+    }
+   ]
+  },
+  "levels": [
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    270719,
+    2002330,
+    27500
+   ]
+  ],
+  "expected": [
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    }
+   ],
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    }
+   ],
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    }
+   ],
+   [
+    {
+     "kind": "redemption",
+     "perCaCents": 60000
+    }
+   ]
+  ]
+ },
+ {
+  "name": "twin-win-final-75",
+  "clause": "P7",
+  "summary": "date 1: coupon €25.00; date 2: coupon €25.00; date 3: coupon €25.00; date 4: coupon €25.00 and redemption at €1250.00",
+  "terms": {
+   "initialLevels": [
+    451200,
+    1820300,
+    25000
+   ],
+   "calculationAmountCents": 100000,
+   "couponBarrierBps": 7000,
+   "couponRateBps": 250,
+   "memory": false,
+   "barrierBps": 6000,
+   "twinWin": {
+    "applies": true,
+    "upBps": 10000,
+    "downBps": 10000,
+    "capBps": 0
+   },
+   "schedule": [
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": true,
+     "barrier": false,
+     "isFinal": false,
+     "merTriggerBps": 10000
+    },
+    {
+     "coupon": true,
+     "mer": false,
+     "barrier": true,
+     "isFinal": true,
+     "merTriggerBps": 0
+    }
+   ]
+  },
+  "levels": [
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    406080,
+    1729285,
+    23750
+   ],
+   [
+    338400,
+    2002330,
+    27500
+   ]
+  ],
+  "expected": [
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    }
+   ],
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    }
+   ],
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    }
+   ],
+   [
+    {
+     "kind": "coupon",
+     "perCaCents": 2500
+    },
+    {
+     "kind": "redemption",
+     "perCaCents": 125000
+    }
+   ]
+  ]
+ }
+]

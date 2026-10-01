@@ -58,7 +58,8 @@ export type ArgSpec =
   | "accounts"
   | { amountIn: string }
   | "calls"
-  | "attestation";
+  | "attestation"
+  | "items";
 
 export type Entry = { signature: string; meaning: string; tone: Tone; args: ArgSpec[] };
 
@@ -146,6 +147,15 @@ export const REGISTRY: Record<string, Entry[]> = {
   positionManager: [
     { signature: "function modifyLiquidities(bytes unlockData, uint256 deadline)", meaning: "Changed a liquidity position", tone: "trade", args: ["plan", "number"] },
   ],
+  // Public infrastructure a client's own wallet may use (PUBLIC_INFRASTRUCTURE): named, never watched.
+  delegationManager: [
+    {
+      signature: "function redeemDelegations(bytes[] permissionContexts, bytes32[] modes, bytes[] executionCallDatas)",
+      meaning: "A MetaMask smart account's call, relayed through MetaMask's delegation framework; its effect is the event on the contract it reached",
+      tone: "ops",
+      args: ["items", "items", "items"],
+    },
+  ],
   permit2: [
     { signature: "function approve(address token, address spender, uint160 amount, uint48 expiration)", meaning: "Set a Permit2 allowance", tone: "ops", args: ["account", "account", { amountOf: 0 }, "number"] },
   ],
@@ -179,6 +189,9 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function propose(address seller, address buyer, uint64 units, uint256 price, uint48 deadline)", meaning: "Proposed a delivery-versus-payment trade", tone: "trade", args: ["account", "account", { amountIn: "note" }, { amountIn: "deposit" }, "time"] },
     { signature: "function accept(uint256 id)", meaning: "Accepted a trade: both legs settled together", tone: "trade", args: ["number"] },
     { signature: "function cancel(uint256 id)", meaning: "Cancelled a proposed trade", tone: "ops", args: ["number"] },
+    // The locked settlement of notes issued from ADR 0081 on: accept and cancel are the same calls.
+    { signature: "function offer(uint8 side, address counterparty, uint64 units, uint256 price, uint48 deadline)", meaning: "Offered to sell or to buy units, its side locked until it settles or ends", tone: "trade", args: ["number", "account", { amountIn: "note" }, { amountIn: "deposit" }, "time"] },
+    { signature: "function release(uint256 id)", meaning: "Released an offer's lock, past its deadline or with the note paused", tone: "ops", args: ["number"] },
   ],
   controller: [
     { signature: "function correctRegister(address from, address to, uint256 units, string reason)", meaning: "Tier 1: corrected the register to match the Register", tone: "control", args: ["account", "account", { amountIn: "note" }, "text"] },
@@ -248,8 +261,21 @@ const KIND_OF_KEY: Record<string, string> = {
   "governance.servicingWallet": "wallet",
 };
 
+/**
+ * Contracts outside the deployment that clients' own wallets route through, at their canonical
+ * addresses. Named and decoded, but never watched: on a public network they carry everyone's traffic.
+ */
+const PUBLIC_INFRASTRUCTURE: Record<string, { key: string; label: string }> = {
+  "0xdb9b1e94b5b69df7e401ddbede43491141047db3": { key: "public.delegationManager", label: "MetaMask delegation manager" },
+};
+KIND_OF_KEY["public.delegationManager"] = "delegationManager";
+
+/** The contracts of a note issued from the site (ADR 0072): `notes.<symbol>.<part>`, decoded as the live note's are. */
+const NOTE_PARTS: Record<string, string> = { note: "note", determinations: "determinations", payingAgent: "payingAgent", settlement: "settlement" };
+
 function kindOfKey(key: string): string | undefined {
   if (key.startsWith("custody.accounts.")) return "custodyAccount";
+  if (key.startsWith("notes.")) return NOTE_PARTS[key.split(".").at(-1) ?? ""];
   return KIND_OF_KEY[key];
 }
 
@@ -297,9 +323,11 @@ export class Tape {
   private readonly book: ReturnType<typeof addressBook>;
   private readonly compiled: Map<string, Compiled>;
 
-  constructor(manifest: Manifest, registry: Record<string, Entry[]> = REGISTRY) {
+  constructor(manifest: Manifest, registry: Record<string, Entry[]> = REGISTRY, extra: Array<{ address: string; key: string; label: string }> = []) {
     this.manifest = manifest;
     this.book = addressBook(manifest);
+    for (const e of extra) this.book.set(e.address.toLowerCase(), { key: e.key, label: e.label });
+    for (const [address, entry] of Object.entries(PUBLIC_INFRASTRUCTURE)) if (!this.book.has(address)) this.book.set(address, entry);
     this.compiled = compile(registry);
   }
 
@@ -403,6 +431,7 @@ export class Tape {
     if (spec === "text") return JSON.stringify(value as string);
     if (spec === "reason") return reason(value as Hex);
     if (spec === "plan") return `«encoded plan, ${((value as Hex).length - 2) / 2} bytes»`;
+    if (spec === "items") return `${(value as readonly unknown[]).length} item${(value as readonly unknown[]).length === 1 ? "" : "s"}`;
     if (spec === "poolKey") {
       const k = value as { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address };
       return `${this.label(k.currency0)} / ${this.label(k.currency1)}, fee ${k.fee}, spacing ${k.tickSpacing}, hook ${this.label(k.hooks)}`;
@@ -445,7 +474,7 @@ export class Tape {
 
   /** Every contract address the manifest names; the set whose events locate transactions. */
   watched(): Address[] {
-    return [...this.book.entries()].filter(([, v]) => !v.key.startsWith("parties.")).map(([a]) => getAddress(a));
+    return [...this.book.entries()].filter(([, v]) => !v.key.startsWith("parties.") && !v.key.startsWith("public.")).map(([a]) => getAddress(a));
   }
 }
 
@@ -546,17 +575,23 @@ function same(a: string, b: string): boolean {
  * one. That coverage limit is stated here rather than hidden; closing it needs an indexer that
  * reads every transaction sent to a watched address.
  */
-export async function readTape(client: PublicClient, tape: Tape, limit = 20): Promise<TapeRow[]> {
-  const logs = await client.getLogs({ address: tape.watched(), fromBlock: 0n, toBlock: "latest" });
+export async function readTape(client: PublicClient, tape: Tape, limit = 20, fromBlock = 0n, addresses: Address[] = tape.watched()): Promise<TapeRow[]> {
+  const logs = await client.getLogs({ address: addresses, fromBlock, toBlock: "latest" });
   logs.sort((x, y) => Number((y.blockNumber ?? 0n) - (x.blockNumber ?? 0n)) || (y.logIndex ?? 0) - (x.logIndex ?? 0));
 
-  const seen = new Set<Hex>();
-  const rows: TapeRow[] = [];
+  // The newest `limit` transactions, fetched a batch at a time, then described in order.
+  const hashes: Hex[] = [];
   for (const log of logs) {
-    if (!log.transactionHash || seen.has(log.transactionHash)) continue;
-    seen.add(log.transactionHash);
-    if (seen.size > limit) break;
-    const tx = await client.getTransaction({ hash: log.transactionHash });
+    if (!log.transactionHash || hashes.includes(log.transactionHash)) continue;
+    hashes.push(log.transactionHash);
+    if (hashes.length >= limit) break;
+  }
+  const txs = [];
+  for (let i = 0; i < hashes.length; i += 10) {
+    txs.push(...(await Promise.all(hashes.slice(i, i + 10).map((hash) => client.getTransaction({ hash })))));
+  }
+  const rows: TapeRow[] = [];
+  for (const tx of txs) {
     const at = { hash: tx.hash, block: Number(tx.blockNumber), from: tx.from };
     if (!tx.to) {
       const receipt = await client.getTransactionReceipt({ hash: tx.hash });

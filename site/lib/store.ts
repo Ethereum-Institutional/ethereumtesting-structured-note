@@ -41,10 +41,12 @@ export type AdmissionStatus =
   | "awaiting-officer"
   | "awaiting-wallet"
   | "ready"
+  | "awaiting-anchor"
   | "refused"
   | "admitted"
   | "declined"
   | "cancelled"
+  | "offboarded"
   | "failed";
 
 /** How the participant came in (ADR 0054). */
@@ -59,6 +61,55 @@ export type Admission = {
   /** The holder-wallet route's request identifiers; null on the bank's routes. */
   officerRequestId: string | null;
   walletRequestId: string | null;
+  data: Record<string, unknown>;
+};
+
+/**
+ * A corporate client as the bank's onboarding records it (ADR 0066): the facts staff entered once,
+ * and the corporate identity the bank's issuer server signed and anchored from them.
+ */
+export type Client = {
+  id: string;
+  /** The bank's own reference for the client. */
+  kycReference: string;
+  subjectDid: string;
+  /** The claims sent for issuance, exactly as sent. */
+  claims: Record<string, unknown>;
+  credentialId: string;
+  issuanceId: string;
+  pickupUrl: string;
+  /** When the current credential was issued: the client's screening date (ADR 0033). */
+  issuedAt: string;
+  issuedBy: string;
+  createdAt: string;
+  /** Earlier credentials for the same client, superseded by a re-screen. */
+  previous: Array<{ credentialId: string; issuedAt: string }>;
+  /** The client asked, from Onboard, for its account to be held in custody (ADR 0076). */
+  custodyRequest?: { registrantId: string; email: string; at: string };
+};
+
+/** A note issued from the site (ADRs 0072, 0073): its terms, its contracts as they are deployed, and its life. */
+export type DemoNote = {
+  id: string;
+  series: number;
+  name: string;
+  symbol: string;
+  scenario: string;
+  /** Notes issued before ADR 0073: minutes between four observations. */
+  spacingMinutes?: number;
+  observations?: number;
+  interval?: { value: number; unit: "minutes" | "hours" | "days" | "months" };
+  units: number;
+  status: "issuing" | "issued" | "failed" | "closed";
+  /** The next issuance step to run; issuance is a sequence of single transactions. */
+  step: number;
+  createdAt: string;
+  by: string;
+  error?: string;
+  addresses: Record<string, string>;
+  txs: Record<string, string>;
+  /** Unix seconds of each observation, record time and payment time, fixed when the terms are. */
+  calendar?: Array<{ date: number; recordTime: number; paymentDate: number }>;
   data: Record<string, unknown>;
 };
 
@@ -91,7 +142,22 @@ export interface Store {
   /** Replaces the admission, only if its status is still `expected`. Returns whether it did. */
   updateAdmission(a: Admission, expected: AdmissionStatus): Promise<boolean>;
   listAdmissions(limit: number): Promise<Admission[]>;
-  latestAdmissionFor(registrantId: string): Promise<Admission | null>;
+  /** The registrant's newest admission, on the given routes only when named. */
+  latestAdmissionFor(registrantId: string, routes?: AdmissionRoute[]): Promise<Admission | null>;
+  /** Every admission the registrant started, newest first. */
+  admissionsFor(registrantId: string): Promise<Admission[]>;
+
+  putClient(c: Client): Promise<void>;
+  updateClient(c: Client): Promise<void>;
+  clientById(id: string): Promise<Client | null>;
+  clientByReference(kycReference: string): Promise<Client | null>;
+  listClients(): Promise<Client[]>;
+
+  putNote(n: DemoNote): Promise<void>;
+  /** Replaces the note, only if its next step is still `expectedStep`. Returns whether it did. */
+  updateNote(n: DemoNote, expectedStep: number): Promise<boolean>;
+  noteById(id: string): Promise<DemoNote | null>;
+  listNotes(): Promise<DemoNote[]>;
 }
 
 // --------------------------------------------------------------------------------------------
@@ -122,6 +188,18 @@ create table if not exists sessions (
   hash text primary key,
   registrant_id text not null references registrants(id),
   expires_at timestamptz not null
+);
+create table if not exists notes (
+  id text primary key,
+  created_at timestamptz not null,
+  step integer not null,
+  data jsonb not null
+);
+create table if not exists clients (
+  id text primary key,
+  kyc_reference text not null unique,
+  created_at timestamptz not null,
+  data jsonb not null
 );
 create table if not exists admissions (
   id text primary key,
@@ -280,13 +358,61 @@ function postgresStore(url: string): Store {
       const s = await q();
       return (await s`select * from admissions order by created_at desc limit ${limit}`).map(toAdmission);
     },
-    async latestAdmissionFor(registrantId) {
+    async latestAdmissionFor(registrantId, routes) {
       const s = await q();
-      const [r] = await s`select * from admissions where registrant_id = ${registrantId} order by created_at desc limit 1`;
+      const [r] = routes
+        ? await s`select * from admissions where registrant_id = ${registrantId} and route = any(${routes}) order by created_at desc limit 1`
+        : await s`select * from admissions where registrant_id = ${registrantId} order by created_at desc limit 1`;
       return r ? toAdmission(r) : null;
+    },
+    async admissionsFor(registrantId) {
+      const s = await q();
+      return (await s`select * from admissions where registrant_id = ${registrantId} order by created_at desc limit 100`).map(toAdmission);
+    },
+    async putNote(n) {
+      const s = await q();
+      await s`insert into notes (id, created_at, step, data) values (${n.id}, ${n.createdAt}, ${n.step}, ${s.json(n as any)})`;
+    },
+    async updateNote(n, expectedStep) {
+      const s = await q();
+      const rows = await s`update notes set step = ${n.step}, data = ${s.json(n as any)} where id = ${n.id} and step = ${expectedStep} returning id`;
+      return rows.length === 1;
+    },
+    async noteById(id) {
+      const s = await q();
+      const [r] = await s`select data from notes where id = ${id}`;
+      return r ? (toJson(r.data) as DemoNote) : null;
+    },
+    async listNotes() {
+      const s = await q();
+      return (await s`select data from notes order by created_at desc`).map((r) => toJson(r.data) as DemoNote);
+    },
+    async putClient(c) {
+      const s = await q();
+      await s`insert into clients (id, kyc_reference, created_at, data) values (${c.id}, ${c.kycReference}, ${c.createdAt}, ${s.json(c as any)})`;
+    },
+    async updateClient(c) {
+      const s = await q();
+      await s`update clients set data = ${s.json(c as any)} where id = ${c.id}`;
+    },
+    async clientById(id) {
+      const s = await q();
+      const [r] = await s`select data from clients where id = ${id}`;
+      return r ? (toJson(r.data) as Client) : null;
+    },
+    async clientByReference(kycReference) {
+      const s = await q();
+      const [r] = await s`select data from clients where kyc_reference = ${kycReference}`;
+      return r ? (toJson(r.data) as Client) : null;
+    },
+    async listClients() {
+      const s = await q();
+      return (await s`select data from clients order by created_at desc`).map((r) => toJson(r.data) as Client);
     },
   };
 }
+
+const toJson = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v);
 
 // --------------------------------------------------------------------------------------------
 // File, development only
@@ -298,6 +424,8 @@ type FileData = {
   sessions: { hash: string; registrantId: string; expiresAt: string }[];
   audit: AuditEntry[];
   admissions?: Admission[];
+  clients?: Client[];
+  notes?: DemoNote[];
 };
 
 function fileStore(dir: string): Store {
@@ -397,8 +525,52 @@ function fileStore(dir: string): Store {
     async listAdmissions(limit) {
       return [...(load().admissions ?? [])].sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, limit);
     },
-    async latestAdmissionFor(registrantId) {
-      return [...(load().admissions ?? [])].filter((a) => a.registrantId === registrantId).sort((x, y) => y.createdAt.localeCompare(x.createdAt))[0] ?? null;
+    async latestAdmissionFor(registrantId, routes) {
+      return [...(load().admissions ?? [])]
+        .filter((a) => a.registrantId === registrantId && (!routes || routes.includes(a.route)))
+        .sort((x, y) => y.createdAt.localeCompare(x.createdAt))[0] ?? null;
+    },
+    async admissionsFor(registrantId) {
+      return [...(load().admissions ?? [])].filter((a) => a.registrantId === registrantId).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
+    },
+    async putNote(n) {
+      edit((d) => {
+        d.notes = [...(d.notes ?? []), n];
+      });
+    },
+    async updateNote(n, expectedStep) {
+      return edit((d) => {
+        const i = (d.notes ?? []).findIndex((x) => x.id === n.id && x.step === expectedStep);
+        if (i < 0) return false;
+        d.notes![i] = n;
+        return true;
+      });
+    },
+    async noteById(id) {
+      return (load().notes ?? []).find((n) => n.id === id) ?? null;
+    },
+    async listNotes() {
+      return [...(load().notes ?? [])].sort((x, y) => y.createdAt.localeCompare(x.createdAt));
+    },
+    async putClient(c) {
+      edit((d) => {
+        if ((d.clients ?? []).some((x) => x.kycReference === c.kycReference)) throw new Error(`a client with reference ${c.kycReference} already exists`);
+        d.clients = [...(d.clients ?? []), c];
+      });
+    },
+    async updateClient(c) {
+      edit((d) => {
+        d.clients = (d.clients ?? []).map((x) => (x.id === c.id ? c : x));
+      });
+    },
+    async clientById(id) {
+      return (load().clients ?? []).find((c) => c.id === id) ?? null;
+    },
+    async clientByReference(kycReference) {
+      return (load().clients ?? []).find((c) => c.kycReference === kycReference) ?? null;
+    },
+    async listClients() {
+      return [...(load().clients ?? [])].sort((x, y) => y.createdAt.localeCompare(x.createdAt));
     },
   };
 }

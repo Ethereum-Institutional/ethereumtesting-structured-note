@@ -56,3 +56,4 @@ open-banking path without making it everyone's burden.
   account's signature.
 - In the custodied and self-custody routes the jurisdiction and status come from the bank's
   records, stated by the bank; the credential identifier is what makes the grant revocable.
+- The record staff typed on routes 1 and 2 is replaced: the site issues the client's corporate identity and reads the record from it (ADR 0066).

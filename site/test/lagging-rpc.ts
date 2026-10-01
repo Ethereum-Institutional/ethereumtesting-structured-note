@@ -34,10 +34,14 @@ export async function startLaggingRpc(port: number, upstream: string, lagMs = 15
     return { ...call, params };
   }
 
+  // Only the newest receipt moves the lag: a node behind is behind the head, never back in history,
+  // so a receipt for an old transaction (the Ledger reads many) changes nothing.
+  let newest = 0n;
   function observe(call: any, reply: any) {
     const block = reply?.result?.blockNumber;
-    if (call?.method === "eth_getTransactionReceipt" && block) {
-      staleBlock = BigInt(block) - 1n;
+    if (call?.method === "eth_getTransactionReceipt" && block && BigInt(block) >= newest) {
+      newest = BigInt(block);
+      staleBlock = newest - 1n;
       staleUntil = Date.now() + lagMs;
     }
   }

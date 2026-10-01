@@ -64,7 +64,18 @@ export type IssuedCredential = {
   issuedAt: number;
   expiresAt: number;
   kycReference?: string;
+  /** The credential's own root, and where the bank anchored the batch containing it (ADR 0060). */
+  rootHex?: string | null;
+  rootAnchorTxHash?: string | null;
+  rootAnchorChain?: string | null;
+  revokedAt?: number | string | null;
 };
+
+/** Every credential the bank has issued, newest included, with its anchoring. */
+export async function issuedCredentials(b: BankConfig): Promise<IssuedCredential[]> {
+  const { credentials } = await call<{ credentials: IssuedCredential[] }>(b, `/v1/admin/credentials?limit=500`);
+  return credentials;
+}
 
 /** The bank's live corporate identities: the newest unexpired, unrevoked one for each client reference. */
 export async function corporateIdentities(b: BankConfig, schema: string, nowSec: number, kycReference?: string): Promise<IssuedCredential[]> {
@@ -117,4 +128,33 @@ export type WalletAttested = { credentialId: Hex; walletAddress: string; attesta
 
 export function completeWalletAttestation(b: BankConfig, challengeId: string, walletAddress: string, addressType: "eoa" | "smart_contract", signature: Hex) {
   return call<WalletAttested>(b, "/v1/wallet-attestation/eth/complete", { v: 1, challengeId, walletAddress, addressType, signature });
+}
+
+/** Revokes a credential at the bank (ADR 0064). The bank records the revocation in the protocol's registry. */
+export function revokeCredential(b: BankConfig, credentialId: string, reason: string) {
+  return call<Record<string, unknown>>(b, `/v1/credentials/${encodeURIComponent(credentialId)}/revoke`, { v: 1, reason });
+}
+
+export type Issued = { issuanceId: string; credentialId: string; state: string; pickupUrl: string; estimatedAnchorAt?: number };
+
+/**
+ * Issues a credential from claims the site supplies (ADR 0066), through the issuer server's own
+ * two steps, under the service scope credentials:issue. The server signs it at once and anchors it
+ * in its next batch. The pickup URL is how a holder (a Maknoon wallet, or a corporation's issuer
+ * backend) collects it.
+ */
+export async function issueCredential(
+  b: BankConfig,
+  input: { schema: string; subjectDid: string; kycReference: string; validitySeconds: number; claims: Record<string, unknown> },
+): Promise<Issued> {
+  const started = await call<{ issuanceId: string }>(b, "/v1/issuance/initiate", {
+    v: 1,
+    schema: input.schema,
+    subjectDid: input.subjectDid,
+    kycProvider: "manual",
+    kycReference: input.kycReference,
+    validitySeconds: input.validitySeconds,
+  });
+  const done = await call<Issued>(b, `/v1/issuance/${encodeURIComponent(started.issuanceId)}/complete`, { v: 1, claimsOverride: input.claims });
+  return { ...done, issuanceId: started.issuanceId };
 }

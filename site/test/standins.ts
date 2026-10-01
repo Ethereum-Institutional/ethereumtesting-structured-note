@@ -10,7 +10,8 @@
 
 import { createServer, type Server } from "node:http";
 import { ml_dsa65 } from "@noble/post-quantum/ml-dsa";
-import { bytesToHex, createPublicClient, hashTypedData, http, keccak256, parseAbi, toBytes, verifyTypedData } from "viem";
+import { bytesToHex, concat, createPublicClient, createWalletClient, hashTypedData, http, keccak256, parseAbi, toBytes, verifyTypedData, type Address, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { canonicalize } from "../lib/admission/canonical.ts";
 
 export const ISSUER = "did:example:credential-issuer"; // the local stack's configured issuer
@@ -20,6 +21,22 @@ export const SERVICE_KEY = "sk_test_integrationsecret";
 export const KYC_REFERENCE = "KYC-TI1";
 export const SCHEMAS = { officer: "schema:corporate-officer/v1", walletControl: "schema:wallet-control-eth/v1", corporateIdentity: "schema:corporate-identity/v1" };
 export const issuerKeys = ml_dsa65.keygen(new Uint8Array(32).fill(21));
+/** The local credential issuer's published key (mnemonic index 22, ADR 0040), which anchors roots on the local chain. */
+const LOCAL_ISSUER_PK = "0x224b7eb7449992aac96d631d9677f7bf5888245eef6d6eeda31e62d2f29a83e4";
+
+type Issued = {
+  credentialId: Hex; schema: string; subjectDid: string; state: string; issuedAt: number; expiresAt: number;
+  kycReference?: string; rootHex: Hex; rootAnchorTxHash: Hex | null; rootAnchorChain: string | null; revokedAt: number | null;
+  anchorAt: number;
+  claims?: Record<string, unknown>;
+};
+
+export type StandInOptions = {
+  /** The protocol's root registry on the local chain, where the bank anchors its batches. */
+  revocations: Address;
+  /** How long after issuing the bank anchors a credential. The real bank takes about a minute. */
+  anchorDelayMs?: number;
+};
 
 /** The holder wallet's presentation of one credential, answering a request it scanned. */
 export function presentation(now: number, root: string, request: any, schema: string, credential: string, disclosed: Record<string, unknown>) {
@@ -38,15 +55,59 @@ export type StandIns = {
   presentation: (request: any, schema: string, credential: string, disclosed: Record<string, unknown>) => Record<string, unknown>;
   /** The site's environment for these stand-ins and the given chain. */
   env: (rpc: string, manifestPath: string, siteUrl: string) => Record<string, string>;
+  /** Every credential the stand-in bank has issued, with its anchoring. */
+  issued: Map<string, Issued>;
   close: () => Promise<void>;
 };
 
-export async function startStandIns(port: number, rpc: string): Promise<StandIns> {
+export async function startStandIns(port: number, rpc: string, options: StandInOptions): Promise<StandIns> {
   const now = Math.floor(Date.now() / 1000);
   const cid = (s: string) => keccak256(toBytes(`${s}/${now}`));
   const lodged = new Map<string, any>();
   const challenges = new Map<string, any>();
+  const issuances = new Map<string, any>();
+  let issuanceCount = 0;
   let lastLodged: any = null;
+  const mails: Array<{ to: string | string[]; subject: string; text: string }> = [];
+  const anchorDelayMs = options.anchorDelayMs ?? 3000;
+
+  // The bank's register of what it issued. It issues at once and anchors in batches, as the real
+  // bank does: pending first, then anchored by an updateRoot transaction on the chain.
+  const issued = new Map<string, Issued>();
+  const issue = (credentialId: Hex, schema: string, subjectDid: string, extra: Partial<Issued> = {}, anchorAt = Date.now() + anchorDelayMs) => {
+    if (issued.has(credentialId.toLowerCase())) return;
+    issued.set(credentialId.toLowerCase(), {
+      credentialId, schema, subjectDid, state: "signed_pending_anchor", issuedAt: Math.floor(Date.now() / 1000), expiresAt: now + 365 * 86_400,
+      rootHex: keccak256(toBytes(`root of ${credentialId}`)), rootAnchorTxHash: null, rootAnchorChain: null, revokedAt: null, anchorAt, ...extra,
+    });
+  };
+  const anchorer = createWalletClient({ account: privateKeyToAccount(LOCAL_ISSUER_PK), transport: http(rpc) });
+  const reader = createPublicClient({ transport: http(rpc) });
+  const ROOTS = parseAbi(["function updateRoot(string did, bytes32 root)", "function revoke(string did, bytes32 cid)"]);
+  let anchoring = false;
+  const anchorDue = async () => {
+    if (anchoring) return;
+    const due = [...issued.values()].filter((c) => !c.rootAnchorTxHash && c.anchorAt <= Date.now());
+    if (!due.length) return;
+    anchoring = true;
+    try {
+      const chainId = await reader.getChainId();
+      const batchRoot = keccak256(concat(due.map((c) => c.rootHex)));
+      const hash = await anchorer.writeContract({ address: options.revocations, abi: ROOTS, functionName: "updateRoot", args: [ISSUER, batchRoot], chain: null });
+      await reader.waitForTransactionReceipt({ hash, pollingInterval: 250 });
+      for (const c of due) Object.assign(c, { state: c.state === "picked_up" ? "picked_up" : "signed_anchored", rootAnchorTxHash: hash, rootAnchorChain: `eip155:${chainId}` });
+    } catch {
+      // The next tick tries again.
+    } finally {
+      anchoring = false;
+    }
+  };
+  const ticker = setInterval(() => void anchorDue(), 500);
+
+  // Issued before the tests start, and anchored at once: the client's corporate identity at the
+  // bank (routes 1 and 2) and the corporation's own (route 3).
+  issue(cid("bank corporate identity"), SCHEMAS.corporateIdentity, CORP, { kycReference: KYC_REFERENCE, state: "picked_up", issuedAt: now - 200 * 86_400, expiresAt: now + 165 * 86_400 }, 0);
+  issue(cid("corporate identity"), SCHEMAS.corporateIdentity, CORP, { state: "picked_up" }, 0);
 
   function corporateIdentity() {
     const header = { v: 1, alg: "ML-DSA-65", hash: "RPO-256", iss: ISSUER, sub: CORP, iat: now - 86_400, exp: now + 365 * 86_400, cid: cid("corporate identity"), root: cid("root"), schema: SCHEMAS.corporateIdentity };
@@ -69,6 +130,12 @@ export async function startStandIns(port: number, rpc: string): Promise<StandIns
 
     // For the browser tests, which play the holder wallet: the request the site last lodged.
     if (req.method === "GET" && req.url === "/test/last-lodged") return send(lastLodged ? 200 : 404, lastLodged ?? {});
+    // Outbound mail, as Resend would accept it; the tests read what was sent.
+    if (req.method === "POST" && req.url === "/emails") {
+      mails.push(JSON.parse(body));
+      return send(200, { id: `mail_${mails.length}` });
+    }
+    if (req.method === "GET" && req.url === "/test/mails") return send(200, mails);
 
     if (req.method === "POST" && req.url === "/v1/verifier-request") {
       if (!authorised) return send(401, { error: { code: "unauthenticated", message: "unauthenticated" } });
@@ -80,6 +147,7 @@ export async function startStandIns(port: number, rpc: string): Promise<StandIns
     if (req.method === "POST" && req.url === "/v1/verify") {
       const { presentation } = JSON.parse(body);
       const officer = presentation.header.schema === SCHEMAS.officer;
+      issue(presentation.header.cid, presentation.header.schema, presentation.header.sub, {}, 0);
       return send(200, {
         v: 1, decision: "GRANT", reason: "all checks passed", ms: 1,
         checks: { headerSignature: true, corporateChainValid: officer ? true : null },
@@ -89,13 +157,54 @@ export async function startStandIns(port: number, rpc: string): Promise<StandIns
     if (req.method === "GET" && req.url === "/v1/issuer/corporate-identity") return send(200, corporateIdentity());
 
     // The bank's issuer operator API (ADR 0054), behind its service key (ADR 0055).
-    if (req.url?.startsWith("/v1/admin/") || req.url?.startsWith("/v1/wallet-attestation/")) {
+    if (["/v1/admin/", "/v1/wallet-attestation/", "/v1/credentials/", "/v1/issuance/"].some((p) => req.url?.startsWith(p))) {
       if (!authorised) return send(401, { error: { code: "unauthenticated", message: "unauthenticated" } });
     }
     if (req.method === "GET" && req.url?.startsWith("/v1/admin/credentials")) {
       const q = new URL(req.url, "http://x").searchParams;
-      const known = !q.has("kycReference") || q.get("kycReference") === KYC_REFERENCE;
-      return send(200, { v: 1, credentials: known ? [{ credentialId: cid("bank corporate identity"), schema: SCHEMAS.corporateIdentity, subjectDid: CORP, state: "anchored", issuedAt: now - 200 * 86_400, expiresAt: now + 165 * 86_400, kycReference: KYC_REFERENCE }] : [] });
+      // As the real bank: kycReference and schema filter; other parameters, credentialId included, are ignored.
+      const list = [...issued.values()]
+        .filter((c) => !q.has("kycReference") || c.kycReference === q.get("kycReference"))
+        .filter((c) => !q.has("schema") || c.schema === q.get("schema"))
+        .map(({ anchorAt: _a, claims: _c, ...c }) => c);
+      return send(200, { v: 1, credentials: list });
+    }
+    // Issuance from claims the site supplies (ADR 0066), in the real server's two steps.
+    if (req.method === "POST" && req.url === "/v1/issuance/initiate") {
+      const b = JSON.parse(body || "{}");
+      if (b.v !== 1) return send(400, { error: { code: "bad_version", message: "v must be 1" } });
+      if (!/^did:elabify:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+:[A-Za-z0-9_:.x-]+$/.test(b.subjectDid ?? "")) return send(400, { error: { code: "bad_request", message: `Invalid subject DID: ${b.subjectDid}` } });
+      if (!Object.values(SCHEMAS).includes(b.schema)) return send(400, { error: { code: "unknown_schema", message: `Schema not registered: ${b.schema}` } });
+      const issuanceId = `iss_${++issuanceCount}_${now}`;
+      issuances.set(issuanceId, b);
+      return send(200, { v: 1, issuanceId, state: "initiated", expiresAt: now + 3600 });
+    }
+    const completing = req.method === "POST" ? req.url?.match(/^\/v1\/issuance\/([^/]+)\/complete$/) : null;
+    if (completing) {
+      const b = JSON.parse(body || "{}");
+      const started = issuances.get(decodeURIComponent(completing[1]));
+      if (!started) return send(404, { error: { code: "not_found", message: "Unknown issuance" } });
+      if (b.v !== 1) return send(400, { error: { code: "bad_version", message: "v must be 1" } });
+      const required = started.schema === SCHEMAS.corporateIdentity ? ["id", "legalName", "legalForm", "registrationNumber", "jurisdiction", "incorporationDate", "status"] : [];
+      const missing = required.filter((k) => !(k in (b.claimsOverride ?? {})));
+      if (missing.length) return send(400, { error: { code: "missing_claims", message: `Schema ${started.schema} requires claims that were not supplied (${missing.join(", ")})` } });
+      issuances.delete(decodeURIComponent(completing[1]));
+      const credentialId = keccak256(toBytes(`issued ${completing[1]} ${JSON.stringify(b.claimsOverride)}`));
+      issue(credentialId, started.schema, started.subjectDid, { kycReference: started.kycReference, claims: b.claimsOverride, expiresAt: Math.floor(Date.now() / 1000) + (started.validitySeconds ?? 365 * 86_400) });
+      return send(200, { v: 1, issuanceId: completing[1], credentialId, state: "signed_pending_anchor", pickupUrl: `${url}/v1/issuance/pickup/${credentialId.slice(2, 18)}`, estimatedAnchorAt: now + 60 });
+    }
+
+    // Revocation (ADR 0064): as the real bank, a versioned body; the revocation is recorded on-chain.
+    const revoking = req.method === "POST" ? req.url?.match(/^\/v1\/credentials\/(0x[0-9a-fA-F]{64})\/revoke$/) : null;
+    if (revoking) {
+      const b = JSON.parse(body || "{}");
+      if (b.v !== 1) return send(400, { error: { code: "bad_version", message: "v must be 1" } });
+      const c = issued.get(revoking[1].toLowerCase());
+      if (!c) return send(404, { error: { code: "not_found", message: "no such credential" } });
+      const hash = await anchorer.writeContract({ address: options.revocations, abi: ROOTS, functionName: "revoke", args: [ISSUER, c.credentialId], chain: null });
+      await reader.waitForTransactionReceipt({ hash, pollingInterval: 250 });
+      Object.assign(c, { state: "revoked", revokedAt: Math.floor(Date.now() / 1000) });
+      return send(200, { v: 1, credentialId: c.credentialId, state: "revoked", revocationTxHash: hash, revocationReason: b.reason ?? null });
     }
     if (req.method === "POST" && req.url === "/v1/wallet-attestation/eth/initiate") {
       const b = JSON.parse(body);
@@ -128,7 +237,9 @@ export async function startStandIns(port: number, rpc: string): Promise<StandIns
         ok = magic === "0x1626ba7e";
       }
       if (!ok) return send(400, { error: { message: "signature does not verify" } });
-      return send(200, { v: 1, credentialId: cid(`wallet credential ${b.walletAddress}`), walletAddress: b.walletAddress, attestationMethod: b.addressType === "eoa" ? "EIP-712" : "EIP-1271", attestedAt: now, state: "signed_pending_anchor" });
+      const credentialId = keccak256(toBytes(`wallet credential ${b.walletAddress}/${b.challengeId}/${now}`));
+      issue(credentialId, SCHEMAS.walletControl, stored.message.holderDid);
+      return send(200, { v: 1, credentialId, walletAddress: b.walletAddress, attestationMethod: b.addressType === "eoa" ? "EIP-712" : "EIP-1271", attestedAt: now, state: "signed_pending_anchor" });
     }
     send(404, {});
   });
@@ -146,6 +257,9 @@ export async function startStandIns(port: number, rpc: string): Promise<StandIns
     env: (chainRpc, manifestPath, siteUrl) => ({
       SITE_URL: siteUrl,
       OPERATOR_EMAILS: "operator@example.org",
+      RESEND_API_KEY: "re_test_standin",
+      MAIL_FROM: "Structured Note <no-reply@example.org>",
+      RESEND_API_URL: `${url}/emails`,
       CREDENTIAL_VERIFIER_URL: url,
       ADMISSION_VERIFIER_DID: "did:example:access-issuer",
       ADMISSION_VERIFIER_SEED: bytesToHex(new Uint8Array(32).fill(5)),
@@ -159,10 +273,12 @@ export async function startStandIns(port: number, rpc: string): Promise<StandIns
       SIGNER_KEYS: JSON.stringify({
         accessIssuer: "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
         custodian: "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+        depositAgent: "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6", // account 9
       }),
       BANK_ISSUER_URL: url,
       BANK_ISSUER_API_KEY: SERVICE_KEY,
     }),
-    close: () => new Promise<void>((r) => server.close(() => r())),
+    issued,
+    close: () => new Promise<void>((r) => { clearInterval(ticker); server.close(() => r()); }),
   };
 }

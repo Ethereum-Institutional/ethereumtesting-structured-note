@@ -12,11 +12,11 @@
     "start": "next start -p 3020",
     "typecheck": "tsc --noEmit",
     "e2e": "python3 test/e2e.py /tmp/site-dev.log",
-    "test": "node --test lib/chain/chain.test.ts lib/admission/admission.test.ts",
+    "test": "node --test lib/chain/chain.test.ts lib/admission/admission.test.ts lib/pool/quote.test.ts lib/notes/calendar.test.ts",
     "test:chain": "node --test lib/chain/deployment.test.ts",
-    "test:admission": "node --conditions=react-server --test test/admission.integration.ts",
+    "test:admission": "node --conditions=react-server --test --test-concurrency=1 test/admission.integration.ts test/notes.integration.ts test/governance.integration.ts",
     "test:browser": "next build && playwright test",
-    "test:local": "../ops/reset.sh && npm test && npm run test:admission && npm run test:browser"
+    "test:local": "../ops/reset.sh && npm test && npm run test:admission && ../ops/reset.sh && npm run test:browser"
   },
   "dependencies": {
     "@noble/post-quantum": "0.4.1",

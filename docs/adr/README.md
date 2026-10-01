@@ -67,3 +67,26 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0057](0057-bank-holds-the-client-reference.md) | The bank holds the client's reference; staff choose it from the bank's list, and the client never types it | Accepted |
 | [0058](0058-client-can-cancel.md) | A client can cancel its admission at any step until the grants are being written | Accepted |
 | [0059](0059-test-locally-at-the-seams.md) | Test the pages and the network's behaviour on the local chain, before every deploy | Accepted |
+| [0060](0060-grant-only-anchored-credentials.md) | Grants rest only on credentials anchored in the bank's registry, on every route | Accepted |
+| [0061](0061-house-style.md) | The site takes the house style of the organisation's event pages, with a crimson icon | Accepted |
+| [0062](0062-client-routes-stay-open.md) | A client can always onboard another wallet; the bank's custodied admissions never block it | Accepted |
+| [0063](0063-offboard-by-revoking-both-grants.md) | Staff offboard an account by revoking both of its grants, with a written reason | Accepted |
+| [0064](0064-revoke-at-the-bank-separately.md) | Revoking at the bank is separate from offboarding, and the corporate identity is its own confirmed step | Accepted |
+| [0065](0065-new-clients-at-the-bank.md) | New corporate clients are added in the bank's own console, linked from the Operator page | Superseded by 0066 |
+| [0066](0066-site-issues-client-identities.md) | The site is the bank's onboarding system: staff enter a client once, and the issuer server signs and anchors it | Accepted |
+| [0067](0067-site-assigns-references.md) | The site assigns client and custody references | Accepted |
+| [0068](0068-browser-wallet-binds-in-one-click.md) | A browser wallet binds in one click: address read, chain switched or added, message proposed | Accepted |
+| [0069](0069-one-wallet-per-kyb.md) | One wallet per KYB, a new wallet replaces the old, and the Onboard page shows three stages | Accepted |
+| [0070](0070-convert-in-the-pool.md) | Converting in the pool: both kinds of wallet, one-time approvals, faucets plus a bank credit, and a 0.5% limit | Accepted |
+| [0071](0071-the-ledger.md) | The Ledger: the lifecycle from the chain alone, through Alchemy, with a register reconciliation for staff | Accepted |
+| [0072](0072-demonstration-notes.md) | Demonstration notes: a second note on the same code, a calendar chosen at issuance, scenario levels, site-held test keys, and Reg S approval per client | Accepted |
+| [0073](0073-operator-console-and-note-calendars.md) | The Operator console in sections, "notes" without qualification, and a calendar configured by observations and interval | Accepted |
+| [0074](0074-third-party-wallets.md) | The self-custody route is shown as Third party | Accepted |
+| [0075](0075-reg-s-approval-and-placement.md) | Approval for the note under Reg S, and placement by DvP from the site | Accepted |
+| [0076](0076-onboard-console.md) | The client's Onboard pages: a navigation column, an account card, unbinding, and asking for custody | Accepted |
+| [0077](0077-unconfirmed-registrations.md) | Unconfirmed registrations: staff resend the link, or approve ahead of confirmation | Accepted |
+| [0078](0078-determinations-payments-closure.md) | Determinations, payments and closure from the site, one step at a time | Accepted |
+| [0079](0079-chain-snapshots-for-tests.md) | Local resets restore a snapshot of the deployed chain | Accepted |
+| [0080](0080-eth-for-fees.md) | ETH for fees: a Keys page, a check before every transaction, and top-ups | Accepted |
+| [0081](0081-locked-settlement-and-trading.md) | Locked settlement: offers that lock their side, transfers arranged or open, buy-backs, and cancelling from the inventory | Accepted |
+| [0082](0082-governance-console-and-expiry.md) | Governance from the site, and an execution window for Tier 2 proposals | Accepted |

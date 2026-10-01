@@ -9,8 +9,9 @@ export function Bar({ who, operator }: { who: Registrant; operator: boolean }) {
       <nav>
         <Link href="/">Architecture</Link>
         <a href="/overview">Solution overview</a>
-        <Link href="/admit">Pool admission</Link>
-        {operator && <Link href="/operator">Access requests</Link>}
+        <Link href="/onboard">Onboard</Link>
+        <Link href="/ledger">Ledger</Link>
+        {operator && <Link href="/operator">Operator</Link>}
         <span>{who.email}</span>
         <form action={signOutAction}>
           <button type="submit" className="quiet">Sign out</button>

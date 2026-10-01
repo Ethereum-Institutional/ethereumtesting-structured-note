@@ -6,7 +6,7 @@
  */
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createWriteStream, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { createWriteStream, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { startLaggingRpc } from "../lagging-rpc.ts";
 import { startStandIns } from "../standins.ts";
@@ -25,7 +25,7 @@ const expires = new Date(Date.now() + 86_400_000).toISOString();
 writeFileSync(
   join(STORE_DIR, "store.json"),
   JSON.stringify({
-    registrants: Object.values(PEOPLE).map(({ sid: _sid, ...p }) => ({ ...p, createdAt: created, verifiedAt: created, decidedAt: null, decidedBy: null })),
+    registrants: Object.values(PEOPLE).map(({ sid: _sid, ...p }) => ({ ...p, createdAt: created, verifiedAt: p.status === "unverified" ? null : created, decidedAt: null, decidedBy: null })),
     links: [],
     sessions: Object.values(PEOPLE).map((p) => ({ hash: sha256(p.sid), registrantId: p.id, expiresAt: expires })),
     audit: [],
@@ -33,7 +33,9 @@ writeFileSync(
   }),
 );
 
-const standIns = await startStandIns(STANDINS_PORT, CHAIN); // the bank reads the chain directly
+const revocations = JSON.parse(readFileSync(MANIFEST, "utf8")).credentialProtocol.revocations;
+// The bank reads the chain directly, and anchors each new credential three seconds after issuing it.
+const standIns = await startStandIns(STANDINS_PORT, CHAIN, { revocations, anchorDelayMs: 3000 });
 const lagging = await startLaggingRpc(LAGGING_RPC_PORT, CHAIN); // the site reads it as through a public RPC
 
 const log = createWriteStream(SERVER_LOG);

@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { canonicalString } from "./canonical.ts";
 import { assess, type Assessment, type Received } from "./assess.ts";
-import { writeGrants } from "./grants.ts";
+import { removeGrants, writeGrants } from "./grants.ts";
 import {
   corporateIdentity,
   lodge,
@@ -18,10 +18,13 @@ import { getStore, type Admission, type Registrant } from "../store.ts";
 import { emailList, isOperator } from "../operators.ts";
 import { sendMail } from "../mail.ts";
 import { assessBankAdmission, type BankAdmissionInput, type BankRecord } from "./assess.ts";
-import { bankConfig, completeWalletAttestation, corporateIdentityFor, startWalletAttestation, type WalletChallenge } from "./bank.ts";
+import { bankConfig, completeWalletAttestation, corporateIdentityFor, revokeCredential, startWalletAttestation, type WalletChallenge } from "./bank.ts";
 import { custodyAccountFor, openCustodyAccount, poolAllows, readyToTrade, signAsCustodyAccount } from "./custody.ts";
+import { anchoringOf, type Anchor } from "./anchoring.ts";
+import { recordOf } from "./clients.ts";
+import { createHash } from "node:crypto";
 import { policyConfig } from "./protocol.ts";
-import type { Address, Hex } from "viem";
+import { keccak256, toBytes, type Address, type Hex } from "viem";
 
 
 /**
@@ -150,7 +153,17 @@ export async function receivePresentation(body: unknown, origin: string): Promis
     return verdict;
   }
 
-  // The wallet: fetch the corporate identity the officer acts for, and assess the three.
+  await assessOfficerWallet(a, got, c, origin, "holder wallet");
+  return verdict;
+}
+
+/**
+ * The holder-wallet route's second step, however the wallet was proven: fetch the corporate
+ * identity the officer acts for, assess the three, and leave the admission for staff to approve.
+ */
+async function assessOfficerWallet(a: Admission, got: Received & { receivedAt: string }, c: ReturnType<typeof protocolConfig>, origin: string, actor: string) {
+  const store = getStore();
+  const d = dataOf(a);
   const officer = d.officer!;
   const corporationDid = String(officer.presentation.disclosed.find((x) => x.key === "corporationDid")?.value ?? "");
   let data: Data = { ...d, wallet: got };
@@ -165,10 +178,60 @@ export async function receivePresentation(body: unknown, origin: string): Promis
     status = "refused";
   }
   if (await store.updateAdmission({ ...a, status, data }, a.status)) {
-    await store.audit({ at: now(), actor: "holder wallet", action: status === "ready" ? "admission ready for approval" : "admission refused", subject: a.id });
+    await store.audit({ at: now(), actor, action: status === "ready" ? "admission ready for approval" : "admission refused", subject: a.id });
     if (status === "ready") await notifyOperators(a.id, origin);
   }
-  return verdict;
+}
+
+/**
+ * The holder-wallet route, wallet by browser wallet (ADR 0068): once the officer is verified, the
+ * officer's wallet signs the bank's challenge, and the bank issues the wallet-control credential
+ * to the officer's DID. This replaces the second scan; the scan remains for other wallets.
+ */
+export async function startOfficerWalletBinding(client: Registrant, id: string, walletAddress: string): Promise<Record<string, any>> {
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.registrantId !== client.id || a.status !== "awaiting-wallet") throw new Error("The officer's credential has not been verified yet.");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) throw new Error("That is not a wallet address.");
+  const d = dataOf(a) as Data & Record<string, any>;
+  const officerDid = d.officer!.presentation.header.sub;
+  const challenge = await startWalletAttestation(bankConfig(), officerDid, `eip155:${loadManifest().chainId}`, walletAddress, PURPOSE);
+  await store.updateAdmission({ ...a, data: { ...d, officerWallet: { walletAddress, challenge } } }, a.status);
+  return challenge.typedData;
+}
+
+export async function completeOfficerWalletBinding(client: Registrant, id: string, signature: Hex, origin: string): Promise<void> {
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.registrantId !== client.id || a.status !== "awaiting-wallet") throw new Error("The officer's credential has not been verified yet.");
+  const d = dataOf(a) as Data & Record<string, any>;
+  const pending = d.officerWallet as { walletAddress: Address; challenge: WalletChallenge } | undefined;
+  if (!pending) throw new Error("Connect the wallet first.");
+  const c = protocolConfig(origin);
+  const bank = bankConfig();
+  const wallet = await completeWalletAttestation(bank, pending.challenge.challengeId, pending.walletAddress, "eoa", signature);
+  const officer = d.officer!.presentation.header;
+  const chain = `eip155:${loadManifest().chainId}`;
+  // The bank's attestation, in the shape of a presentation, so the assessment is the one the scan gets.
+  const got = {
+    presentation: {
+      v: 1 as const,
+      header: { v: 1 as const, alg: "ML-DSA-65", hash: "RPO-256", iss: c.issuerDid, sub: officer.sub, iat: nowSec(), exp: officer.exp, cid: wallet.credentialId, root: "", schema: c.schemas.walletControl },
+      headerSig: "",
+      challenge: pending.challenge.challengeId,
+      disclosed: [
+        { key: "walletAddress", value: pending.walletAddress },
+        { key: "chain", value: chain },
+        { key: "addressType", value: "eoa" },
+      ],
+      source: "bank wallet attestation (EIP-712)",
+      typedData: pending.challenge.typedData,
+      signature,
+    },
+    verdict: { v: 1 as const, decision: "GRANT" as const, reason: `wallet control attested by the bank by ${wallet.attestationMethod}`, checks: { walletSignature: true } },
+    receivedAt: now(),
+  };
+  await assessOfficerWallet({ ...a, data: { ...d, officerWallet: { ...pending, attested: wallet } } }, got, c, origin, client.email);
 }
 
 export async function decideAdmission(id: string, outcome: "approve" | "decline", operator: Registrant): Promise<void> {
@@ -183,25 +246,91 @@ export async function decideAdmission(id: string, outcome: "approve" | "decline"
     await store.audit({ at: now(), actor: operator.email, action: "declined a pool admission", subject: a.id });
     return;
   }
-  // Claimed before anything is sent, so two approvals cannot both write.
-  if (!(await store.updateAdmission({ ...a, status: "failed", data: { ...d, decision, error: "writing" } }, "ready"))) {
+  if (!d.assessment?.ok) throw new Error("That admission has no grants to write.");
+  // Approved: the grants follow once every credential is anchored (ADR 0060).
+  if (!(await store.updateAdmission({ ...a, status: "awaiting-anchor", data: { ...d, decision, anchorSince: now() } }, "ready"))) {
     throw new Error("That admission was decided already.");
   }
-  const assessment = d.assessment;
+  await store.audit({ at: now(), actor: operator.email, action: "approved a pool admission", subject: a.id });
+  await advanceAdmission(a.id);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Anchoring, then the grants (ADR 0060)
+// ---------------------------------------------------------------------------------------------
+
+/** How long an admission waits for the bank's anchoring before it is reported as failed. */
+const ANCHOR_PATIENCE_MS = 15 * 60_000;
+
+/** The evidence the grants carry: what the admission rests on, and where each credential is anchored. */
+function anchoredEvidence(basis: Hex, anchors: Anchor[]): Hex {
+  return `0x${createHash("sha256").update(canonicalString({ basis, anchors })).digest("hex")}`;
+}
+
+export type Advance = "waiting" | "admitted" | "not-waiting";
+
+/**
+ * Writes an admission's grants once every credential they rest on is anchored in the bank's
+ * registry. Safe to call repeatedly and from anywhere, as the pages do while they wait: it writes
+ * only from "awaiting-anchor", and claims the admission first, so two calls cannot both write.
+ */
+export async function advanceAdmission(id: string): Promise<Advance> {
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.status !== "awaiting-anchor") return "not-waiting";
+  const d = a.data as Record<string, any>;
+  const assessment = d.assessment as Assessment;
   if (!assessment?.ok) throw new Error("That admission has no grants to write.");
+  const policy = policyConfig();
+  const at = assessment.attestation;
+  const ids = [at.primaryCredential, at.walletCredential, at.authorityCredential].filter((c, i, all) => !/^0x0+$/.test(c) && all.indexOf(c) === i);
+
+  let anchoring;
   try {
-    const written = await writeGrants(protocolConfig("").issuerDid, assessment.attestation, assessment.registry);
-    await store.updateAdmission({ ...a, status: "admitted", data: { ...d, decision, written } }, "failed");
-    await store.audit({ at: now(), actor: operator.email, action: `admitted ${assessment.summary.wallet} to the pool`, subject: a.id });
+    anchoring = await anchoringOf(bankConfig(), policy.issuerDid, ids);
   } catch (e) {
-    await store.updateAdmission({ ...a, status: "failed", data: { ...d, decision, error: (e as Error).message } }, "failed");
-    await store.audit({ at: now(), actor: operator.email, action: "pool admission failed on-chain", subject: a.id });
+    await store.updateAdmission({ ...a, status: "refused", data: { ...d, error: (e as Error).message } }, "awaiting-anchor");
+    throw e;
+  }
+  if (anchoring.pending.length) {
+    const waited = Date.now() - Date.parse(d.anchorSince ?? a.createdAt);
+    if (waited > ANCHOR_PATIENCE_MS) {
+      await store.updateAdmission({ ...a, status: "failed", data: { ...d, error: `the bank has not anchored ${anchoring.pending.join(", ")} after ${Math.round(waited / 60_000)} minutes` } }, "awaiting-anchor");
+      return "not-waiting";
+    }
+    await store.updateAdmission({ ...a, data: { ...d, anchoring: { pending: anchoring.pending, checkedAt: now() } } }, "awaiting-anchor");
+    return "waiting";
+  }
+
+  // Claimed before anything is sent, so two callers cannot both write.
+  const evidence = anchoredEvidence(at.evidence, anchoring.anchored);
+  const attestation = { ...at, evidence };
+  const registry = { ...assessment.registry, commitment: evidence };
+  const claimed = { ...d, anchors: anchoring.anchored, anchoring: undefined, assessment: { ...assessment, attestation, registry }, error: "writing" };
+  if (!(await store.updateAdmission({ ...a, status: "failed", data: claimed }, "awaiting-anchor"))) return "not-waiting";
+
+  let progress: Record<string, unknown> = claimed;
+  try {
+    const written = await writeGrants(policy.issuerDid, attestation, registry);
+    progress = { ...claimed, written, error: undefined };
+    if (a.route === "custodied") {
+      // The grants are on-chain: recorded before the approvals, so a failure there can be finished.
+      await store.updateAdmission({ ...a, status: "failed", data: { ...progress, error: "setting trading approvals" } }, "failed");
+      const readyTx = await readyToTrade(assessment.summary.wallet as Address);
+      progress = { ...progress, written: { ...written, readyTx } };
+    }
+    await store.updateAdmission({ ...a, status: "admitted", data: progress }, "failed");
+    await store.audit({ at: now(), actor: "site", action: `admitted ${assessment.summary.wallet} to the pool, its credentials anchored`, subject: a.id });
+    await replacePrevious(a.id);
+    return "admitted";
+  } catch (e) {
+    await store.updateAdmission({ ...a, status: "failed", data: { ...progress, error: (e as Error).message } }, "failed");
     throw e;
   }
 }
 
 async function notifyOperators(id: string, origin: string) {
-  await Promise.allSettled(emailList(process.env.OPERATOR_EMAILS).map((to) => sendMail(to, "Pool admission awaiting approval", `Review: ${origin}/operator#admissions\n\nAdmission ${id}\n`)));
+  await Promise.allSettled(emailList(process.env.OPERATOR_EMAILS).map((to) => sendMail(to, "Pool admission awaiting approval", `Review: ${origin}/operator/admissions\n\nAdmission ${id}\n`)));
 }
 
 function extract(body: unknown): Presentation | null {
@@ -218,6 +347,13 @@ function extract(body: unknown): Presentation | null {
 
 const PURPOSE = "Admission to the conversion pool";
 
+/** The bank's current corporate identity for a client must be the one this site issued (ADR 0066). */
+function issuedHere(found: string, ours: string, kycReference: string) {
+  if (found.toLowerCase() !== ours.toLowerCase()) {
+    throw new Error(`The bank's newest corporate identity for ${kycReference} (${found}) was not issued from this site; re-screen the client here to issue a current one.`);
+  }
+}
+
 /**
  * Route 1, custodied: the bank's staff admit a client on its instruction. The custodian opens a
  * custody account; the account signs the wallet-control message; the bank mints the wallet
@@ -225,29 +361,43 @@ const PURPOSE = "Admission to the conversion pool";
  */
 export async function admitCustodied(
   staff: Registrant,
-  input: { kycReference: string; instructionRef: string; clientRef: string; record: Omit<BankRecord, "kycReference"> },
+  input: { kycReference: string },
 ): Promise<Admission> {
   if (!isOperator(staff.email)) throw new Error("Not permitted.");
   const store = getStore();
+  // The client's facts are the bank's own, entered once when the client was added (ADR 0066).
+  const client = await store.clientByReference(input.kycReference);
+  if (!client) throw new Error(`No client ${input.kycReference} has been added: add it under Clients first.`);
   const policy = policyConfig();
   const bank = bankConfig();
   const chainId = loadManifest().chainId;
-  const record: BankRecord = { ...input.record, kycReference: input.kycReference };
+  const record: BankRecord = recordOf(client);
+  // The site assigns the custody account's reference, one account per admission, and records the
+  // admission itself as the instruction (ADR 0067).
+  const opened = (await store.listAdmissions(500)).filter((x) => x.route === "custodied" && (x.data as Record<string, any>).record?.kycReference === client.kycReference).length;
+  const id = `adm_${randomBytes(9).toString("base64url")}`;
+  // The custody reference goes on-chain (it fixes the account's address), so it is opaque: it
+  // links to the client only through the site's own records (S-36; ADR 0067 as amended).
+  const refs = {
+    clientRef: `SEG-${keccak256(toBytes(`${client.kycReference}/custody/${opened + 1}`)).slice(2, 14).toUpperCase()}`,
+    instructionRef: `staff instruction ${id}, ${staff.email}`,
+  };
   const a: Admission = {
-    id: `adm_${randomBytes(9).toString("base64url")}`,
+    id,
     registrantId: staff.id,
     route: "custodied",
     status: "failed",
     createdAt: now(),
     officerRequestId: null,
     walletRequestId: null,
-    data: { record, instructionRef: input.instructionRef, clientRef: input.clientRef, reviewedBy: staff.email, error: "writing" },
+    data: { record, instructionRef: refs.instructionRef, clientRef: refs.clientRef, reviewedBy: staff.email, error: "writing" },
   };
   await store.putAdmission(a);
   let progress = a.data as Record<string, unknown>; // what is kept if a later step fails
   try {
     const corporate = await corporateIdentityFor(bank, input.kycReference, policy.schemas.corporateIdentity, nowSec());
-    const account = await openCustodyAccount(input.clientRef);
+    issuedHere(corporate.credentialId, client.credentialId, client.kycReference);
+    const account = await openCustodyAccount(refs.clientRef);
     const challenge = await startWalletAttestation(bank, corporate.subjectDid, `eip155:${chainId}`, account, PURPOSE);
     const signature = await signAsCustodyAccount(challenge.typedData);
     const wallet = await completeWalletAttestation(bank, challenge.challengeId, account, "smart_contract", signature);
@@ -256,7 +406,7 @@ export async function admitCustodied(
       record,
       corporateIdentity: corporate,
       wallet: { credentialId: wallet.credentialId, address: account, addressType: "smart_contract", chain: `eip155:${chainId}` },
-      instructionRef: input.instructionRef,
+      instructionRef: refs.instructionRef,
       reviewedBy: staff.email,
     };
     const assessment = assessBankAdmission(policy, admission, chainId, nowSec());
@@ -265,17 +415,17 @@ export async function admitCustodied(
       await store.updateAdmission({ ...a, status: "refused", data: { ...data, error: undefined } }, "failed");
       return (await store.admissionById(a.id))!;
     }
-    const written = await writeGrants(policy.issuerDid, assessment.attestation, assessment.registry);
-    // The grants are on-chain: recorded before the approvals, so a failure there loses nothing and can be finished.
-    progress = { ...data, written, account };
-    await store.updateAdmission({ ...a, data: { ...progress, error: "setting trading approvals" } }, "failed");
-    const readyTx = await readyToTrade(account);
-    await store.updateAdmission({ ...a, status: "admitted", data: { ...data, written: { ...written, readyTx }, error: undefined } }, "failed");
-    await store.audit({ at: now(), actor: staff.email, action: `admitted custody account ${account} for ${record.legalName}`, subject: a.id });
+    // The wallet credential is minted; the grants follow once the bank has anchored it (ADR 0060).
+    // A client's request for custody is answered by this admission (ADR 0076).
+    if (client.custodyRequest) await store.updateClient({ ...client, custodyRequest: undefined });
+    await store.updateAdmission({ ...a, status: "awaiting-anchor", data: { ...data, account, anchorSince: now(), error: undefined } }, "failed");
+    await store.audit({ at: now(), actor: staff.email, action: `opened custody account ${account} for ${record.legalName}; waiting for the bank to anchor its credential`, subject: a.id });
   } catch (e) {
     await store.updateAdmission({ ...a, data: { ...progress, error: (e as Error).message } }, "failed");
     throw e;
   }
+  // Already anchored (a credential issued in an earlier batch) means the grants are written now.
+  await advanceAdmission(a.id);
   return (await store.admissionById(a.id))!;
 }
 
@@ -300,6 +450,212 @@ export async function finishCustodied(staff: Registrant, id: string): Promise<vo
     await store.updateAdmission({ ...a, data: { ...d, account, error: (e as Error).message } }, "failed");
     throw e;
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Offboarding and revocation (ADRs 0063, 0064)
+// ---------------------------------------------------------------------------------------------
+
+const walletOf = (a: Admission) => ((a.data as Record<string, any>).assessment?.summary?.wallet ?? "") as Address;
+
+/**
+ * Offboards an admitted account (ADR 0063): its pool grant and Identity Registry grant are
+ * revoked by the site's own key, with the staff member's written reason. The credentials at the
+ * bank are untouched, so the client can be onboarded again.
+ */
+export async function offboardAdmission(staff: Registrant, id: string, reason: string): Promise<void> {
+  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!reason.trim()) throw new Error("Give the reason for offboarding.");
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.status !== "admitted") throw new Error("Only an admitted account can be offboarded.");
+  await offboard(a, staff.email, reason.trim());
+}
+
+/**
+ * The client unbinds its own wallet (ADR 0076): at once, as staff offboarding does. Its KYB at the
+ * bank stands, so binding a wallet again needs only a signature.
+ */
+export async function unbindWallet(client: Registrant, id: string): Promise<void> {
+  const store = getStore();
+  const a = await store.admissionById(id);
+  if (!a || a.registrantId !== client.id || a.route === "custodied") throw new Error("That is not your wallet.");
+  if (a.status !== "admitted") throw new Error("Only an onboarded wallet can be unbound.");
+  await offboard(a, client.email, "unbound by the client");
+}
+
+/** Revokes an admitted account's two grants, claimed first so two clicks cannot both send. */
+async function offboard(a: Admission, by: string, reason: string): Promise<void> {
+  const store = getStore();
+  const d = a.data as Record<string, any>;
+  // Claimed first, so two clicks cannot both send.
+  if (!(await store.updateAdmission({ ...a, status: "failed", data: { ...d, error: "offboarding" } }, "admitted"))) {
+    throw new Error("That admission changed; look again.");
+  }
+  try {
+    const removed = await removeGrants(walletOf(a));
+    const offboarded = { by, at: now(), reason, ...removed };
+    await store.updateAdmission({ ...a, status: "offboarded", data: { ...d, offboarded, error: undefined } }, "failed");
+    await store.audit({ at: now(), actor: by, action: `offboarded ${walletOf(a)}: ${reason}`, subject: a.id });
+  } catch (e) {
+    // Nothing is lost: the admission is admitted again and the error shown, to be retried.
+    await store.updateAdmission({ ...a, status: "admitted", data: { ...d, error: `offboarding failed: ${(e as Error).message}` } }, "failed");
+    throw e;
+  }
+}
+
+/**
+ * One wallet per KYB (ADR 0069): once a wallet is admitted, any other admitted wallet of the same
+ * client (the same corporation DID, whichever route) is offboarded, its two grants revoked.
+ */
+async function replacePrevious(id: string): Promise<void> {
+  const store = getStore();
+  const a = (await store.admissionById(id))!;
+  const summary = (a.data as Record<string, any>).assessment?.summary;
+  if (!summary?.corporationDid) return;
+  const others = (await store.listAdmissions(500)).filter(
+    (x) =>
+      x.id !== a.id &&
+      x.status === "admitted" &&
+      (x.data as Record<string, any>).assessment?.summary?.corporationDid === summary.corporationDid &&
+      walletOf(x).toLowerCase() !== String(summary.wallet).toLowerCase(),
+  );
+  for (const old of others) {
+    const d = old.data as Record<string, any>;
+    if (!(await store.updateAdmission({ ...old, status: "failed", data: { ...d, error: "offboarding" } }, "admitted"))) continue;
+    try {
+      const removed = await removeGrants(walletOf(old));
+      const offboarded = { by: "site", at: now(), reason: `replaced by ${summary.wallet} (one wallet per KYB)`, replacedBy: a.id, ...removed };
+      await store.updateAdmission({ ...old, status: "offboarded", data: { ...d, offboarded, error: undefined } }, "failed");
+      await store.audit({ at: now(), actor: "site", action: `offboarded ${walletOf(old)}: replaced by ${summary.wallet}`, subject: old.id });
+    } catch (e) {
+      await store.updateAdmission({ ...old, status: "admitted", data: { ...d, error: `replacing it failed: ${(e as Error).message}` } }, "failed");
+    }
+  }
+}
+
+/** The bank's reference for the client, from the KYB its bank confirmed for it here, if any. */
+export async function kybReferenceOf(client: Registrant): Promise<string | null> {
+  const mine = await getStore().admissionsFor(client.id);
+  const confirmed = mine.find((x) => x.route === "self-custody" && (x.data as Record<string, any>).record?.kycReference);
+  return confirmed ? String((confirmed.data as Record<string, any>).record.kycReference) : null;
+}
+
+/** The custody accounts the bank holds for the client: custodied admissions on its KYB. */
+export async function custodyFor(client: Registrant): Promise<Admission[]> {
+  const ref = await kybReferenceOf(client);
+  if (!ref) return [];
+  return (await getStore().listAdmissions(500)).filter((x) => x.route === "custodied" && (x.data as Record<string, any>).record?.kycReference === ref);
+}
+
+/**
+ * The client asks its bank to hold its account in custody (ADR 0076). Staff admit it under
+ * Custody; once the custody account is admitted, the client's own wallet is offboarded (one
+ * wallet per KYB).
+ */
+export async function requestCustody(client: Registrant): Promise<void> {
+  const store = getStore();
+  const ref = await kybReferenceOf(client);
+  if (!ref) throw new Error("Your bank has not confirmed a KYB for you here; ask it directly to hold your account.");
+  const c = await store.clientByReference(ref);
+  if (!c) throw new Error("Your bank no longer lists you as a client; ask it directly.");
+  if (c.custodyRequest) return;
+  await store.updateClient({ ...c, custodyRequest: { registrantId: client.id, email: client.email, at: now() } });
+  await store.audit({ at: now(), actor: client.email, action: `asked the bank to hold ${ref}'s account in custody`, subject: c.id });
+}
+
+/** The client withdraws its request before staff act on it. */
+export async function withdrawCustodyRequest(client: Registrant): Promise<void> {
+  const store = getStore();
+  const ref = await kybReferenceOf(client);
+  const c = ref ? await store.clientByReference(ref) : null;
+  if (!c?.custodyRequest || c.custodyRequest.registrantId !== client.id) return;
+  await store.updateClient({ ...c, custodyRequest: undefined });
+  await store.audit({ at: now(), actor: client.email, action: `withdrew the request to hold ${ref}'s account in custody`, subject: c.id });
+}
+
+/**
+ * Binds a new wallet under the client's confirmed KYB, with no second review (ADR 0069): the
+ * client's record is read afresh, so a re-screen at the bank counts, and the wallet it replaces is
+ * offboarded once the new one is admitted.
+ */
+export async function bindNewWallet(client: Registrant): Promise<Admission> {
+  const store = getStore();
+  const mine = await store.admissionsFor(client.id);
+  const confirmed = mine.find((x) => x.route === "self-custody" && (x.data as Record<string, any>).record?.kycReference && ["admitted", "offboarded", "kyb-confirmed", "awaiting-signature", "awaiting-anchor"].includes(x.status));
+  if (!confirmed) throw new Error("Your bank has not confirmed your KYB yet.");
+  const open = mine.find((x) => ["kyb-confirmed", "awaiting-signature", "awaiting-anchor"].includes(x.status));
+  if (open) return open;
+  const prior = confirmed.data as Record<string, any>;
+  const c = await store.clientByReference(prior.record.kycReference);
+  if (!c) throw new Error(`Your bank's client ${prior.record.kycReference} is no longer on record.`);
+  const corporate = await corporateIdentityFor(bankConfig(), c.kycReference, policyConfig().schemas.corporateIdentity, nowSec());
+  issuedHere(corporate.credentialId, c.credentialId, c.kycReference);
+  const a: Admission = {
+    id: `adm_${randomBytes(9).toString("base64url")}`,
+    registrantId: client.id,
+    route: "self-custody",
+    status: "kyb-confirmed",
+    createdAt: now(),
+    officerRequestId: null,
+    walletRequestId: null,
+    data: {
+      request: { requestedBy: client.email, organisation: client.organisation, knownReference: c.kycReference },
+      record: recordOf(c),
+      corporate,
+      reviewedBy: prior.reviewedBy,
+      confirmedAt: prior.confirmedAt,
+      replaces: prior.assessment?.summary?.wallet ?? null,
+    },
+  };
+  await store.putAdmission(a);
+  await store.audit({ at: now(), actor: client.email, action: "started binding a new wallet under its confirmed KYB", subject: a.id });
+  return a;
+}
+
+/** The admitted accounts resting on a corporate identity: what revoking it would withdraw. */
+export async function restingOn(corporateCredential: string): Promise<Admission[]> {
+  return (await getStore().listAdmissions(500)).filter(
+    (x) => x.status === "admitted" && (x.data as Record<string, any>).assessment?.attestation?.primaryCredential?.toLowerCase() === corporateCredential.toLowerCase(),
+  );
+}
+
+/**
+ * Revokes one of an admission's credentials at the bank (ADR 0064), separately from offboarding.
+ * The wallet credential affects this wallet only. The corporate identity is the client's KYB:
+ * every wallet onboarded on it falls, so staff confirm the number they were shown, and a changed
+ * number stops the revocation.
+ */
+export async function revokeAtBank(
+  staff: Registrant,
+  id: string,
+  which: "wallet" | "corporate",
+  reason: string,
+  confirmedCount?: number,
+): Promise<void> {
+  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!reason.trim()) throw new Error("Give the reason for revoking.");
+  const store = getStore();
+  const a = await store.admissionById(id);
+  const d = (a?.data ?? {}) as Record<string, any>;
+  const at = d.assessment?.attestation;
+  if (!a || !at) throw new Error("That admission has no credentials to revoke.");
+  const credentialId: string = which === "wallet" ? at.walletCredential : at.primaryCredential;
+  if (which === "corporate") {
+    const affected = (await restingOn(credentialId)).length;
+    if (confirmedCount !== affected) throw new Error(`The corporate identity now supports ${affected} admitted wallet(s), not ${confirmedCount}; look again before revoking.`);
+  }
+  await revokeCredential(bankConfig(), credentialId, reason.trim());
+  const entry = { which, credentialId, by: staff.email, at: now(), reason: reason.trim() };
+  const latest = (await store.admissionById(a.id))!;
+  const ld = latest.data as Record<string, any>;
+  await store.updateAdmission({ ...latest, data: { ...ld, bankRevocations: [...(ld.bankRevocations ?? []), entry] } }, latest.status);
+  await store.audit({
+    at: now(),
+    actor: staff.email,
+    action: `revoked the ${which === "wallet" ? "wallet credential" : "corporate identity"} ${credentialId} at the bank: ${reason.trim()}`,
+    subject: a.id,
+  });
 }
 
 /** The steps a client may walk away from: everything before the grants are being written (ADR 0058). */
@@ -329,7 +685,7 @@ export async function cancelAdmission(client: Registrant, id: string): Promise<v
  * confirmed last time is carried forward for its staff to reuse.
  */
 export async function requestSelfCustody(client: Registrant): Promise<Admission> {
-  const previous = await getStore().latestAdmissionFor(client.id);
+  const previous = await getStore().latestAdmissionFor(client.id, ["self-custody"]);
   const knownReference = previous?.route === "self-custody" ? (previous.data as Record<string, any>).record?.kycReference : undefined;
   const a: Admission = {
     id: `adm_${randomBytes(9).toString("base64url")}`,
@@ -342,7 +698,7 @@ export async function requestSelfCustody(client: Registrant): Promise<Admission>
     data: { request: { requestedBy: client.email, organisation: client.organisation, ...(knownReference ? { knownReference } : {}) } },
   };
   await getStore().putAdmission(a);
-  await getStore().audit({ at: now(), actor: client.email, action: "asked the bank to confirm its KYB for a self-custody wallet", subject: a.id });
+  await getStore().audit({ at: now(), actor: client.email, action: "asked the bank to confirm its KYB for a third-party wallet", subject: a.id });
   return a;
 }
 
@@ -355,7 +711,7 @@ export async function reviewSelfCustody(
   staff: Registrant,
   id: string,
   outcome: "approve" | "decline",
-  record?: BankRecord,
+  kycReference?: string,
 ): Promise<void> {
   if (!isOperator(staff.email)) throw new Error("Not permitted.");
   const store = getStore();
@@ -364,15 +720,19 @@ export async function reviewSelfCustody(
   const d = a.data as Record<string, any>;
   if (outcome === "decline") {
     await store.updateAdmission({ ...a, status: "declined", data: { ...d, reviewedBy: staff.email } }, a.status);
-    await store.audit({ at: now(), actor: staff.email, action: "declined a self-custody request", subject: a.id });
+    await store.audit({ at: now(), actor: staff.email, action: "declined a third-party wallet request", subject: a.id });
     return;
   }
-  if (!record?.kycReference) throw new Error("Choose the client's reference at the bank.");
+  if (!kycReference) throw new Error("Choose the client's reference at the bank.");
+  const client = await store.clientByReference(kycReference);
+  if (!client) throw new Error(`No client ${kycReference} has been added: add it under Clients first.`);
+  const record = recordOf(client);
   const policy = policyConfig();
   const bank = bankConfig();
   let corporate;
   try {
     corporate = await corporateIdentityFor(bank, record.kycReference, policy.schemas.corporateIdentity, nowSec());
+    issuedHere(corporate.credentialId, client.credentialId, client.kycReference);
   } catch (e) {
     await store.updateAdmission({ ...a, status: "refused", data: { ...d, reviewedBy: staff.email, error: (e as Error).message } }, a.status);
     throw e;
@@ -381,7 +741,7 @@ export async function reviewSelfCustody(
     { ...a, status: "kyb-confirmed", data: { ...d, record, corporate, reviewedBy: staff.email, confirmedAt: now() } },
     a.status,
   );
-  await store.audit({ at: now(), actor: staff.email, action: "confirmed a client's KYB for self-custody", subject: a.id });
+  await store.audit({ at: now(), actor: staff.email, action: "confirmed a client's KYB for a third-party wallet", subject: a.id });
 }
 
 /**
@@ -445,14 +805,16 @@ export async function submitSelfCustodySignature(client: Registrant, id: string,
     if (!assessment.ok) {
       await store.updateAdmission({ ...a, status: "refused", data }, "failed");
     } else {
-      const written = await writeGrants(policy.issuerDid, assessment.attestation, assessment.registry);
-      await store.updateAdmission({ ...a, status: "admitted", data: { ...data, written } }, "failed");
-      await store.audit({ at: now(), actor: client.email, action: `admitted self-custody wallet ${walletAddress}`, subject: a.id });
+      // The wallet is bound; the grants follow once the bank has anchored its credential (ADR 0060).
+      await store.updateAdmission({ ...a, status: "awaiting-anchor", data: { ...data, anchorSince: now() } }, "failed");
+      await store.audit({ at: now(), actor: client.email, action: `bound third-party wallet ${walletAddress}; waiting for the bank to anchor its credential`, subject: a.id });
     }
   } catch (e) {
     // The KYB is still confirmed; only this binding failed. The client can bind again at once.
     await store.updateAdmission({ ...a, status: "kyb-confirmed", data: { ...d, challenge: undefined, error: (e as Error).message } }, "failed");
     throw e;
   }
+  // Already anchored (a credential issued in an earlier batch) means the grants are written now.
+  await advanceAdmission(a.id);
   return (await store.admissionById(a.id))!;
 }

@@ -48,10 +48,11 @@ function clean(v: string, max: number): string {
   return v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-async function issueLink(r: Registrant, origin: string, subject: string, intro: string): Promise<void> {
+/** Sends a one-use link; false when throttled, as one was sent moments ago. */
+async function issueLink(r: Registrant, origin: string, subject: string, intro: string): Promise<boolean> {
   const store = getStore();
   const last = await store.latestLinkAt(r.id);
-  if (last && Date.now() - Date.parse(last) < LINK_INTERVAL_SECONDS * 1000) return; // throttled, silently
+  if (last && Date.now() - Date.parse(last) < LINK_INTERVAL_SECONDS * 1000) return false; // throttled, silently
   const token = randomBytes(32).toString("base64url");
   const url = `${origin}/access?token=${token}`;
   // Sent before it is stored, so a failed send leaves no link behind to count against the
@@ -63,6 +64,7 @@ async function issueLink(r: Registrant, origin: string, subject: string, intro: 
       `If you did not request it, no action is needed.\n`,
   );
   await store.putLink(sha256(token), r.id, new Date(Date.now() + LINK_TTL_MINUTES * 60_000).toISOString());
+  return true;
 }
 
 /** Registration. Unknown addresses are registered; known addresses are sent a sign-in link. */
@@ -130,6 +132,11 @@ export async function confirm(token: string, origin: string): Promise<Confirmati
     if (!rule) await notifyOperators(r, origin);
   }
   if (r.status !== "approved") return "pending";
+  if (!r.verifiedAt) {
+    // Approved by staff before the address was confirmed: this link confirms it.
+    await store.setStatus(r.id, r.status, { verifiedAt: now() });
+    await store.audit({ at: now(), actor: r.email, action: "verified", subject: r.email });
+  }
 
   const sid = randomBytes(32).toString("base64url");
   const expires = new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000);
@@ -177,6 +184,19 @@ export async function signOut() {
 }
 
 /** Operator decisions. The caller must be a current operator; checked here, not only in the page. */
+/** Staff send a fresh confirmation link to a registration that has not confirmed its address (ADR 0077). */
+export async function resendConfirmation(registrantId: string, origin: string): Promise<void> {
+  const op = await currentOperator();
+  if (!op) throw new Error("Not permitted.");
+  const store = getStore();
+  const r = await store.registrantById(registrantId);
+  if (!r || r.status !== "unverified") throw new Error("Only an unconfirmed registration is sent a fresh link.");
+  if (!(await issueLink(r, origin, "Confirm your email address", "Confirm your email address to continue:"))) {
+    throw new Error(`A link was sent less than ${LINK_INTERVAL_SECONDS} seconds ago; try again shortly.`);
+  }
+  await store.audit({ at: now(), actor: op.email, action: "sent a fresh confirmation link", subject: r.email });
+}
+
 export async function decide(registrantId: string, decision: "approve" | "revoke", origin: string) {
   const op = await currentOperator();
   if (!op) throw new Error("Not permitted.");
@@ -186,7 +206,9 @@ export async function decide(registrantId: string, decision: "approve" | "revoke
   if (decision === "revoke" && r.email === op.email) throw new Error("An operator cannot revoke their own access.");
 
   if (decision === "approve") {
-    if (r.status !== "pending" && r.status !== "revoked") return;
+    // An unverified registration may be approved ahead of its confirmation: signing in still
+    // needs a link sent to the address, so approval alone gives no access (ADR 0077).
+    if (r.status !== "pending" && r.status !== "revoked" && r.status !== "unverified") return;
     await store.setStatus(r.id, "approved", { decidedAt: now(), decidedBy: op.email });
     await store.audit({ at: now(), actor: op.email, action: "approved", subject: r.email });
     await sendMail(r.email, "Access approved", `Your access has been approved. Sign in at:\n\n${origin}\n`).catch(() => {});
