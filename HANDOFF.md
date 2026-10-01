@@ -29,8 +29,10 @@ The repository is a clone of the source demo with history preserved. **Wave 1 ha
 the venue** (section 5); nothing of the retired identity stack, the source console or the source
 hosting remains in the tree, only in history.
 
-`origin` is a **private** repository under the owner's personal account
-(`benjaminchodroff/structured-note-poc`), created 24 September 2026. `upstream` still points at
+`origin` is a **private** repository in the organisation's GitHub account
+(`Ethereum-Institutional/ethereumtesting-structured-note`). It was created under the owner's
+personal account on 24 September 2026 and transferred, under that new name, on 1 October 2026;
+GitHub redirects the old address. `upstream` still points at
 the source demo for reference, with its push URL set to `DISABLED` in the local clone, so nothing
 can be pushed there by accident. That setting is local: repeat it in any new clone that adds
 `upstream`.
