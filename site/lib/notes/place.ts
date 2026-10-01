@@ -4,6 +4,7 @@ import { loadManifest } from "../chain/manifest.ts";
 import { signers } from "../chain/signer.ts";
 import { getStore, type Admission, type DemoNote, type Registrant } from "../store.ts";
 import { isOperator } from "../operators.ts";
+import { until } from "../chain/until.ts";
 
 /**
  * Selling restrictions and placement (ADR 0075; S-08, S-09).
@@ -64,19 +65,6 @@ function context() {
   if (!rpc) throw new Error("RPC_URL is not set");
   const chain = defineChain({ id: m.chainId, name: `chain ${m.chainId}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
   return { m, s: signers(chain, rpc) };
-}
-
-/**
- * Reads until `ok`, for up to about ten seconds. Just after a transaction, a load-balanced RPC may
- * answer from the block before it (ADR 0059); a step that relies on the last one waits for it.
- */
-async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean): Promise<T> {
-  let v = await read();
-  for (let tries = 0; tries < 7 && !ok(v); tries++) {
-    await new Promise((r) => setTimeout(r, 1500));
-    v = await read();
-  }
-  return v;
 }
 
 const walletOf = (a: Admission) => ((a.data as Record<string, any>).assessment?.summary?.wallet ?? "") as Address;

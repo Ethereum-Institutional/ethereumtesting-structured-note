@@ -85,3 +85,5 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0075](0075-reg-s-approval-and-placement.md) | Approval for the note under Reg S, and placement by DvP from the site | Accepted |
 | [0076](0076-onboard-console.md) | The client's Onboard pages: a navigation column, an account card, unbinding, and asking for custody | Accepted |
 | [0077](0077-unconfirmed-registrations.md) | Unconfirmed registrations: staff resend the link, or approve ahead of confirmation | Accepted |
+| [0078](0078-determinations-payments-closure.md) | Determinations, payments and closure from the site, one step at a time | Accepted |
+| [0079](0079-chain-snapshots-for-tests.md) | Local resets restore a snapshot of the deployed chain | Accepted |

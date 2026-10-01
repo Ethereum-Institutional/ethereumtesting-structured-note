@@ -502,7 +502,14 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   - a client's own wallet accepts on its Notes page in MetaMask, in two transactions;
   - an account without Reg S is refused before anything is sent.
 
-  Next: determinations, payments and closure.
+- **Lifecycle** (ADR 0078). Each note has its own page under Operator → Notes, with a card per
+  scheduled date. Each step can be clicked once its time comes:
+  - **Determine**: the scenario's Levels, editable, signed by the Calculation Agent and checked against the payoff model on four-date notes;
+  - **Pay the coupon** and **Pay the redemption**: run by the servicing wallet, a 2-of-3 Safe signed by two site keys;
+  - **Pay what is held**: for a holder the deposit could not credit.
+
+  A redemption closes the note. Clients see what was paid to them on Onboard → Notes.
+  Next: buyback and transfers (part 4).
 - **Unconfirmed registrations** (ADR 0077). Access requests says when someone hasn't confirmed
   their email yet; staff can resend the link, or approve or decline ahead of confirmation.
 - **Onboard pages** (ADR 0076). The client has a navigation column with Account, Convert and
@@ -540,6 +547,9 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   - `test/standins.ts` plays the bank and the verifier, including their known quirks.
   - the chain is reset between the integration and browser suites: each has its own store, and
     the Ledger names only the contracts of notes in its own store.
+  - a reset restores a snapshot of the deployed chain in seconds (ADR 0079). It deploys afresh only
+    when the contracts or deployment change, or with `FRESH=1`. While developing, run only the
+    affected tests; run the full suite once before each deploy.
 
   Nothing is tested on a public chain.
 

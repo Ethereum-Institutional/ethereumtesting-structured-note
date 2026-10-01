@@ -188,3 +188,15 @@ footer { padding: 3rem 0 4rem; color: var(--fg3); font-size: 0.75rem; }
 .offer { display: grid; gap: 0.75rem; padding: 1rem 0; border-top: 1px solid var(--border); }
 .offer:first-of-type { border-top: 0; padding-top: 0; }
 @media (max-width: 560px) { .facts { grid-template-columns: 1fr; gap: 0.15rem; } .facts dd { margin-bottom: 0.6rem; } }
+
+/* A note's lifecycle (ADR 0078): one card per scheduled date. */
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.9rem; }
+.date-card { background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--border2); border-radius: 14px; padding: 1rem 1.15rem; display: grid; gap: 0.75rem; }
+.date-card.due { border-left-color: var(--cream); }
+.date-card.done { border-left-color: var(--accent); }
+.date-card.falls-away { opacity: 0.6; }
+.date-card p { margin: 0; }
+.date-head { display: flex; flex-wrap: wrap; gap: 0.35rem 1.25rem; align-items: baseline; }
+.date-card .event { display: grid; gap: 0.6rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.model.ok { color: var(--accent); }
+.model.bad { color: var(--err, #e5735f); }

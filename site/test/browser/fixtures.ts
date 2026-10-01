@@ -137,6 +137,15 @@ export async function fundWallet(address: `0x${string}`, paymentUnits: bigint) {
   await reader.waitForTransactionReceipt({ hash });
 }
 
+/** Moves the local chain's clock to just past `t` (Unix seconds) and mines a block there. */
+export async function warpTo(t: number) {
+  const reader = createPublicClient({ transport: http(process.env.RPC_URL ?? "http://127.0.0.1:8545") });
+  const latest = Number((await reader.getBlock()).timestamp);
+  if (latest <= t) await reader.request({ method: "evm_increaseTime" as any, params: [t - latest + 1] as any });
+  await reader.request({ method: "evm_mine" as any, params: [] as any });
+  await new Promise((r) => setTimeout(r, 1600)); // past the lagging RPC's window
+}
+
 /** Chooses a client in a Client dropdown by its legal name; the site assigns references. */
 export async function chooseClient(select: Locator, legalName: string) {
   const value = await select.locator("option", { hasText: legalName }).first().getAttribute("value");

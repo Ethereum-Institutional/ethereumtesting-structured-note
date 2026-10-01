@@ -2,7 +2,7 @@ import { test, expect, expectHealthy, fundWallet, installWallet, signedIn, PEOPL
 
 test("a client binds a new wallet; the note refuses it until staff approve it under Reg S; the client accepts the offer in MetaMask, unbinds, and asks for custody", async ({ browser }) => {
   test.setTimeout(300_000);
-  // The third-party client of spec 3, onboarded; its KYB stands, so a new wallet needs one signature.
+  // The third-party client of spec 03, onboarded; its KYB stands, so a new wallet needs one signature.
   const client = await signedIn(browser, PEOPLE.selfCustody);
   const wallet = await installWallet(client, `browser placement wallet ${Date.now()}`);
   await fundWallet(wallet as `0x${string}`, 1n); // ETH for its fees
@@ -21,7 +21,10 @@ test("a client binds a new wallet; the note refuses it until staff approve it un
   // S-09: the note refuses an account not approved under Reg S, before anything is sent.
   const staff = await signedIn(browser, PEOPLE.operator);
   await staff.goto("/operator/notes");
-  const place = staff.locator("#place-2");
+  await staff.getByRole("link", { name: /Series 2/ }).click();
+  await expect(staff).toHaveURL(/\/operator\/notes\/note_/);
+  const notePage = staff.url();
+  const place = staff.locator("#place-2 + .panel");
   const account = await place.locator('select[name="admission"] option', { hasText: wallet.slice(0, 10) }).getAttribute("value");
   await place.locator('select[name="admission"]').selectOption(account!);
   await place.getByLabel("Units").fill("2");
@@ -42,7 +45,7 @@ test("a client binds a new wallet; the note refuses it until staff approve it un
   await expect(row).toContainText(/Last credit: 2500\.00 EURTD/, { timeout: 30_000 });
 
   // S-08: offered, for the client to accept from its own wallet.
-  await staff.goto("/operator/notes");
+  await staff.goto(notePage);
   await place.locator('select[name="admission"]').selectOption(account!);
   await place.getByLabel("Units").fill("2");
   await place.getByRole("button", { name: "Place units" }).click();
@@ -63,7 +66,7 @@ test("a client binds a new wallet; the note refuses it until staff approve it un
   await holding.getByText(/Earlier offers/).click();
   await expect(holding.getByRole("listitem").filter({ hasText: "2 units of EURWAN2 for €2,000.00" })).toContainText("settled");
   await staff.reload();
-  await expect(place.locator("tbody tr").first().locator(".pill")).toHaveText("settled");
+  await expect(staff.locator('[aria-label="Placements"] tbody tr').first().locator(".pill")).toHaveText("settled");
 
   // The client unbinds the wallet itself (ADR 0076): its grants go at once, its KYB stands.
   await nav.getByRole("link", { name: "Account" }).click();

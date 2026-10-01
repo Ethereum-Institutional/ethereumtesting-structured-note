@@ -101,5 +101,10 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     return account(capacity).signTypedData({ domain: typedData.domain, types, primaryType: typedData.primaryType, message: typedData.message });
   }
 
-  return { publicClient, send, deploy, signTypedData, resetNonces, address: (capacity: string) => account(capacity).address };
+  /** Signs a 32-byte digest as a capacity, with no prefix: a contract's own EIP-712 digest, or a multi-signature wallet's transaction hash. */
+  async function signHash(capacity: string, hash: Hex): Promise<Hex> {
+    return account(capacity).sign({ hash });
+  }
+
+  return { publicClient, send, deploy, signTypedData, signHash, resetNonces, address: (capacity: string) => account(capacity).address };
 }

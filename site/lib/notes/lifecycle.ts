@@ -1,0 +1,398 @@
+import "server-only";
+import { createPublicClient, defineChain, encodeFunctionData, http, parseAbi, parseAbiItem, type Address, type Hex } from "viem";
+import { loadManifest } from "../chain/manifest.ts";
+import { signers } from "../chain/signer.ts";
+import { execThroughWallet } from "../chain/safe.ts";
+import { until } from "../chain/until.ts";
+import { getStore, type DemoNote, type Registrant } from "../store.ts";
+import { isOperator } from "../operators.ts";
+import { stretch } from "./calendar.ts";
+import { SCENARIOS } from "./issue.ts";
+
+/**
+ * A note's life after placement (ADR 0078): each scheduled date determined, then its coupon and
+ * any redemption paid to the holders of record, until the note is redeemed and closed.
+ *
+ * - **Determination.** The Calculation Agent signs the date's Levels and the outcome the
+ *   Determination Agent computes from them; the contract recomputes it and accepts only an
+ *   identical one. Levels come from the scenario, and staff may change them before determining.
+ * - **Payment.** The Agent's servicing wallet, a two-of-three multi-signature wallet, opens each
+ *   event after its payment date (debiting the whole amount from the Agent's deposit) and pays
+ *   the holders of record in batches. Holders are found from the note's own transfers and their
+ *   units read at the Record Time, so the Register is the chain's.
+ * - **The model.** On a four-date note, each outcome is checked against the independent payoff
+ *   model's expected payments for the scenario.
+ *
+ * Times are the chain's: a date is due when the latest block is past it.
+ */
+
+const OUTCOME = "(bool breached, bool couponPaid, uint64 couponPerCa, bool redeemed, uint64 redemptionPerCa, uint8 worstIndex)";
+const DETERMINATIONS = parseAbi([
+  `function compute(uint256 dateIndex, uint256[] levels) view returns (${OUTCOME} out, uint256 missedAfter)`,
+  `function digest(uint256 dateIndex, uint256[] levels, ${OUTCOME} o) view returns (bytes32)`,
+  `function determine(uint256 dateIndex, uint256[] levels, ${OUTCOME} claimed, bytes signature)`,
+  "function observationCount() view returns (uint256)",
+  "function observation(uint256 dateIndex) view returns ((uint48 date, uint48 recordTime, uint48 paymentDate, bool coupon, bool mer, bool barrier, bool isFinal, uint32 merTriggerBps))",
+  "function determined(uint256 dateIndex) view returns (bool)",
+  `function outcomeOf(uint256 dateIndex) view returns (${OUTCOME})`,
+  "function levelsOf(uint256 dateIndex) view returns (uint256[])",
+  "function nextDate() view returns (uint256)",
+  "function terminated() view returns (bool)",
+  "error NotNextDate(uint256 dateIndex, uint256 next)",
+  "error BeforeScheduledDate(uint256 dateIndex, uint48 date)",
+  "error Terminated()",
+  "error InvalidLevels()",
+  `error OutcomeDisagrees(${OUTCOME} computed)`,
+  "error BadSignature()",
+]);
+const PAYING = parseAbi([
+  "function open(uint256 dateIndex, uint8 kind) returns (bytes32 id)",
+  "function pay(bytes32 id, address[] holders)",
+  "function claim(bytes32 id, address holder)",
+  "function idOf(uint256 dateIndex, uint8 kind) pure returns (bytes32)",
+  "function distributions(bytes32 id) view returns (uint48 recordTime, uint64 perCa, uint64 unitsEntitled, uint64 unitsPaid, bool open, bool closed, uint8 kind, bool reversed, uint64 unitsReversed, uint256 dateIndex)",
+  "function settled(bytes32 id, address holder) view returns (bool)",
+  "function held(bytes32 id, address holder) view returns (uint256)",
+  "error NothingDue(uint256 dateIndex, uint8 kind)",
+  "error BeforePaymentDate(uint48 paymentDate)",
+  "error AlreadyOpen(bytes32 id)",
+  "error NotOpen(bytes32 id)",
+  "error AlreadySettled(address holder)",
+  "error NotAHolderOfRecord(address holder)",
+  "error NothingHeld(address holder)",
+  "error CannotReceive(address holder)",
+]);
+const RECORD_DATES = parseAbi(["function balanceAt(address account, uint256 time) view returns (uint256)"]);
+const TRANSFER = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
+const PAID = parseAbiItem("event Paid(bytes32 indexed id, address indexed holder, uint256 units, uint256 amount)");
+const HELD = parseAbiItem("event Held(bytes32 indexed id, address indexed holder, uint256 units, uint256 amount)");
+const CLAIMED = parseAbiItem("event Claimed(bytes32 indexed id, address indexed holder, uint256 amount)");
+
+/** The two owners of the servicing wallet whose keys the site holds (ADR 0072). */
+const SERVICING_OWNERS = ["servicing1", "servicing2"];
+/** Holders paid per transaction. */
+const BATCH = 40;
+const COUPON = 0;
+const REDEMPTION = 1;
+
+const now = () => new Date().toISOString();
+
+function context() {
+  const m = loadManifest();
+  const rpc = process.env.RPC_URL?.trim();
+  if (!rpc) throw new Error("RPC_URL is not set");
+  const chain = defineChain({ id: m.chainId, name: `chain ${m.chainId}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
+  // Events over the note's whole life are read where the Ledger reads them (ADR 0071): a public
+  // RPC may refuse so long a range.
+  const logsRpc = process.env.LEDGER_RPC_URL?.trim() || rpc;
+  return { m, s: signers(chain, rpc), logs: createPublicClient({ chain, transport: http(logsRpc) }) };
+}
+
+export type Outcome = { breached: boolean; couponPaid: boolean; couponPerCa: bigint; redeemed: boolean; redemptionPerCa: bigint; worstIndex: number };
+export type Payment = { holder: string; units: string; amount: string; tx: string; held?: boolean; claimedTx?: string };
+export type EventView = {
+  kind: "coupon" | "redemption";
+  id: Hex;
+  perCaCents: string;
+  open: boolean;
+  closed: boolean;
+  unitsEntitled: string;
+  unitsPaid: string;
+  payments: Payment[];
+};
+export type DateView = {
+  index: number;
+  date: number;
+  recordTime: number;
+  paymentDate: number;
+  tests: { coupon: boolean; mer: boolean; barrier: boolean; isFinal: boolean };
+  determined: boolean;
+  levels: string[] | null;
+  outcome: Outcome | null;
+  /** The scenario's Levels for the date, offered to staff before determining. */
+  suggested: string[];
+  /** After an early redemption, the dates that follow fall away. */
+  fallsAway: boolean;
+  events: EventView[];
+  /** What the independent model expects, on a four-date note; null otherwise. */
+  model: { expected: Array<{ kind: string; perCaCents: number }>; matches: boolean | null } | null;
+  /** What staff can do now. */
+  can: { determine: boolean; pay: Array<"coupon" | "redemption"> };
+  /** Why the next step is not yet open, in words. */
+  waiting: string | null;
+};
+export type Lifecycle = { chainNow: number; nextDate: number; terminated: boolean; closed: boolean; dates: DateView[]; initialLevels: number };
+
+const toOutcome = (o: { breached: boolean; couponPaid: boolean; couponPerCa: bigint; redeemed: boolean; redemptionPerCa: bigint; worstIndex: number }): Outcome => ({
+  breached: o.breached,
+  couponPaid: o.couponPaid,
+  couponPerCa: o.couponPerCa,
+  redeemed: o.redeemed,
+  redemptionPerCa: o.redemptionPerCa,
+  worstIndex: o.worstIndex,
+});
+
+/** The block the note was deployed in: where its transfers and payments start. */
+async function fromBlock(s: { publicClient: ReturnType<typeof signers>["publicClient"] }, n: DemoNote): Promise<bigint> {
+  const hash = n.txs.note as Hex | undefined;
+  if (!hash) return 0n;
+  const r = await s.publicClient.getTransactionReceipt({ hash }).catch(() => null);
+  return r?.blockNumber ?? 0n;
+}
+
+const at = (t: number) => new Date(t * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+
+/** Everything the Notes page shows of a note's life, read from the chain. */
+export async function lifecycleOf(n: DemoNote): Promise<Lifecycle> {
+  const { s, logs } = context();
+  const da = n.addresses.determinations as Address;
+  const pa = n.addresses.payingAgent as Address;
+  const c = s.publicClient;
+  const [count, next, terminated, block, start] = await Promise.all([
+    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "observationCount" }),
+    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "nextDate" }),
+    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "terminated" }),
+    c.getBlock(),
+    fromBlock(s, n),
+  ]);
+  const chainNow = Number(block.timestamp);
+  const [paid, held, claimed] = await Promise.all([
+    logs.getLogs({ address: pa, event: PAID, fromBlock: start, toBlock: "latest" }),
+    logs.getLogs({ address: pa, event: HELD, fromBlock: start, toBlock: "latest" }),
+    logs.getLogs({ address: pa, event: CLAIMED, fromBlock: start, toBlock: "latest" }),
+  ]);
+  const scenario = SCENARIOS.find((x) => x.name === n.scenario);
+  const shape = scenario ? stretch(scenario, Number(count)) : null;
+
+  const dates: DateView[] = [];
+  for (let k = 0; k < Number(count); k++) {
+    const [obs, determined] = await Promise.all([
+      c.readContract({ address: da, abi: DETERMINATIONS, functionName: "observation", args: [BigInt(k)] }),
+      c.readContract({ address: da, abi: DETERMINATIONS, functionName: "determined", args: [BigInt(k)] }),
+    ]);
+    const [outcome, levels] = determined
+      ? await Promise.all([
+          c.readContract({ address: da, abi: DETERMINATIONS, functionName: "outcomeOf", args: [BigInt(k)] }).then(toOutcome),
+          c.readContract({ address: da, abi: DETERMINATIONS, functionName: "levelsOf", args: [BigInt(k)] }),
+        ])
+      : [null, null];
+
+    const events: EventView[] = [];
+    for (const [kind, due] of [["coupon", outcome?.couponPaid], ["redemption", outcome?.redeemed]] as const) {
+      if (!due) continue;
+      const id = await c.readContract({ address: pa, abi: PAYING, functionName: "idOf", args: [BigInt(k), kind === "coupon" ? COUPON : REDEMPTION] });
+      const d = await c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] });
+      const mine = (l: { args: { id?: Hex } }) => l.args.id?.toLowerCase() === id.toLowerCase();
+      const payments: Payment[] = [
+        ...paid.filter(mine).map((l) => ({ holder: l.args.holder!, units: String(l.args.units), amount: String(l.args.amount), tx: l.transactionHash })),
+        ...held.filter(mine).map((l) => {
+          const claim = claimed.find((x) => mine(x) && x.args.holder?.toLowerCase() === l.args.holder?.toLowerCase());
+          return { holder: l.args.holder!, units: String(l.args.units), amount: String(l.args.amount), tx: l.transactionHash, held: !claim, claimedTx: claim?.transactionHash };
+        }),
+      ];
+      events.push({
+        kind,
+        id,
+        perCaCents: String(kind === "coupon" ? outcome!.couponPerCa : outcome!.redemptionPerCa),
+        open: d[4],
+        closed: d[5],
+        unitsEntitled: String(d[2]),
+        unitsPaid: String(d[3]),
+        payments,
+      });
+    }
+
+    const expected = shape?.expected?.[k] ?? null;
+    const matches = expected && outcome
+      ? (() => {
+          const coupon = expected.find((e) => e.kind === "coupon");
+          const redemption = expected.find((e) => e.kind === "mer" || e.kind === "redemption");
+          return (
+            outcome.couponPaid === Boolean(coupon) &&
+            (!coupon || Number(outcome.couponPerCa) === coupon.perCaCents) &&
+            outcome.redeemed === Boolean(redemption) &&
+            (!redemption || Number(outcome.redemptionPerCa) === redemption.perCaCents)
+          );
+        })()
+      : null;
+
+    const fallsAway = terminated && !determined;
+    const dueToDetermine = !terminated && Number(next) === k;
+    const pay = events.filter((e) => !e.closed).map((e) => e.kind);
+    let waiting: string | null = null;
+    if (dueToDetermine && chainNow < obs.date) waiting = `Determinable from ${at(obs.date)}.`;
+    else if (pay.length && chainNow < obs.paymentDate) waiting = `Payable from ${at(obs.paymentDate)}.`;
+    dates.push({
+      index: k,
+      date: obs.date,
+      recordTime: obs.recordTime,
+      paymentDate: obs.paymentDate,
+      tests: { coupon: obs.coupon, mer: obs.mer, barrier: obs.barrier, isFinal: obs.isFinal },
+      determined,
+      levels: levels ? levels.map(String) : null,
+      outcome,
+      suggested: (shape?.levels[k] ?? []).map(String),
+      fallsAway,
+      events,
+      model: expected ? { expected, matches } : null,
+      can: { determine: dueToDetermine && chainNow >= obs.date, pay: chainNow >= obs.paymentDate ? pay : [] },
+      waiting,
+    });
+  }
+  const redemption = dates.flatMap((d) => d.events).find((e) => e.kind === "redemption");
+  return {
+    chainNow,
+    nextDate: Number(next),
+    terminated,
+    closed: Boolean(terminated && redemption?.closed),
+    dates,
+    initialLevels: scenario?.terms.initialLevels.length ?? 0,
+  };
+}
+
+async function noteFor(staff: Registrant, noteId: string): Promise<DemoNote> {
+  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  const n = await getStore().noteById(noteId);
+  if (!n || (n.status !== "issued" && n.status !== "closed")) throw new Error("That note is not issued.");
+  return n;
+}
+
+/** Records an act of the lifecycle on the note, retried if the note changed meanwhile. */
+async function record(noteId: string, change: (d: Record<string, any>) => Record<string, any>, status?: DemoNote["status"]) {
+  const store = getStore();
+  for (let tries = 0; tries < 5; tries++) {
+    const latest = (await store.noteById(noteId))!;
+    if (await store.updateNote({ ...latest, ...(status ? { status } : {}), data: change(latest.data as Record<string, any>) }, latest.step)) return;
+  }
+  throw new Error("The note changed while recording; look again.");
+}
+
+/**
+ * The Calculation Agent determines date `k` from `levels` (D1): it signs the Levels and the
+ * outcome the contract computes from them, and the contract accepts only that outcome.
+ */
+export async function determineDate(staff: Registrant, noteId: string, k: number, levels: bigint[]): Promise<Hex> {
+  const n = await noteFor(staff, noteId);
+  const { s } = context();
+  const da = n.addresses.determinations as Address;
+  const c = s.publicClient;
+  const [next, terminated, obs, block] = await Promise.all([
+    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "nextDate" }),
+    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "terminated" }),
+    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "observation", args: [BigInt(k)] }),
+    c.getBlock(),
+  ]);
+  if (terminated) throw new Error("The note has redeemed: no date remains to determine.");
+  if (Number(next) !== k) throw new Error(`Date ${Number(next) + 1} is the next to determine.`);
+  if (block.timestamp < BigInt(obs.date)) throw new Error(`Date ${k + 1} is determinable from ${at(obs.date)}.`);
+  if (levels.some((l) => l <= 0n)) throw new Error("Every Level is a positive whole number.");
+
+  const [computed] = await c.readContract({ address: da, abi: DETERMINATIONS, functionName: "compute", args: [BigInt(k), levels] }).catch((e) => {
+    throw new Error(/InvalidLevels/.test(String(e)) ? "The Levels are refused: give one positive whole-number Level for each underlying." : `The Determination Agent could not compute date ${k + 1}: ${(e as Error).message.split("\n")[0]}`);
+  });
+  const digest = await c.readContract({ address: da, abi: DETERMINATIONS, functionName: "digest", args: [BigInt(k), levels, computed] });
+  const signature = await s.signHash("calculationAgent", digest);
+  const tx = await s.send("calculationAgent", { address: da, abi: DETERMINATIONS, functionName: "determine", args: [BigInt(k), levels, computed, signature] });
+  await until(() => c.readContract({ address: da, abi: DETERMINATIONS, functionName: "determined", args: [BigInt(k)] }), Boolean);
+  await record(noteId, (d) => ({ ...d, determinations: { ...(d.determinations ?? {}), [k]: { by: staff.email, at: now(), tx } } }));
+  const o = toOutcome(computed);
+  const said = [
+    o.couponPaid ? `coupon ${o.couponPerCa} cents per Calculation Amount` : "no coupon",
+    o.redeemed ? `redemption at ${o.redemptionPerCa} cents` : null,
+    o.breached ? "barrier breached" : null,
+  ].filter(Boolean).join(", ");
+  await getStore().audit({ at: now(), actor: staff.email, action: `determined date ${k + 1} of ${n.symbol}: ${said}`, subject: n.id });
+  return tx;
+}
+
+/** The holders of record at `time`: everyone the note was ever transferred to, with units then. */
+async function holdersAt(s: ReturnType<typeof signers>, logs: ReturnType<typeof context>["logs"], n: DemoNote, time: number, inventory: Address): Promise<Array<{ holder: Address; units: bigint }>> {
+  const transfers = await logs.getLogs({ address: n.addresses.note as Address, event: TRANSFER, fromBlock: await fromBlock(s, n), toBlock: "latest" });
+  const candidates = [...new Set(transfers.map((l) => l.args.to!.toLowerCase()))].filter((a) => a !== inventory.toLowerCase() && a !== "0x0000000000000000000000000000000000000000");
+  const units = await Promise.all(
+    candidates.map((h) => s.publicClient.readContract({ address: n.addresses.recordDates as Address, abi: RECORD_DATES, functionName: "balanceAt", args: [h as Address, BigInt(time)] })),
+  );
+  return candidates.map((h, i) => ({ holder: h as Address, units: units[i] })).filter((x) => x.units > 0n);
+}
+
+/**
+ * The servicing wallet pays date `k`'s coupon or redemption (E1 to E4): it opens the event if it is
+ * not open, then pays every holder of record not yet paid, in batches, until the event closes.
+ */
+export async function payEvent(staff: Registrant, noteId: string, k: number, kind: "coupon" | "redemption"): Promise<Hex[]> {
+  const n = await noteFor(staff, noteId);
+  const { m, s, logs } = context();
+  const wallet = m.governance?.servicingWallet as Address | undefined;
+  if (!wallet) throw new Error("The deployment has no servicing wallet.");
+  const pa = n.addresses.payingAgent as Address;
+  const c = s.publicClient;
+  const code = kind === "coupon" ? COUPON : REDEMPTION;
+  const id = await c.readContract({ address: pa, abi: PAYING, functionName: "idOf", args: [BigInt(k), code] });
+  const view = await lifecycleOf(n);
+  const date = view.dates[k];
+  if (!date?.events.some((e) => e.kind === kind)) throw new Error(`Date ${k + 1} has no ${kind} due.`);
+  if (view.chainNow < date.paymentDate) throw new Error(`Date ${k + 1} is payable from ${at(date.paymentDate)}.`);
+  const sent: Hex[] = [];
+  const through = (data: Hex) => execThroughWallet(s, wallet, SERVICING_OWNERS, "agent", pa, data);
+
+  let d = await c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] });
+  if (d[5]) throw new Error(`Date ${k + 1}'s ${kind} is already paid.`);
+  if (!d[4]) {
+    sent.push(await through(encodeFunctionData({ abi: PAYING, functionName: "open", args: [BigInt(k), code] })));
+    d = await until(() => c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] }), (x) => x[4]);
+  }
+  if (!d[5]) {
+    const holders = await holdersAt(s, logs, n, date.recordTime, s.address("issuer"));
+    const settled = await Promise.all(holders.map((h) => c.readContract({ address: pa, abi: PAYING, functionName: "settled", args: [id, h.holder] })));
+    const due = holders.filter((_, i) => !settled[i]).map((h) => h.holder);
+    for (let i = 0; i < due.length; i += BATCH) {
+      sent.push(await through(encodeFunctionData({ abi: PAYING, functionName: "pay", args: [id, due.slice(i, i + BATCH)] })));
+    }
+    d = await until(() => c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] }), (x) => x[5]);
+    if (!d[5]) throw new Error(`Paid ${d[3]} of ${d[2]} units entitled; the event is not closed. A holder of record is missing from the note's transfers.`);
+  }
+  const closesNote = kind === "redemption";
+  await record(
+    noteId,
+    (x) => ({ ...x, payments: { ...(x.payments ?? {}), [`${k}/${kind}`]: { by: staff.email, at: now(), txs: sent } } }),
+    closesNote ? "closed" : undefined,
+  );
+  await getStore().audit({
+    at: now(),
+    actor: staff.email,
+    action: `the servicing wallet paid date ${k + 1}'s ${kind} of ${n.symbol}: ${d[3]} units at ${d[1]} cents per Calculation Amount${closesNote ? "; the note is redeemed and closed" : ""}`,
+    subject: n.id,
+  });
+  return sent;
+}
+
+/** Pays an amount held for a holder the deposit could not credit, once it can (anyone may). */
+export async function claimHeld(staff: Registrant, noteId: string, id: Hex, holder: Address): Promise<Hex> {
+  const n = await noteFor(staff, noteId);
+  const { s } = context();
+  const pa = n.addresses.payingAgent as Address;
+  const amount = await s.publicClient.readContract({ address: pa, abi: PAYING, functionName: "held", args: [id, holder] });
+  if (amount === 0n) throw new Error("Nothing is held for that holder.");
+  const tx = await s.send("agent", { address: pa, abi: PAYING, functionName: "claim", args: [id, holder] }).catch((e) => {
+    throw new Error(/CannotReceive/.test(String(e)) ? `${holder} cannot yet receive the deposit: its grant must be live again.` : (e as Error).message);
+  });
+  await getStore().audit({ at: now(), actor: staff.email, action: `paid ${amount} cents held for ${holder} on ${n.symbol}`, subject: n.id });
+  return tx;
+}
+
+/** The coupons and redemptions an account has been paid, across every note. */
+export async function paymentsTo(account: Address): Promise<Array<{ note: DemoNote; date: number; kind: "coupon" | "redemption"; units: string; amount: string; held: boolean; tx: string }>> {
+  const notes = (await getStore().listNotes()).filter((n) => n.addresses.payingAgent && (n.status === "issued" || n.status === "closed"));
+  const out: Array<{ note: DemoNote; date: number; kind: "coupon" | "redemption"; units: string; amount: string; held: boolean; tx: string }> = [];
+  for (const n of notes) {
+    const view = await lifecycleOf(n).catch(() => null);
+    for (const d of view?.dates ?? []) {
+      for (const e of d.events) {
+        for (const p of e.payments.filter((x) => x.holder.toLowerCase() === account.toLowerCase())) {
+          out.push({ note: n, date: d.index, kind: e.kind, units: p.units, amount: p.amount, held: Boolean(p.held), tx: p.claimedTx ?? p.tx });
+        }
+      }
+    }
+  }
+  return out;
+}

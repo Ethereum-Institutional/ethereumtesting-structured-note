@@ -511,3 +511,47 @@ export async function acceptanceDoneAction(noteId: string, tradeId: string, tx: 
     revalidatePath("/onboard", "layout");
   }
 }
+
+/** The lifecycle's steps (ADR 0078): each says what it did, or the contract's refusal. */
+async function lifecycleStep(run: (op: NonNullable<Awaited<ReturnType<typeof currentOperator>>>) => Promise<string>): Promise<{ ok?: string; error?: string }> {
+  const op = await currentOperator();
+  if (!op) return { error: "Not permitted." };
+  try {
+    return { ok: await run(op) };
+  } catch (e) {
+    console.error(e);
+    return { error: (e as Error).message };
+  } finally {
+    revalidatePath("/operator", "layout");
+    revalidatePath("/onboard", "layout");
+  }
+}
+
+export async function determineAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    const levels = f.getAll("level").map((v) => {
+      const s = String(v).trim();
+      if (!/^\d+$/.test(s)) throw new Error("Each Level is a whole number.");
+      return BigInt(s);
+    });
+    const k = Number(field(f, "date"));
+    await (await import("@/lib/notes/lifecycle")).determineDate(op, field(f, "noteId"), k, levels);
+    return `Date ${k + 1} determined.`;
+  });
+}
+
+export async function payEventAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    const k = Number(field(f, "date"));
+    const kind = field(f, "kind") === "redemption" ? "redemption" : "coupon";
+    const txs = await (await import("@/lib/notes/lifecycle")).payEvent(op, field(f, "noteId"), k, kind);
+    return `Paid, in ${txs.length} transaction${txs.length === 1 ? "" : "s"} from the servicing wallet.`;
+  });
+}
+
+export async function claimHeldAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    await (await import("@/lib/notes/lifecycle")).claimHeld(op, field(f, "noteId"), field(f, "id") as `0x${string}`, field(f, "holder") as `0x${string}`);
+    return "Paid to the holder.";
+  });
+}

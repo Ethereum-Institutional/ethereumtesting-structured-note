@@ -50,4 +50,4 @@ move in one transaction, or neither does.
   RPC may answer from the previous block (ADR 0059).
 - Tested on the local chain:
   - the integration tests (S-09 then S-08 for a wallet; S-08 for a custody account);
-  - the browser spec `9-placement`.
+  - the browser spec `09-placement`.

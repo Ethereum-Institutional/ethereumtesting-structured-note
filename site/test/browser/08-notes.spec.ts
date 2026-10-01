@@ -16,6 +16,9 @@ test("staff issue a note; the page carries the issuance to the end, and the Ledg
   await form.getByLabel("Time between observations").fill("5");
   await form.getByLabel("Unit", { exact: true }).selectOption("minutes");
   await expect(form.getByRole("note")).toContainText("about 22 minutes");
+  // Issued 30 minutes apart, so no date arrives in real time during the run: spec 10 moves the
+  // chain's clock to each date instead.
+  await form.getByLabel("Time between observations").fill("30");
   await form.getByLabel("Units").fill("10");
   await form.getByRole("button", { name: "Issue" }).click();
 
@@ -23,7 +26,11 @@ test("staff issue a note; the page carries the issuance to the end, and the Ledg
   await expect(row).toContainText("issuing");
   await expect(row.locator(".pill")).toHaveText("issued", { timeout: 120_000 });
   await expect(row).toContainText("Date 4:");
-  await expect(row).toContainText("payingAgent:");
+  // Each note opens on its own page, with its contracts (ADR 0078).
+  await row.getByRole("link", { name: /Series 2/ }).click();
+  await expect(staff).toHaveURL(/\/operator\/notes\/note_/);
+  await staff.getByText("Contracts").click();
+  await expect(staff.locator("details")).toContainText("payingAgent:");
 
   await staff.goto("/ledger");
   await expect(staff.getByText("EURWAN2 Paying Agent").first()).toBeVisible();

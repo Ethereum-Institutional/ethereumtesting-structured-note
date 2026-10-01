@@ -5,6 +5,7 @@ import { getStore } from "@/lib/store";
 import { chainParams } from "@/lib/chains";
 import { loadManifest } from "@/lib/chain/manifest";
 import { holdingsOf, offersFor, type Placement } from "@/lib/notes/place";
+import { paymentsTo } from "@/lib/notes/lifecycle";
 import { acceptanceDoneAction, prepareAcceptanceAction } from "../../actions";
 import { accountOf, walletOf } from "../account";
 import { AcceptOffer } from "./AcceptOffer";
@@ -22,10 +23,11 @@ export default async function Notes() {
   const { wallet, held } = await accountOf(who);
   const account = wallet ?? held;
   const chain = chainParams(loadManifest().chainId);
-  const [offers, holdings, mine] = await Promise.all([
+  const [offers, holdings, mine, payments] = await Promise.all([
     offersFor(who),
     account ? holdingsOf(walletOf(account)).catch(() => []) : Promise.resolve([]),
     getStore().admissionsFor(who.id),
+    account ? paymentsTo(walletOf(account)).catch(() => []) : Promise.resolve([]),
   ]);
   const ids = new Set(mine.map((x) => x.id));
   const settled = (await getStore().listNotes()).flatMap((note) =>
@@ -87,6 +89,27 @@ export default async function Notes() {
                 </tbody>
               </table>
             </div>
+          )}
+          {payments.length > 0 && (
+            <>
+              <h4 style={{ margin: "1.25rem 0 0.5rem" }}>Paid to you</h4>
+              <div className="table-wrap">
+                <table aria-label="Paid to you">
+                  <thead><tr><th>Note</th><th>Date</th><th>For</th><th>Units</th><th>Amount</th></tr></thead>
+                  <tbody>
+                    {payments.map((p) => (
+                      <tr key={`${p.note.id}/${p.date}/${p.kind}`}>
+                        <td>{p.note.symbol}</td>
+                        <td>{p.date + 1}</td>
+                        <td>{p.kind === "coupon" ? "Coupon" : "Redemption"}</td>
+                        <td>{p.units}</td>
+                        <td>{euros(p.amount)}{p.held ? ", held until your account can receive it" : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
           {settled.length > 0 && (
             <details style={{ marginTop: "1rem" }}>

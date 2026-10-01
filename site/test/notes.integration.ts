@@ -170,3 +170,128 @@ test("S-08 for a custody account: the custodian accepts in the same action, and 
   const recorded = ((await store.noteById(n.id))!.data.placements as any[]).map((x) => `${x.id}:${x.status}`);
   assert.deepEqual(recorded.sort(), ["1:settled", "2:settled"]);
 });
+
+// --- determinations, payments and closure (ADR 0078) ---
+
+const life = await import("../lib/notes/lifecycle.ts");
+const REGISTRY = parseAbi([
+  "function grantOf(address account) view returns ((uint32 flags, uint16 jurisdiction, uint16 registrar, uint40 grantedAt, uint40 expiresAt))",
+  "function credentialRefOf(address) view returns (bytes32)",
+  "function commitmentOf(address) view returns (bytes32)",
+  "function grant(address account, uint32 flags, uint16 jurisdiction, uint40 expiresAt, bytes32 credentialRef, bytes32 commitment)",
+  "function revoke(address account)",
+]);
+const SUPPLY = parseAbi(["function totalSupply() view returns (uint256)", "function paused() view returns (bool)"]);
+const accessIssuer = createWalletClient({ account: privateKeyToAccount("0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"), transport: http(RPC) });
+
+/** Moves the local chain's clock to just past `t`, and mines a block there. */
+async function warpTo(t: number) {
+  const latest = Number((await client.getBlock()).timestamp);
+  if (latest <= t) await client.request({ method: "evm_increaseTime" as any, params: [t - latest + 1] as any });
+  await client.request({ method: "evm_mine" as any, params: [] as any });
+  await new Promise((r) => setTimeout(r, 1600)); // past the lagging RPC's window
+}
+const deposit = (a: Address) => client.readContract({ address: LOCAL.assets.deposit.address, abi: BAL, functionName: "balanceOf", args: [a] });
+
+/** Issues a four-date note two minutes apart and places units with the custody account and investor C. */
+async function placedNote(scenario: string, custodyUnits: number, walletUnits: number) {
+  const started = await notes.startNote(operator as any, { scenario, observations: 4, interval: { value: 2, unit: "minutes" as const }, units: 10 });
+  const n = await issued(started.id);
+  assert.equal(n.status, "issued", n.error);
+  await credit(LOCAL.custody.accounts["SEG-0003"], 100_000n * BigInt(custodyUnits));
+  if (custodyUnits) assert.equal((await place.placeUnits(operator as any, n.id, "adm_test_seg3", custodyUnits, 100_000n)).status, "settled");
+  if (walletUnits) {
+    const offered = await place.placeUnits(operator as any, n.id, "adm_test_c", walletUnits, 100_000n);
+    const wallet = createWalletClient({ account: privateKeyToAccount("0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba"), transport: http(RPC) });
+    for (const t of await place.acceptanceFor(client3p as any, n.id, offered.id, LOCAL.parties.investorC)) {
+      await client.waitForTransactionReceipt({ hash: await wallet.sendTransaction({ to: t.to, data: t.data, chain: null }) });
+    }
+    assert.equal((await place.refreshPlacement(n.id, offered.id, "0x"))?.status, "settled");
+  }
+  return (await store.noteById(n.id))!;
+}
+
+test("a four-date note through its life: each date determined from the scenario's Levels, paid to the holders of record, checked against the model, and closed", async () => {
+  const n = await placedNote("final-one-unit-below-barrier", 2, 1);
+  const custody = LOCAL.custody.accounts["SEG-0003"] as Address;
+  const investorC = LOCAL.parties.investorC as Address;
+  let view = await life.lifecycleOf(n);
+  assert.equal(view.dates.length, 4);
+  assert.equal(view.dates[0].can.determine, false, "not before its date");
+  assert.match(view.dates[0].waiting ?? "", /Determinable from/);
+  await assert.rejects(life.determineDate(operator as any, n.id, 0, view.dates[0].suggested.map(BigInt)), /determinable from/);
+  await assert.rejects(life.determineDate(operator as any, n.id, 1, view.dates[1].suggested.map(BigInt)), /Date 1 is the next/);
+
+  for (let k = 0; k < 4; k++) {
+    view = await life.lifecycleOf((await store.noteById(n.id))!);
+    await warpTo(view.dates[k].date);
+    if (k === 0) await assert.rejects(life.determineDate(operator as any, n.id, 0, [1n]), /Levels are refused/);
+    await life.determineDate(operator as any, n.id, k, view.dates[k].suggested.map(BigInt));
+    view = await life.lifecycleOf((await store.noteById(n.id))!);
+    const d = view.dates[k];
+    assert.equal(d.determined, true);
+    assert.equal(d.model?.matches, true, `date ${k + 1} agrees with the independent model`);
+    const kinds = d.events.map((e) => e.kind);
+    assert.deepEqual(kinds, k < 3 ? ["coupon"] : ["redemption"]);
+    await assert.rejects(life.payEvent(operator as any, n.id, k, kinds[0]), /payable from/);
+    await warpTo(d.paymentDate);
+
+    if (k === 1) {
+      // A holder the deposit cannot credit (its grant revoked) is held for, not skipped (E3).
+      const [g, ref, commitment] = await Promise.all([
+        client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grantOf", args: [investorC] }),
+        client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "credentialRefOf", args: [investorC] }),
+        client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "commitmentOf", args: [investorC] }),
+      ]);
+      await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "revoke", args: [investorC], chain: null }) });
+      await life.payEvent(operator as any, n.id, k, "coupon");
+      view = await life.lifecycleOf((await store.noteById(n.id))!);
+      const held = view.dates[k].events[0].payments.find((p) => p.holder.toLowerCase() === investorC.toLowerCase())!;
+      assert.equal(held.held, true);
+      assert.equal(view.dates[k].events[0].closed, true, "the event still closes for everyone else");
+      await assert.rejects(life.claimHeld(operator as any, n.id, view.dates[k].events[0].id, investorC), /cannot yet receive/);
+      await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grant", args: [investorC, g.flags, g.jurisdiction, g.expiresAt, ref, commitment], chain: null }) });
+      await new Promise((r) => setTimeout(r, 1600));
+      const before = await deposit(investorC);
+      await life.claimHeld(operator as any, n.id, view.dates[k].events[0].id, investorC);
+      assert.equal(await deposit(investorC), before + 2_500n, "claimed once its grant is live again");
+      continue;
+    }
+
+    const [c0, w0] = await Promise.all([deposit(custody), deposit(investorC)]);
+    await life.payEvent(operator as any, n.id, k, kinds[0]);
+    const perUnit = k < 3 ? 2_500n : 60_000n; // €25 coupons; €600 at maturity, one unit below the barrier
+    assert.equal(await deposit(custody), c0 + 2n * perUnit, `date ${k + 1}: the custody account's two units`);
+    assert.equal(await deposit(investorC), w0 + perUnit, `date ${k + 1}: investor C's unit`);
+    await assert.rejects(life.payEvent(operator as any, n.id, k, kinds[0]), /already paid/);
+  }
+
+  // Redeemed: the holders' units burned as they were paid, the inventory burned on closing.
+  assert.equal(await client.readContract({ address: n.addresses.note as Address, abi: SUPPLY, functionName: "totalSupply" }), 0n);
+  assert.equal(await client.readContract({ address: n.addresses.note as Address, abi: SUPPLY, functionName: "paused" }), true);
+  assert.equal((await store.noteById(n.id))!.status, "closed");
+  view = await life.lifecycleOf((await store.noteById(n.id))!);
+  assert.equal(view.closed, true);
+  const paid = await life.paymentsTo(custody);
+  assert.deepEqual(paid.filter((p) => p.note.id === n.id).map((p) => `${p.kind}:${p.amount}`), ["coupon:5000", "coupon:5000", "coupon:5000", "redemption:120000"]);
+});
+
+test("an early redemption ends the note: the dates after it fall away", async () => {
+  const n = await placedNote("mer-at-trigger", 1, 0);
+  for (let k = 0; k < 2; k++) {
+    let view = await life.lifecycleOf((await store.noteById(n.id))!);
+    await warpTo(view.dates[k].date);
+    await life.determineDate(operator as any, n.id, k, view.dates[k].suggested.map(BigInt));
+    view = await life.lifecycleOf((await store.noteById(n.id))!);
+    assert.equal(view.dates[k].model?.matches, true);
+    await warpTo(view.dates[k].paymentDate);
+    for (const e of view.dates[k].events) await life.payEvent(operator as any, n.id, k, e.kind);
+  }
+  const view = await life.lifecycleOf((await store.noteById(n.id))!);
+  assert.deepEqual(view.dates[1].events.map((e) => e.kind), ["coupon", "redemption"]);
+  assert.equal(view.terminated, true);
+  assert.deepEqual(view.dates.slice(2).map((d) => d.fallsAway), [true, true]);
+  assert.equal(view.dates[2].can.determine, false);
+  await assert.rejects(life.determineDate(operator as any, n.id, 2, view.dates[2].suggested.map(BigInt)), /has redeemed/);
+  assert.equal((await store.noteById(n.id))!.status, "closed");
+});
