@@ -427,6 +427,7 @@ a:hover { text-decoration-color: var(--fg); }
   <ul>
     <li><a href="#requirement" data-t="requirement"><span class="t-lbl">Requirement</span><span class="t-ttl">Requirement</span></a></li>
     <li><a href="#rationale" data-t="rationale"><span class="t-lbl">Rationale</span><span class="t-ttl">Basis for tokenization</span></a></li>
+    <li><a href="#status" data-t="status"><span class="t-lbl">Status</span><span class="t-ttl">Build status</span></a></li>
   </ul>
   <p class="toc-group">The design</p>
   <ul>
@@ -462,11 +463,11 @@ a:hover { text-decoration-color: var(--fg); }
   <h1>Structured Note Smart Contract Issuance</h1>
   <p class="standfirst">
     The Agent acting as Issuing &amp; Paying Agent, Registrar &amp; Transfer Agent for a simulated
-    native Structured Note issuance on Ethereum Sepolia testnet.
+    native Structured Note issuance on the Base Sepolia testnet.
   </p>
   <div class="meta">
     <span><b>Status</b> Draft for review</span>
-    <span><b>Network</b> Sepolia testnet</span>
+    <span><b>Network</b> Base Sepolia testnet</span>
     <span><b>Notional</b> Zero, simulated</span>
     <span><b>Denomination</b> 1 unit = &euro;1,000</span>
     <span><b>Cryptocurrency</b> None</span>
@@ -607,6 +608,39 @@ a:hover { text-decoration-color: var(--fg); }
       functions and distribution something specific to respond to, which is a materially better
       starting position than a design on paper.
     </p>
+  </section>
+
+<section id="status">
+    <p class="sec-label">Status</p>
+    <h2>Build status</h2>
+    <p class="lead">
+      As of 1 October 2026 the design is built end to end and runs under test on a local chain, and as
+      an integration deployment on Base Sepolia. The execution this document describes is deployed
+      afresh once the internal assurance review is complete, so that the evidence comes from the
+      version that passed review.
+    </p>
+    <div class="scroller stack">
+      <table>
+        <thead><tr><th>Area</th><th>Built and demonstrated</th><th>Scenarios</th></tr></thead>
+        <tbody>
+          <tr><td><b>Onboarding</b></td><td>Three routes: an account the bank holds in custody, a client's own wallet bound by one signature once the bank confirms its KYB, and credentials presented from a holder wallet. Grants are written only once the credentials they rest on are anchored. Offboarding, revocation at the bank, and one wallet per KYB</td><td>S&#8209;02, S&#8209;03</td></tr>
+          <tr><td><b>Issuance and placement</b></td><td>Notes issued from the Agent's console on the same contracts as the note under review, with a scenario's terms and a calendar chosen at issuance. Approval under Regulation S per client, then placement by delivery versus payment</td><td>S&#8209;07 to S&#8209;09</td></tr>
+          <tr><td><b>Lifecycle</b></td><td>Each date determined by the Calculation Agent's signature and recomputed on-chain, and checked against the independent payoff model. Coupons and redemptions paid by the Agent's multi-signature servicing wallet to the holders of record, with amounts held for a holder who cannot receive them. Early and final redemption, then closure</td><td>S&#8209;15, S&#8209;16, S&#8209;18, S&#8209;30, S&#8209;32, S&#8209;34</td></tr>
+          <tr><td><b>Trading</b></td><td>Transfers settle by offer, each side locked until it settles or ends: units frozen in the seller's own wallet, or the price held by the settlement contract. Offers are arranged by the bank or open to any approved client. Buy back into the Issuer's inventory, and reduction of the tranche bounded by that inventory</td><td>S&#8209;11 to S&#8209;14</td></tr>
+          <tr><td><b>Governance</b></td><td>Tier 1 register correction with its written reason; Tier 2 proposals with institution thresholds, the timelock and an execution window, each institution's wallet signing as itself. The Agent alone cannot force a transfer</td><td>S&#8209;22 to S&#8209;26</td></tr>
+          <tr><td><b>Conversion pool</b></td><td>A whitelisted wallet converts the euro payment token into the tokenized deposit and back; a wallet not whitelisted is refused at the pool</td><td>S&#8209;27, S&#8209;28</td></tr>
+          <tr><td><b>Evidence</b></td><td>The lifecycle reconstructed from chain events alone, the register reconciled against the chain, and every transaction and event scanned for personal data</td><td>S&#8209;35, S&#8209;36</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>Not yet complete</h3>
+    <ul class="plain">
+      <li><strong>Closure evidence (S-33).</strong> A redeemed note's supply reaches zero under test; the close-out statement confirming every position at zero is still to be produced.</li>
+      <li><strong>Proposal expiry on the integration deployment (S-24).</strong> Enforced under test; the integration deployment runs an earlier controller without an execution window until it is redeployed.</li>
+      <li><strong>Shown in contract tests only.</strong> The deployer's renunciation (S-01), reversal and restatement of a distribution (S-21), and non-transferable liquidity positions (S-29). The remaining scenarios (S-04 to S-06, S-10, S-17, S-19, S-20, S-31) are to be confirmed against the contract tests.</li>
+      <li><strong>The holder-wallet route for an officer</strong> waits on the bank's side, and an inclusion proof for each anchored credential on the protocol.</li>
+      <li><strong>Hardening before execution:</strong> a separate key for each capacity, the freeze of the contracts once the payoff items are confirmed by the Issuer and the Calculation Agent, the internal assurance review, and token naming.</li>
+    </ul>
   </section>
 
 <section id="architecture">
@@ -1205,7 +1239,7 @@ a:hover { text-decoration-color: var(--fg); }
     <p class="sec-label">Lifecycle</p>
     <h2>Transaction lifecycle</h2>
     <ol class="steps">
-      <li><span class="n">01</span><div><div class="t">Governance Setup</div><div class="d">Agent appointed. Calculation &amp; Determination Agent designated. Guarantee documented off-chain. Smart contracts deployed on Sepolia. Transaction details anchored in token metadata. Source code verified on Etherscan.</div></div></li>
+      <li><span class="n">01</span><div><div class="t">Governance Setup</div><div class="d">Agent appointed. Calculation &amp; Determination Agent designated. Guarantee documented off-chain. Smart contracts deployed on Base Sepolia. Transaction details anchored in token metadata. Source code verified on the block explorer.</div></div></li>
       <li><span class="n">02</span><div><div class="t">KYB / KYC and whitelist</div><div class="d">The Agent completes KYB on the investing entity and KYC on its officers, then issues the corresponding credentials. The participant presents the claims required, proves control of the address, and receives a time-boxed grant carrying its rights. Sanctions screening is part of the check. No subsequent step can proceed for a party without a live grant.</div></div></li>
       <li><span class="n">03</span><div><div class="t">Issuance / Minting</div><div class="d">The Issuer instructs the Agent to authorise issuance. The Agent instructs the platform to create the contract. Strike Date Closing Levels are recorded on-chain as immutable Initial Levels. Notional mints to pending inventory, then settles to investors by DvP against digital monies.</div></div></li>
       <li><span class="n">04</span><div><div class="t">Secondary Transfer</div><div class="d">Identity Registry whitelist check, then atomic DvP against digital monies, then the Agent updates the on-chain and off-chain Register.</div></div></li>
@@ -1642,7 +1676,7 @@ a:hover { text-decoration-color: var(--fg); }
       <table>
         <thead><tr><th>Element</th><th>Status</th><th>Note</th></tr></thead>
         <tbody>
-          <tr><td><b>Network</b></td><td><span class="tag testnet">Testnet</span></td><td>Public Ethereum test network, with source code verified on Etherscan. Test networks carry no monetary value by design</td></tr>
+          <tr><td><b>Network</b></td><td><span class="tag testnet">Testnet</span></td><td>Base Sepolia, a public test network of an Ethereum layer 2, with source code verified on the block explorer. Test networks carry no monetary value by design</td></tr>
           <tr><td><b>Euro payment token</b></td><td><span class="tag testnet">Testnet</span></td><td>Third-party fiat-referenced token, so one leg of the conversion pair is not issued by the transaction parties. Not a cryptocurrency. The testnet issuance has no value and is distributed without charge</td></tr>
           <tr><td><b>Network fees</b></td><td><span class="tag testnet">Testnet</span></td><td>Transaction fees are paid in valueless test network units obtained from a public faucet, which cannot be purchased, sold or exchanged</td></tr>
           <tr><td>Structured Note</td><td><span class="tag simulated">Simulated</span></td><td>Zero notional. Not an offer, a solicitation or a security</td></tr>
