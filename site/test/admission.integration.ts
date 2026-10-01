@@ -178,7 +178,8 @@ test("route 1, custodied: one staff action opens, binds, admits and readies a cu
   assert.equal((await readPool((a.data as any).account)).allowed, false, "no grant before the credential is anchored");
   a = await untilAnchored(a.id);
   assert.equal(a.status, "admitted", JSON.stringify((a.data as any).error));
-  assert.equal((a.data as any).clientRef, `${CLIENT}-SEG-0001`, "the site numbers the client's custody accounts");
+  assert.match((a.data as any).clientRef, /^SEG-[0-9A-F]{12}$/, "an opaque custody reference: it goes on-chain");
+  assert.ok(!(a.data as any).clientRef.includes(CLIENT), "the client's reference is not in it");
   assert.match((a.data as any).instructionRef, /^staff instruction adm_/);
   const anchors = (a.data as any).anchors;
   assert.equal(anchors.length, 2, "the corporate identity and the wallet credential");
@@ -459,4 +460,66 @@ test("revoking a corporate identity needs the count of wallets it withdraws, and
   assert.notEqual(standIns.issued.get(cid.toLowerCase())?.state, "revoked", "nothing was revoked");
   await service.revokeAtBank(operator as any, a.id, "corporate", "KYB withdrawn", affected);
   assert.equal(standIns.issued.get(cid.toLowerCase())?.state, "revoked");
+});
+
+// --- the Ledger (ADR 0071): S-35 and S-36, over everything the tests above did ---
+
+test("S-35: the Ledger reconstructs the lifecycle from chain events alone, every call recognised", async () => {
+  const ledger = await import("../lib/ledger.ts");
+  const view = await ledger.readLedger(400);
+  assert.ok(view.rows.length > 20, `${view.rows.length} calls`);
+  const unrecognised = view.rows.filter((r) => !r.recognised);
+  assert.deepEqual(unrecognised.map((r) => `${r.target} ${r.fn}`), [], "no call the tape does not know");
+  const meanings = view.rows.map((r) => r.meaning).join(" | ");
+  for (const expected of [/pool access/i, /eligibility/i]) assert.match(meanings, expected);
+  assert.ok(view.rows.every((r) => r.at), "each call has its block's time");
+});
+
+test("the register reconciliation agrees with the chain for every account the site onboarded", async () => {
+  const ledger = await import("../lib/ledger.ts");
+  const rows = await ledger.reconcile();
+  const ours = rows.filter((r) => r.site);
+  assert.ok(ours.length >= 3, `${ours.length} accounts onboarded through the site`);
+  // One disagreement, and it is real: the holder wallet whose credential was revoked at the bank
+  // and whose grant an unprivileged caller then voided on-chain. Nothing told the site.
+  const disagreements = ours.filter((r) => r.finding);
+  assert.equal(disagreements.length, 1, disagreements.map((r) => `${r.account}: ${r.finding}`).join("\n"));
+  assert.match(disagreements[0].finding!, /revoked at the bank and its pool grant voided on-chain/);
+  assert.equal(disagreements[0].site?.route, "holder-wallet");
+  assert.ok(rows.some((r) => !r.site && r.note === "Granted by the deployment itself" && r.label), "the deployment's own grants are noted, by name, not flagged");
+});
+
+test("S-36: no transaction or event carries personal data or a client's identifying details", async () => {
+  const m = (await import("../lib/chain/manifest.ts")).loadManifest();
+  const head = await chainClient.getBlockNumber();
+  // What the site holds off-chain: clients' names, registration numbers, references and DIDs, and people's names and emails.
+  const needles = new Set<string>();
+  for (const c of await store.listClients()) {
+    for (const v of [c.claims.legalName, c.claims.registrationNumber, c.kycReference, c.subjectDid]) if (v) needles.add(String(v));
+  }
+  for (const r of [registrant, operator]) for (const v of [r.email, r.name, r.organisation]) needles.add(v);
+  const hex = [...needles].filter((n) => n.length >= 4).map((n) => [n, Buffer.from(n, "utf8").toString("hex").toLowerCase()] as const);
+  const email = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+  const found: string[] = [];
+  let txs = 0;
+  let logs = 0;
+  for (let b = 0n; b <= head; b++) {
+    const block = await chainClient.getBlock({ blockNumber: b, includeTransactions: true });
+    for (const tx of block.transactions) {
+      txs++;
+      const receipt = await chainClient.getTransactionReceipt({ hash: tx.hash });
+      const blobs = [tx.input, ...receipt.logs.flatMap((l) => [l.data, ...l.topics])];
+      logs += receipt.logs.length;
+      for (const blob of blobs) {
+        const lower = blob.toLowerCase();
+        for (const [n, h] of hex) if (lower.includes(h)) found.push(`"${n}" in ${tx.hash}`);
+        const text = Buffer.from(lower.slice(2), "hex").toString("latin1");
+        const e = text.match(email);
+        if (e) found.push(`an email address "${e[0]}" in ${tx.hash}`);
+      }
+    }
+  }
+  void m;
+  assert.ok(txs > 50 && logs > 50, `${txs} transactions and ${logs} events inspected`);
+  assert.deepEqual(found, [], "none found in any form");
 });

@@ -24,7 +24,7 @@ import { anchoringOf, type Anchor } from "./anchoring.ts";
 import { recordOf } from "./clients.ts";
 import { createHash } from "node:crypto";
 import { policyConfig } from "./protocol.ts";
-import type { Address, Hex } from "viem";
+import { keccak256, toBytes, type Address, type Hex } from "viem";
 
 
 /**
@@ -376,7 +376,12 @@ export async function admitCustodied(
   // admission itself as the instruction (ADR 0067).
   const opened = (await store.listAdmissions(500)).filter((x) => x.route === "custodied" && (x.data as Record<string, any>).record?.kycReference === client.kycReference).length;
   const id = `adm_${randomBytes(9).toString("base64url")}`;
-  const refs = { clientRef: `${client.kycReference}-SEG-${String(opened + 1).padStart(4, "0")}`, instructionRef: `staff instruction ${id}, ${staff.email}` };
+  // The custody reference goes on-chain (it fixes the account's address), so it is opaque: it
+  // links to the client only through the site's own records (S-36; ADR 0067 as amended).
+  const refs = {
+    clientRef: `SEG-${keccak256(toBytes(`${client.kycReference}/custody/${opened + 1}`)).slice(2, 14).toUpperCase()}`,
+    instructionRef: `staff instruction ${id}, ${staff.email}`,
+  };
   const a: Admission = {
     id,
     registrantId: staff.id,

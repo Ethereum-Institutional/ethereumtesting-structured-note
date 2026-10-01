@@ -492,6 +492,10 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   MetaMask supplies the address, is switched to the pool's chain or has it added, and signs the
   bank's message. This applies on route 2, and on route 3 after the officer's scan, where the bank
   issues the wallet credential to the officer. The older ways remain, folded away.
+- **Ledger** (ADR 0071; S-35, S-36). `/ledger` shows every approved user the lifecycle decoded
+  from the chain, read through Alchemy (`LEDGER_RPC_URL`). Staff also see the register
+  reconciliation. The tests check that every call is recognised, and scan every transaction and
+  event for personal data.
 - **Convert** (ADR 0070; S-27, S-28).
   - An onboarded wallet converts EURC and EURTD both ways from the Onboard page in MetaMask, with
     one-time approvals, a quote, and a 0.5% minimum-received.

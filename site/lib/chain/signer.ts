@@ -1,5 +1,5 @@
 import "server-only";
-import { createPublicClient, createWalletClient, http, type Chain, type Hex } from "viem";
+import { createPublicClient, createWalletClient, http, type Address, type Chain, type Hex } from "viem";
 import { createNonceManager, privateKeyToAccount } from "viem/accounts";
 import { jsonRpc } from "viem/nonce";
 import { signerQueues } from "./queue.ts";
@@ -28,6 +28,12 @@ const LOCAL_KEYS: Record<string, Hex> = {
   investorC: "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
   investorD: "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e",
   custodian: "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+  accessIssuer: "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a", // account 2
+  calculationAgent: "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356", // account 7
+  depositAgent: "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6", // account 9
+  // Two of the three owners of the Agent's servicing wallet: mnemonic indices 19 and 20 (Ceremony).
+  servicing1: "0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e",
+  servicing2: "0xeaa861a9a01391ed3d587d8a5a84ca56ee277629a8b02c22093a419bf240e65d",
 };
 
 export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = process.env) {
@@ -78,11 +84,22 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     });
   }
 
+  /** Deploys a contract as a capacity and waits for it (ADR 0072): returns its address. */
+  async function deploy(capacity: string, params: { abi: readonly unknown[]; bytecode: Hex; args: readonly unknown[] }): Promise<{ address: Address; hash: Hex }> {
+    return enqueue(capacity, async () => {
+      const wallet = createWalletClient({ account: account(capacity), chain, transport: http(rpcUrl) });
+      const hash = await (wallet.deployContract as any)({ abi: params.abi, bytecode: params.bytecode, args: params.args, account: wallet.account, chain });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
+      if (receipt.status !== "success" || !receipt.contractAddress) throw new Error(`the deployment reverted (${hash})`);
+      return { address: receipt.contractAddress, hash };
+    });
+  }
+
   /** Signs EIP-712 typed data as a capacity, for a message the capacity attests off-chain. */
   async function signTypedData(capacity: string, typedData: Record<string, any>): Promise<Hex> {
     const { EIP712Domain: _domainTypes, ...types } = typedData.types ?? {};
     return account(capacity).signTypedData({ domain: typedData.domain, types, primaryType: typedData.primaryType, message: typedData.message });
   }
 
-  return { publicClient, send, signTypedData, resetNonces, address: (capacity: string) => account(capacity).address };
+  return { publicClient, send, deploy, signTypedData, resetNonces, address: (capacity: string) => account(capacity).address };
 }

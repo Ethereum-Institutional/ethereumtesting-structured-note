@@ -86,6 +86,28 @@ export type Client = {
   previous: Array<{ credentialId: string; issuedAt: string }>;
 };
 
+/** A demonstration note (ADR 0072): its terms, its contracts as they are deployed, and its life. */
+export type DemoNote = {
+  id: string;
+  series: number;
+  name: string;
+  symbol: string;
+  scenario: string;
+  spacingMinutes: number;
+  units: number;
+  status: "issuing" | "issued" | "failed" | "closed";
+  /** The next issuance step to run; issuance is a sequence of single transactions. */
+  step: number;
+  createdAt: string;
+  by: string;
+  error?: string;
+  addresses: Record<string, string>;
+  txs: Record<string, string>;
+  /** Unix seconds of each observation, record time and payment time, fixed when the terms are. */
+  calendar?: Array<{ date: number; recordTime: number; paymentDate: number }>;
+  data: Record<string, unknown>;
+};
+
 export interface Store {
   registrantByEmail(email: string): Promise<Registrant | null>;
   registrantById(id: string): Promise<Registrant | null>;
@@ -125,6 +147,12 @@ export interface Store {
   clientById(id: string): Promise<Client | null>;
   clientByReference(kycReference: string): Promise<Client | null>;
   listClients(): Promise<Client[]>;
+
+  putNote(n: DemoNote): Promise<void>;
+  /** Replaces the note, only if its next step is still `expectedStep`. Returns whether it did. */
+  updateNote(n: DemoNote, expectedStep: number): Promise<boolean>;
+  noteById(id: string): Promise<DemoNote | null>;
+  listNotes(): Promise<DemoNote[]>;
 }
 
 // --------------------------------------------------------------------------------------------
@@ -155,6 +183,12 @@ create table if not exists sessions (
   hash text primary key,
   registrant_id text not null references registrants(id),
   expires_at timestamptz not null
+);
+create table if not exists notes (
+  id text primary key,
+  created_at timestamptz not null,
+  step integer not null,
+  data jsonb not null
 );
 create table if not exists clients (
   id text primary key,
@@ -330,6 +364,24 @@ function postgresStore(url: string): Store {
       const s = await q();
       return (await s`select * from admissions where registrant_id = ${registrantId} order by created_at desc limit 100`).map(toAdmission);
     },
+    async putNote(n) {
+      const s = await q();
+      await s`insert into notes (id, created_at, step, data) values (${n.id}, ${n.createdAt}, ${n.step}, ${s.json(n as any)})`;
+    },
+    async updateNote(n, expectedStep) {
+      const s = await q();
+      const rows = await s`update notes set step = ${n.step}, data = ${s.json(n as any)} where id = ${n.id} and step = ${expectedStep} returning id`;
+      return rows.length === 1;
+    },
+    async noteById(id) {
+      const s = await q();
+      const [r] = await s`select data from notes where id = ${id}`;
+      return r ? (toJson(r.data) as DemoNote) : null;
+    },
+    async listNotes() {
+      const s = await q();
+      return (await s`select data from notes order by created_at desc`).map((r) => toJson(r.data) as DemoNote);
+    },
     async putClient(c) {
       const s = await q();
       await s`insert into clients (id, kyc_reference, created_at, data) values (${c.id}, ${c.kycReference}, ${c.createdAt}, ${s.json(c as any)})`;
@@ -368,6 +420,7 @@ type FileData = {
   audit: AuditEntry[];
   admissions?: Admission[];
   clients?: Client[];
+  notes?: DemoNote[];
 };
 
 function fileStore(dir: string): Store {
@@ -474,6 +527,25 @@ function fileStore(dir: string): Store {
     },
     async admissionsFor(registrantId) {
       return [...(load().admissions ?? [])].filter((a) => a.registrantId === registrantId).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
+    },
+    async putNote(n) {
+      edit((d) => {
+        d.notes = [...(d.notes ?? []), n];
+      });
+    },
+    async updateNote(n, expectedStep) {
+      return edit((d) => {
+        const i = (d.notes ?? []).findIndex((x) => x.id === n.id && x.step === expectedStep);
+        if (i < 0) return false;
+        d.notes![i] = n;
+        return true;
+      });
+    },
+    async noteById(id) {
+      return (load().notes ?? []).find((n) => n.id === id) ?? null;
+    },
+    async listNotes() {
+      return [...(load().notes ?? [])].sort((x, y) => y.createdAt.localeCompare(x.createdAt));
     },
     async putClient(c) {
       edit((d) => {

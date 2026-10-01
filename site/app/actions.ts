@@ -386,3 +386,25 @@ export async function creditDepositAction(f: FormData) {
     await store.audit({ at: entry.at, actor: op.email, action: `credited ${entry.amount} ${t.deposit.symbol} to ${account}, booking ${done.bookingRef}`, subject: a.id });
   }, "/operator");
 }
+
+// ---------------------------------------------------------------------------------------------
+// Demonstration notes (ADR 0072)
+// ---------------------------------------------------------------------------------------------
+
+export async function startDemoNoteAction(f: FormData) {
+  const op = await currentOperator();
+  if (!op) throw new Error("Not permitted.");
+  await recorded(async () => {
+    const { startDemoNote, advanceIssuance } = await import("@/lib/notes/issue");
+    const n = await startDemoNote(op, { scenario: field(f, "scenario"), spacingMinutes: Number(field(f, "spacing")), units: Number(field(f, "units")) });
+    await advanceIssuance(n.id);
+  }, "/operator");
+}
+
+/** Moves a note's issuance on by a step; the Operator page calls it while a note is being issued. */
+export async function advanceNoteAction(id: string) {
+  const op = await currentOperator();
+  if (!op) return;
+  const { advanceIssuance } = await import("@/lib/notes/issue");
+  await recorded(() => advanceIssuance(id), "/operator");
+}

@@ -14,8 +14,11 @@ information staff hold that the site does not, and each is a chance to mistype.
 - **Client reference:** assigned when a client is added, `CLI-<yymmdd>-<four characters>`,
   avoiding characters that are easily confused. A client re-issued from a corporate identity the
   bank already holds keeps the bank's reference.
-- **Custody account reference:** `<client reference>-SEG-<nnnn>`, numbered per client, one
-  account per admission. It remains the salt that fixes the account's address.
+- **Custody account reference:** `SEG-<12 hex>`, a hash of the client reference and the account's
+  number, one account per admission. It remains the salt that fixes the account's address.
+  *Amended 30 September 2026:* it was first `<client reference>-SEG-<nnnn>`. The reference goes
+  on-chain in the factory call, which would have published the bank's client reference beside the
+  account (S-36), so it is now opaque, and the mapping lives only in the site's records.
 - **Instruction:** recorded as the admission itself, with the staff member who made it.
 
 ## Why

@@ -47,6 +47,7 @@ export function siteBar(email: string, operator: boolean): string {
     <a href="/">Architecture</a>
     <a href="/overview" aria-current="page">Solution overview</a>
     <a href="/onboard">Onboard</a>
+    <a href="/ledger">Ledger</a>
     ${operator ? '<a href="/operator">Operator</a>' : ""}
     <span class="who">${esc(email)}</span>
     <form method="post" action="/signout"><button type="submit">Sign out</button></form>
