@@ -11,7 +11,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..", "..");
-const CONTRACTS = ["InstrumentGate", "ERC1967Proxy", "DeterminationAgent", "RecordDateEngine", "PayingAgent", "DvPSettlement"];
+const CONTRACTS = ["InstrumentGate", "ERC1967Proxy", "DeterminationAgent", "RecordDateEngine", "PayingAgent", "DvPSettlement", "LockedSettlement"];
 const artifacts = {};
 for (const name of CONTRACTS) {
   const a = JSON.parse(readFileSync(join(root, "instruments", "out", `${name}.sol`, `${name}.json`), "utf8"));

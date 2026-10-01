@@ -408,7 +408,14 @@ a:hover { text-decoration-color: var(--fg); }
   .layout { display: block; padding: 0; }
   .doc { max-width: none; }
   section { break-inside: auto; page-break-inside: auto; }
-  figure, table { break-inside: avoid; }
+  figure, .notice { break-inside: avoid; }
+  /* A long table runs on to the next page between rows, its header repeated, not leaving a gap. */
+  table { break-inside: auto; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  h2, h3, .sec-label { break-after: avoid; }
+  /* On paper the masthead has no dark ground, so its label takes the body's quiet colour. */
+  header.masthead .eyebrow { color: var(--fg3); }
 }
 </style>
 

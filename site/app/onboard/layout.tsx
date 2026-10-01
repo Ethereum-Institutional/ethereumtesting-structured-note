@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 export default async function OnboardLayout({ children }: { children: React.ReactNode }) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  const offers = await (await import("@/lib/notes/place")).offersFor(who).catch(() => []);
+  const offers = await (await import("@/lib/notes/place")).offersFor(who).catch(() => null);
+  const waiting = offers ? offers.toMe.length + offers.arranged.length : 0;
   return (
     <div className="wrap">
       <Bar who={who} operator={isOperator(who.email)} />
@@ -23,7 +24,7 @@ export default async function OnboardLayout({ children }: { children: React.Reac
           items={[
             { href: "/onboard", label: "Account" },
             { href: "/onboard/convert", label: "Convert" },
-            { href: "/onboard/notes", label: "Notes", badge: offers.length },
+            { href: "/onboard/notes", label: "Notes", badge: waiting },
           ]}
         />
         <div className="console-main">{children}</div>

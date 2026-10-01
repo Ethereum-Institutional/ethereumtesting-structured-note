@@ -8,6 +8,7 @@ import { getStore, type DemoNote, type Registrant } from "../store.ts";
 import { isOperator } from "../operators.ts";
 import { stretch } from "./calendar.ts";
 import { SCENARIOS } from "./issue.ts";
+import { releaseOpenOffers } from "./place.ts";
 
 /**
  * A note's life after placement (ADR 0078): each scheduled date determined, then its coupon and
@@ -342,6 +343,9 @@ export async function payEvent(staff: Registrant, noteId: string, k: number, kin
     d = await until(() => c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] }), (x) => x[4]);
   }
   if (!d[5]) {
+    // Opening a redemption paused the note. Units locked in open offers could not be burned, so
+    // the offers are released first, as anyone may once the note is paused (ADR 0081).
+    if (kind === "redemption") await releaseOpenOffers(n.id, true);
     const holders = await holdersAt(s, logs, n, date.recordTime, s.address("issuer"));
     const settled = await Promise.all(holders.map((h) => c.readContract({ address: pa, abi: PAYING, functionName: "settled", args: [id, h.holder] })));
     const due = holders.filter((_, i) => !settled[i]).map((h) => h.holder);

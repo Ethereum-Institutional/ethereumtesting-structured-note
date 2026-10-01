@@ -49,7 +49,7 @@ test("a client binds a new wallet; the note refuses it until staff approve it un
   await place.locator('select[name="admission"]').selectOption(account!);
   await place.getByLabel("Units").fill("2");
   await place.getByRole("button", { name: "Place units" }).click();
-  await expect(place.getByRole("status").filter({ hasText: "Offered as trade" })).toBeVisible({ timeout: 30_000 });
+  await expect(place.getByRole("status").filter({ hasText: /Offer \d+ made/ })).toBeVisible({ timeout: 30_000 });
 
   // The client sees it waiting, and accepts in two transactions.
   await client.reload();
@@ -72,7 +72,7 @@ test("a client binds a new wallet; the note refuses it until staff approve it un
   await holding.getByText(/Earlier offers/).click();
   await expect(holding.getByRole("listitem").filter({ hasText: "2 units of EURWAN2 for €2,000.00" })).toContainText("settled");
   await staff.reload();
-  await expect(staff.locator('[aria-label="Placements"] tbody tr').first().locator(".pill")).toHaveText("settled");
+  await expect(staff.locator('[aria-label="Offers"] tbody tr').first().locator(".pill")).toHaveText("settled");
 
   // The client unbinds the wallet itself (ADR 0076): its grants go at once, its KYB stands.
   await nav.getByRole("link", { name: "Account" }).click();

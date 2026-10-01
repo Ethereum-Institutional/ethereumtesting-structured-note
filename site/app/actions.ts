@@ -470,7 +470,7 @@ export async function placeUnitsAction(_prev: { ok?: string; error?: string }, f
     return {
       ok: p.status === "settled"
         ? `Settled: ${p.units} units against €${(Number(p.priceCents) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}, accepted by the custodian.`
-        : `Offered as trade ${p.id}: the client accepts from its wallet on its Notes page, within 24 hours.`,
+        : `Offer ${p.id} made: the client accepts from its wallet on its Notes page, within 24 hours.`,
     };
   } catch (e) {
     console.error(e);
@@ -480,10 +480,117 @@ export async function placeUnitsAction(_prev: { ok?: string; error?: string }, f
   }
 }
 
-export async function cancelPlacementAction(f: FormData) {
-  const op = await currentOperator();
-  if (!op) throw new Error("Not permitted.");
-  await recorded(async () => (await import("@/lib/notes/place")).cancelPlacement(op, field(f, "noteId"), field(f, "tradeId")), "/operator/notes");
+/** Staff withdraw an offer the site acts for: the Issuer's, or a custody account's (ADR 0081). */
+export async function cancelOfferAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    await (await import("@/lib/notes/place")).cancelOffer(op, field(f, "noteId"), field(f, "offerId"));
+    return "Withdrawn; its lock is released.";
+  });
+}
+
+const perUnit = (f: FormData) => units(field(f, "price"), 2);
+
+/** Staff offer to buy units back from a holder (S-13). */
+export async function buybackAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    const o = await (await import("@/lib/notes/place")).offerBuyback(op, field(f, "noteId"), field(f, "admission"), Number(field(f, "units")), perUnit(f));
+    return o.status === "settled" ? `Bought back ${o.units} units; they are in the Issuer's inventory.` : `Offer ${o.id} made: the holder accepts from its wallet, within 24 hours.`;
+  });
+}
+
+/** Staff arrange a transfer between two accounts, or an open offer from one (ADR 0081). */
+export async function arrangeTradeAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    const buyer = field(f, "buyer");
+    const r = await (await import("@/lib/notes/place")).arrangeTrade(op, field(f, "noteId"), {
+      seller: field(f, "seller"),
+      buyer: buyer === "open" ? null : buyer,
+      units: Number(field(f, "units")),
+      pricePerUnitCents: perUnit(f),
+    });
+    if (r.arranged) return `Arranged (${r.arranged.ref}): the seller offers from its wallet, on its Notes page.`;
+    return r.offer?.status === "settled" ? `Settled: ${r.offer.units} units moved.` : `Offer ${r.offer?.id} made: the other side acts from its wallet.`;
+  });
+}
+
+export async function withdrawArrangedAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    await (await import("@/lib/notes/place")).withdrawArranged(op, field(f, "noteId"), field(f, "ref"));
+    return "Withdrawn.";
+  });
+}
+
+/** Staff take an open offer for a custody account. */
+export async function takeForCustodyAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    await (await import("@/lib/notes/place")).takeForCustody(op, field(f, "noteId"), field(f, "offerId"), field(f, "admission"));
+    return "Taken: both legs settled.";
+  });
+}
+
+/** Staff cancel units from the Issuer's inventory (S-14). */
+export async function cancelInventoryAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    const n = Number(field(f, "units"));
+    await (await import("@/lib/notes/place")).cancelFromInventory(op, field(f, "noteId"), n);
+    return `Cancelled ${n} units; the note's total is reduced.`;
+  });
+}
+
+/** Anyone may release offers past their deadline; staff do it from the note's page. */
+export async function releaseExpiredAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async () => {
+    const n = await (await import("@/lib/notes/place")).releaseOpenOffers(field(f, "noteId"));
+    return n ? `Released ${n} offer${n === 1 ? "" : "s"}.` : "No offer is past its deadline.";
+  });
+}
+
+type WalletPlan = { txs?: Array<{ to: string; data: string; label: string }>; error?: string };
+
+/** The transactions a client's wallet sends to make an offer: arranged by its bank, or its own. */
+export async function prepareOfferAction(noteId: string, input: { arranged?: string; side?: string; units?: string; price?: string }, address: string): Promise<WalletPlan> {
+  const who = await currentRegistrant();
+  if (!who) return { error: "Sign in again." };
+  try {
+    return {
+      txs: await (await import("@/lib/notes/place")).offerTxsFor(
+        who,
+        noteId,
+        input.arranged
+          ? { arranged: input.arranged }
+          : { side: input.side === "buy" ? "buy" : "sell", units: Number(input.units), pricePerUnitCents: units(input.price ?? "", 2) },
+        address,
+      ),
+    };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+/** The transaction a client's wallet sends to withdraw its offer, or decline one named to it. */
+export async function prepareCancelAction(noteId: string, offerId: string, address: string): Promise<WalletPlan> {
+  const who = await currentRegistrant();
+  if (!who) return { error: "Sign in again." };
+  try {
+    return { txs: await (await import("@/lib/notes/place")).cancelTxFor(who, noteId, offerId, address) };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+/** After a client's wallet made or withdrew an offer: recorded, and the pages refreshed. */
+export async function walletActedAction(noteId: string, arranged: string, tx: string): Promise<{ status?: string; error?: string }> {
+  const who = await currentRegistrant();
+  if (!who) return { error: "Sign in again." };
+  try {
+    await (await import("@/lib/notes/place")).walletActed(who, noteId, tx, arranged || undefined);
+    return { status: "done" };
+  } catch (e) {
+    return { error: (e as Error).message };
+  } finally {
+    revalidatePath("/onboard", "layout");
+    revalidatePath("/operator", "layout");
+  }
 }
 
 /** The two transactions a client's wallet sends to accept an offer. */
@@ -503,7 +610,7 @@ export async function acceptanceDoneAction(noteId: string, tradeId: string, tx: 
   try {
     const place = await import("@/lib/notes/place");
     const p = await place.refreshPlacement(noteId, tradeId, tx);
-    if (p?.status === "settled") await getStore().audit({ at: new Date().toISOString(), actor: who.email, action: `accepted trade ${tradeId}: ${p.units} units settled`, subject: noteId });
+    if (p?.status === "settled") await getStore().audit({ at: new Date().toISOString(), actor: who.email, action: `accepted offer ${tradeId}: ${p.units} units settled`, subject: noteId });
     return { status: p?.status };
   } catch (e) {
     return { error: (e as Error).message };

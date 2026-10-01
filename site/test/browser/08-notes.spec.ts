@@ -1,6 +1,7 @@
 import { test, expect, expectHealthy, signedIn, PEOPLE } from "./fixtures.ts";
 
 test("staff issue a note; the page carries the issuance to the end, and the Ledger names its contracts", async ({ browser }) => {
+  test.setTimeout(180_000); // issuance alone is some seventeen transactions
   const staff = await signedIn(browser, PEOPLE.operator);
   await staff.goto("/operator/notes");
   const form = staff.locator("#notes + .panel form");
@@ -30,7 +31,7 @@ test("staff issue a note; the page carries the issuance to the end, and the Ledg
   await row.getByRole("link", { name: /Series 2/ }).click();
   await expect(staff).toHaveURL(/\/operator\/notes\/note_/);
   await staff.getByText("Contracts").click();
-  await expect(staff.locator("details")).toContainText("payingAgent:");
+  await expect(staff.locator("details").filter({ hasText: "Contracts" })).toContainText("payingAgent:");
 
   await staff.goto("/ledger");
   await expect(staff.getByText("EURWAN2 Paying Agent").first()).toBeVisible();

@@ -189,6 +189,9 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function propose(address seller, address buyer, uint64 units, uint256 price, uint48 deadline)", meaning: "Proposed a delivery-versus-payment trade", tone: "trade", args: ["account", "account", { amountIn: "note" }, { amountIn: "deposit" }, "time"] },
     { signature: "function accept(uint256 id)", meaning: "Accepted a trade: both legs settled together", tone: "trade", args: ["number"] },
     { signature: "function cancel(uint256 id)", meaning: "Cancelled a proposed trade", tone: "ops", args: ["number"] },
+    // The locked settlement of notes issued from ADR 0081 on: accept and cancel are the same calls.
+    { signature: "function offer(uint8 side, address counterparty, uint64 units, uint256 price, uint48 deadline)", meaning: "Offered to sell or to buy units, its side locked until it settles or ends", tone: "trade", args: ["number", "account", { amountIn: "note" }, { amountIn: "deposit" }, "time"] },
+    { signature: "function release(uint256 id)", meaning: "Released an offer's lock, past its deadline or with the note paused", tone: "ops", args: ["number"] },
   ],
   controller: [
     { signature: "function correctRegister(address from, address to, uint256 units, string reason)", meaning: "Tier 1: corrected the register to match the Register", tone: "control", args: ["account", "account", { amountIn: "note" }, "text"] },

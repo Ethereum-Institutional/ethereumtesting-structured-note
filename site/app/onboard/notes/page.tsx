@@ -1,38 +1,74 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { currentRegistrant } from "@/lib/access";
-import { getStore } from "@/lib/store";
+import { getStore, type DemoNote } from "@/lib/store";
 import { chainParams } from "@/lib/chains";
 import { loadManifest } from "@/lib/chain/manifest";
-import { holdingsOf, offersFor, type Placement } from "@/lib/notes/place";
+import { holdingsOf, lockedSettlement, offersFor, type Offer } from "@/lib/notes/place";
 import { paymentsTo } from "@/lib/notes/lifecycle";
-import { acceptanceDoneAction, prepareAcceptanceAction } from "../../actions";
+import { acceptanceDoneAction, prepareAcceptanceAction, prepareCancelAction, prepareOfferAction, walletActedAction } from "../../actions";
 import { accountOf, walletOf } from "../account";
-import { AcceptOffer } from "./AcceptOffer";
+import { WalletSteps } from "./WalletSteps";
+import { PostOffer } from "./PostOffer";
 import { AddToken } from "../AddToken";
 
 export const dynamic = "force-dynamic";
 
 const euros = (cents: string | bigint) => `€${(Number(cents) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
-const at = (iso: string) => iso.slice(0, 16).replace("T", " ");
+const at = (s: number) => new Date(s * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+const what = (o: Offer) => (o.kind === "placement" ? "Placement by the Issuer" : o.kind === "buy-back" ? "Buy-back by the Issuer" : "Transfer");
 
-/** The notes the bank offers the client, and those it holds (ADR 0075). */
+/** The notes offered to the client, its own offers and holdings, and what it was paid (ADRs 0075, 0078, 0081). */
 export default async function Notes() {
   const who = await currentRegistrant();
   if (!who) redirect("/");
   const { wallet, held } = await accountOf(who);
   const account = wallet ?? held;
   const chain = chainParams(loadManifest().chainId);
-  const [offers, holdings, mine, payments] = await Promise.all([
+  const [offers, holdings, payments, notes] = await Promise.all([
     offersFor(who),
     account ? holdingsOf(walletOf(account)).catch(() => []) : Promise.resolve([]),
-    getStore().admissionsFor(who.id),
     account ? paymentsTo(walletOf(account)).catch(() => []) : Promise.resolve([]),
+    getStore().listNotes(),
   ]);
-  const ids = new Set(mine.map((x) => x.id));
-  const settled = (await getStore().listNotes()).flatMap((note) =>
-    ((note.data.placements ?? []) as Placement[]).filter((p) => p.status !== "offered" && ids.has(p.admission)).map((p) => ({ note, p })),
-  );
+  const tradable = notes.filter((n) => n.status === "issued" && lockedSettlement(n));
+  const approved = Boolean((account?.data as Record<string, any> | undefined)?.regS);
+  const ownWallet = Boolean(wallet);
+
+  /** One offer, with what this client does about it. */
+  const OfferCard = ({ note, offer, act }: { note: DemoNote; offer: Offer; act: "take" | "withdraw" }) => {
+    const iBuy = offer.side === "sell"; // the proposer sells, so the taker buys
+    return (
+      <div className="offer">
+        <dl className="facts" style={{ margin: 0 }}>
+          <dt>Note</dt><dd>{note.name} ({note.symbol})</dd>
+          <dt>{act === "take" ? "You would" : "You offer to"}</dt>
+          <dd>{act === "take" ? (iBuy ? "buy" : "sell") : offer.side} {offer.units} unit{offer.units === 1 ? "" : "s"} for {euros(offer.priceCents)}, {euros(BigInt(offer.priceCents) / BigInt(offer.units))} a unit</dd>
+          <dt>From</dt><dd>{offer.kind === "transfer" ? (act === "take" ? "a client of the bank" : offer.counterparty ? "a client named by your bank" : "open to any approved client") : "the Issuer"}</dd>
+          <dt>Open until</dt><dd>{at(offer.deadline)}</dd>
+        </dl>
+        {ownWallet && act === "take" && (
+          <div className="actions">
+            <WalletSteps
+              label={offer.kind === "placement" ? "Accept with MetaMask" : iBuy ? "Buy with MetaMask" : "Sell with MetaMask"}
+              chain={chain}
+              prepare={prepareAcceptanceAction.bind(null, note.id, offer.id)}
+              done={acceptanceDoneAction.bind(null, note.id, offer.id)}
+              settledSays={iBuy ? "Settled: the units are in your wallet." : "Settled: the price is in your wallet."}
+            />
+            {offer.counterparty && (
+              <WalletSteps label="Decline" quiet chain={chain} prepare={prepareCancelAction.bind(null, note.id, offer.id)} done={walletActedAction.bind(null, note.id, "")} settledSays="Declined." />
+            )}
+          </div>
+        )}
+        {ownWallet && act === "withdraw" && (
+          <WalletSteps label="Withdraw with MetaMask" quiet chain={chain} prepare={prepareCancelAction.bind(null, note.id, offer.id)} done={walletActedAction.bind(null, note.id, "")} settledSays="Withdrawn: your lock is released." />
+        )}
+        {!ownWallet && <p className="muted" style={{ margin: 0 }}>Your bank acts on this for your custody account.</p>}
+      </div>
+    );
+  };
+
   return (
     <>
       <h2 id="notes">Notes</h2>
@@ -40,32 +76,59 @@ export default async function Notes() {
         <section className="panel"><p className="muted" style={{ margin: 0 }}>Onboard an account first, under <Link href="/onboard">Account</Link>.</p></section>
       )}
 
+      {account && offers.arranged.length > 0 && (
+        <section className="panel" aria-label="Arranged by your bank">
+          <h3 style={{ marginTop: 0 }}>Arranged by your bank</h3>
+          {offers.arranged.map(({ note, arranged }) => (
+            <div className="offer" key={arranged.ref}>
+              <p style={{ margin: 0 }}>
+                Sell {arranged.units} unit{arranged.units === 1 ? "" : "s"} of {note.symbol} for {euros(arranged.priceCents)}
+                {arranged.buyer ? " to a client of the bank" : ", open to any approved client"}. Your offer locks the units in your
+                wallet until it is taken or you withdraw it.
+              </p>
+              <WalletSteps
+                label="Offer with MetaMask"
+                chain={chain}
+                prepare={prepareOfferAction.bind(null, note.id, { arranged: arranged.ref })}
+                done={walletActedAction.bind(null, note.id, arranged.ref)}
+                settledSays="Offered: your units are locked until it is taken."
+              />
+            </div>
+          ))}
+        </section>
+      )}
+
       {account && (
         <section className="panel" aria-label="Offered to you">
           <h3 style={{ marginTop: 0 }}>Offered to you</h3>
-          {offers.length === 0 && (
-            <p className="muted" style={{ margin: 0 }}>
-              {(account.data as Record<string, any>).regS ? "No offer is open." : "Your bank approves you for its notes under Regulation S before offering them; no offer is open."}
-            </p>
+          {offers.toMe.length === 0 && (
+            <p className="muted" style={{ margin: 0 }}>{approved ? "No offer is open." : "Your bank approves you for its notes under Regulation S before offering them; no offer is open."}</p>
           )}
-          {offers.map(({ note, placement: p }) => {
-            const deadline = new Date(Date.parse(p.offeredAt) + 24 * 3600_000).toISOString();
-            return (
-              <div className="offer" key={`${note.id}/${p.id}`}>
-                <dl className="facts" style={{ margin: 0 }}>
-                  <dt>Note</dt><dd>{note.name} ({note.symbol})</dd>
-                  <dt>Units</dt><dd>{p.units}</dd>
-                  <dt>Price</dt><dd>{euros(p.priceCents)}, {euros(BigInt(p.priceCents) / BigInt(p.units))} a unit, paid in the deposit</dd>
-                  <dt>Open until</dt><dd>{at(deadline)} UTC</dd>
-                </dl>
-                <p className="muted" style={{ margin: 0 }}>
-                  Two transactions: an allowance of the price to the settlement contract, then the acceptance. The units and the
-                  price move together in the second, or neither does.
-                </p>
-                <AcceptOffer noteId={note.id} tradeId={p.id} chain={chain} prepare={prepareAcceptanceAction} done={acceptanceDoneAction} />
+          {offers.toMe.map(({ note, offer }) => <OfferCard key={`${note.id}/${offer.id}`} note={note} offer={offer} act="take" />)}
+        </section>
+      )}
+
+      {account && approved && (
+        <section className="panel" aria-label="Open offers">
+          <h3 style={{ marginTop: 0 }}>Open offers</h3>
+          <p className="muted">Offers any approved client may take, without their makers' names. The first to take one settles it.</p>
+          {offers.open.length === 0 && <p className="muted" style={{ margin: 0 }}>None is open.</p>}
+          {offers.open.map(({ note, offer }) => <OfferCard key={`${note.id}/${offer.id}`} note={note} offer={offer} act="take" />)}
+        </section>
+      )}
+
+      {account && ownWallet && approved && (
+        <section className="panel" aria-label="Your offers">
+          <h3 style={{ marginTop: 0 }}>Your offers</h3>
+          {offers.mine.map(({ note, offer }) => <OfferCard key={`${note.id}/${offer.id}`} note={note} offer={offer} act="withdraw" />)}
+          {tradable.map((n) => (
+            <details key={n.id} style={{ marginTop: "1rem" }}>
+              <summary>Make an offer on {n.symbol}…</summary>
+              <div style={{ marginTop: "0.75rem" }}>
+                <PostOffer noteId={n.id} symbol={n.symbol} chain={chain} prepare={prepareOfferAction.bind(null, n.id)} done={walletActedAction.bind(null, n.id, "")} />
               </div>
-            );
-          })}
+            </details>
+          ))}
         </section>
       )}
 
@@ -77,12 +140,13 @@ export default async function Notes() {
           ) : (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Note</th><th>Units</th><th /></tr></thead>
+                <thead><tr><th>Note</th><th>Units</th><th>Locked in offers</th><th /></tr></thead>
                 <tbody>
-                  {holdings.map(({ note, units }) => (
+                  {holdings.map(({ note, units, locked }) => (
                     <tr key={note.id}>
                       <td>{note.name} ({note.symbol})</td>
                       <td>{String(units)}</td>
+                      <td>{String(locked)}</td>
                       <td>{wallet && <AddToken chain={chain} asset={{ address: note.addresses.note, symbol: note.symbol, decimals: 0 }} />}</td>
                     </tr>
                   ))}
@@ -111,12 +175,12 @@ export default async function Notes() {
               </div>
             </>
           )}
-          {settled.length > 0 && (
+          {offers.done.length > 0 && (
             <details style={{ marginTop: "1rem" }}>
-              <summary className="muted">Earlier offers ({settled.length})</summary>
+              <summary className="muted">Earlier offers ({offers.done.length})</summary>
               <ul className="muted">
-                {settled.map(({ note, p }) => (
-                  <li key={`${note.id}/${p.id}`}>{at(p.offeredAt)}: {p.units} units of {note.symbol} for {euros(p.priceCents)}, {p.status}</li>
+                {offers.done.map(({ note, offer }) => (
+                  <li key={`${note.id}/${offer.id}`}>{what(offer)}: {offer.units} units of {note.symbol} for {euros(offer.priceCents)}, {offer.status}</li>
                 ))}
               </ul>
             </details>

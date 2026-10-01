@@ -165,10 +165,129 @@ test("S-08 for a custody account: the custodian accepts in the same action, and 
   await place.approveForNote(operator as any, id);
   const p = await place.placeUnits(operator as any, n.id, id, 1, 100_000n);
   assert.equal(p.status, "settled");
-  assert.ok(p.txs.accepted);
+  assert.ok(p.settledTx);
   assert.equal(await client.readContract({ address: n.addresses.note as Address, abi: BAL, functionName: "balanceOf", args: [account] }), 1n);
-  const recorded = ((await store.noteById(n.id))!.data.placements as any[]).map((x) => `${x.id}:${x.status}`);
-  assert.deepEqual(recorded.sort(), ["1:settled", "2:settled"]);
+  // The chain is the record: both placements, each settled.
+  const offers = (await place.offersOf((await store.noteById(n.id))!)).map((x) => `${x.id}:${x.kind}:${x.status}`);
+  assert.deepEqual(offers.sort(), ["1:placement:settled", "2:placement:settled"]);
+});
+
+// --- transfers, buy-backs and the inventory (ADR 0081; S-11 to S-14, S-16) ---
+
+const NOTE_VIEWS = parseAbi(["function balanceOf(address) view returns (uint256)", "function getFrozenTokens(address) view returns (uint256)", "function totalSupply() view returns (uint256)"]);
+const clientB = { ...operator, id: "reg_client_b", email: "treasury@second.example" };
+const walletC = createWalletClient({ account: privateKeyToAccount("0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba"), transport: http(RPC) });
+const walletB = createWalletClient({ account: privateKeyToAccount("0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a"), transport: http(RPC) });
+/** Sends a client wallet's prepared transactions, as MetaMask would, and returns the last. */
+async function send(wallet: typeof walletC, txs: Array<{ to: Address; data: `0x${string}`; label?: string }>) {
+  let last: `0x${string}` = "0x";
+  for (const t of txs) {
+    last = await wallet.sendTransaction({ to: t.to, data: t.data, chain: null });
+    const r = await client.waitForTransactionReceipt({ hash: last });
+    assert.equal(r.status, "success", `${t.label ?? "a transaction"} succeeded`);
+  }
+  await new Promise((r) => setTimeout(r, 1600)); // past the lagging RPC's window
+  return last;
+}
+const units = (n: { addresses: Record<string, string> }, a: Address) => client.readContract({ address: n.addresses.note as Address, abi: NOTE_VIEWS, functionName: "balanceOf", args: [a] });
+const locked = (n: { addresses: Record<string, string> }, a: Address) => client.readContract({ address: n.addresses.note as Address, abi: NOTE_VIEWS, functionName: "getFrozenTokens", args: [a] });
+
+test("S-11: transfers the bank arranges settle with each side acting as itself, locked until they do; S-12: a revoked buyer is refused", async () => {
+  const n = (await store.listNotes()).find((x) => x.observations === 6 && x.status === "issued")!;
+  const seg3 = LOCAL.custody.accounts["SEG-0003"] as Address;
+  const investorC = LOCAL.parties.investorC as Address;
+  const investorB = LOCAL.parties.investorB as Address;
+  await admitted("adm_test_b", "self-custody", investorB, clientB.id);
+  await credit(investorB, 1_000_000n);
+  await credit(seg3, 500_000n);
+
+  // A custody seller to a wallet: the custodian offers, the units locked in the account; the wallet buys in MetaMask.
+  const r1 = await place.arrangeTrade(operator as any, n.id, { seller: "adm_test_seg3", buyer: "adm_test_c", units: 1, pricePerUnitCents: 90_000n });
+  assert.equal(r1.offer?.status, "offered");
+  assert.equal(await locked(n, seg3), 1n, "locked in the seller's own account");
+  assert.equal((await place.offersFor(client3p as any)).toMe.length, 1, "shown to the buyer");
+  await send(walletC, await place.acceptanceFor(client3p as any, n.id, r1.offer!.id, investorC));
+  assert.equal((await place.refreshPlacement(n.id, r1.offer!.id, "0x"))?.status, "settled");
+  assert.equal(await units(n, investorC), 3n);
+  assert.equal(await units(n, seg3), 0n);
+  assert.equal(await locked(n, seg3), 0n);
+
+  // A wallet seller to a custody buyer: the custodian offers to buy, its price held; the wallet sells in MetaMask.
+  const r2 = await place.arrangeTrade(operator as any, n.id, { seller: "adm_test_c", buyer: "adm_test_seg3", units: 1, pricePerUnitCents: 95_000n });
+  assert.equal(r2.offer?.side, "buy");
+  await send(walletC, await place.acceptanceFor(client3p as any, n.id, r2.offer!.id, investorC));
+  assert.equal((await place.refreshPlacement(n.id, r2.offer!.id, "0x"))?.status, "settled");
+  assert.equal(await units(n, seg3), 1n);
+
+  // Two wallets: the arrangement waits for the seller's offer, which locks its units; the buyer accepts.
+  const r3 = await place.arrangeTrade(operator as any, n.id, { seller: "adm_test_c", buyer: "adm_test_b", units: 1, pricePerUnitCents: 100_000n });
+  assert.equal(r3.arranged?.status, "awaiting-seller");
+  assert.equal((await place.offersFor(client3p as any)).arranged.length, 1);
+  await assert.rejects(place.offerTxsFor(clientB as any, n.id, { arranged: r3.arranged!.ref }, investorB), /not open for this wallet/);
+  const tx = await send(walletC, await place.offerTxsFor(client3p as any, n.id, { arranged: r3.arranged!.ref }, investorC));
+  await place.walletActed(client3p as any, n.id, tx, r3.arranged!.ref);
+  assert.equal(await locked(n, investorC), 1n);
+  const toB = (await place.offersFor(clientB as any)).toMe;
+  assert.equal(toB.length, 1);
+  await send(walletB, await place.acceptanceFor(clientB as any, n.id, toB[0].offer.id, investorB));
+  assert.equal(await units(n, investorB), 1n);
+  assert.equal(await locked(n, investorC), 0n);
+
+  // S-12: a buyer whose grant is revoked is refused before anything is sent.
+  const [g, ref, commitment] = await Promise.all([
+    client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grantOf", args: [seg3] }),
+    client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "credentialRefOf", args: [seg3] }),
+    client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "commitmentOf", args: [seg3] }),
+  ]);
+  await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "revoke", args: [seg3], chain: null }) });
+  await new Promise((r) => setTimeout(r, 1600));
+  await assert.rejects(place.arrangeTrade(operator as any, n.id, { seller: "adm_test_c", buyer: "adm_test_seg3", units: 1, pricePerUnitCents: 100_000n }), /buyer's registry grant is revoked or has lapsed.*\(S-12\)/);
+  await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grant", args: [seg3, g.flags, g.jurisdiction, g.expiresAt, ref, commitment], chain: null }) });
+});
+
+test("open offers: a client offers to buy, another takes it; an offer to sell is locked until withdrawn", async () => {
+  const n = (await store.listNotes()).find((x) => x.observations === 6 && x.status === "issued")!;
+  const investorC = LOCAL.parties.investorC as Address;
+  const investorB = LOCAL.parties.investorB as Address;
+  const cashB = await client.readContract({ address: LOCAL.assets.deposit.address, abi: BAL, functionName: "balanceOf", args: [investorB] });
+  await send(walletB, await place.offerTxsFor(clientB as any, n.id, { side: "buy", units: 1, pricePerUnitCents: 98_000n }, investorB));
+  assert.equal(await client.readContract({ address: LOCAL.assets.deposit.address, abi: BAL, functionName: "balanceOf", args: [investorB] }), cashB - 98_000n, "the price is held");
+  const open = (await place.offersFor(client3p as any)).open;
+  assert.equal(open.length, 1, "shown to every approved client, without its maker");
+  assert.equal((await place.offersFor(clientB as any)).mine.length, 1);
+  await send(walletC, await place.acceptanceFor(client3p as any, n.id, open[0].offer.id, investorC));
+  assert.equal(await units(n, investorB), 2n);
+
+  // Investor B, now holding two, offers one to sell: locked in its wallet until it withdraws it.
+  await send(walletB, await place.offerTxsFor(clientB as any, n.id, { side: "sell", units: 1, pricePerUnitCents: 99_000n }, investorB));
+  assert.equal(await locked(n, investorB), 1n);
+  await assert.rejects(place.offerTxsFor(clientB as any, n.id, { side: "sell", units: 2, pricePerUnitCents: 99_000n }, investorB), /has 1 units not already offered, not 2/);
+  const mine = (await place.offersFor(clientB as any)).mine;
+  await send(walletB, await place.cancelTxFor(clientB as any, n.id, mine[0].offer.id, investorB));
+  assert.equal(await locked(n, investorB), 0n, "withdrawn, its lock released");
+  assert.equal((await place.refreshPlacement(n.id, mine[0].offer.id, "0x"))?.status, "cancelled");
+});
+
+test("S-13: the Issuer buys units back into its inventory; S-14: no more can be cancelled than the inventory holds, unoffered", async () => {
+  const n = (await store.listNotes()).find((x) => x.observations === 6 && x.status === "issued")!;
+  const investorC = LOCAL.parties.investorC as Address;
+  const issuer = LOCAL.parties.issuer as Address;
+  const inventory = await units(n, issuer);
+  const total = await client.readContract({ address: n.addresses.note as Address, abi: NOTE_VIEWS, functionName: "totalSupply" });
+
+  const investorB = LOCAL.parties.investorB as Address;
+  const b = await place.offerBuyback(operator as any, n.id, "adm_test_b", 1, 100_000n);
+  assert.equal(b.kind, "buy-back");
+  await send(walletB, await place.acceptanceFor(clientB as any, n.id, b.id, investorB));
+  assert.equal(await units(n, issuer), inventory + 1n, "back in the inventory, pending");
+
+  // An offer of the inventory locks those units: they cannot be cancelled meanwhile.
+  const offered = await place.placeUnits(operator as any, n.id, "adm_test_c", 1, 100_000n);
+  await assert.rejects(place.cancelFromInventory(operator as any, n.id, Number(inventory) + 1), /holds \d+ units not offered; \d+ cannot be cancelled \(S-14\)/);
+  await place.cancelOffer(operator as any, n.id, offered.id);
+  await place.cancelFromInventory(operator as any, n.id, 2);
+  await new Promise((r) => setTimeout(r, 1600));
+  assert.equal(await client.readContract({ address: n.addresses.note as Address, abi: NOTE_VIEWS, functionName: "totalSupply" }), total - 2n, "the note's total reduced");
 });
 
 // --- determinations, payments and closure (ADR 0078) ---
@@ -258,11 +377,20 @@ test("a four-date note through its life: each date determined from the scenario'
       continue;
     }
 
+    if (k === 2) {
+      // S-16: after the Record Time, before the payment, investor C sells its unit to the custody
+      // account. The coupon still goes to the holder of record; from date 4 the account holds three.
+      await credit(custody, 100_000n);
+      const t = await place.arrangeTrade(operator as any, n.id, { seller: "adm_test_c", buyer: "adm_test_seg3", units: 1, pricePerUnitCents: 100_000n });
+      await send(walletC, await place.acceptanceFor(client3p as any, n.id, t.offer!.id, investorC));
+      assert.equal(await units(n, investorC), 0n);
+    }
     const [c0, w0] = await Promise.all([deposit(custody), deposit(investorC)]);
     await life.payEvent(operator as any, n.id, k, kinds[0]);
     const perUnit = k < 3 ? 2_500n : 60_000n; // €25 coupons; €600 at maturity, one unit below the barrier
-    assert.equal(await deposit(custody), c0 + 2n * perUnit, `date ${k + 1}: the custody account's two units`);
-    assert.equal(await deposit(investorC), w0 + perUnit, `date ${k + 1}: investor C's unit`);
+    const [custodyUnits, cUnits] = k < 3 ? [2n, 1n] : [3n, 0n];
+    assert.equal(await deposit(custody), c0 + custodyUnits * perUnit, `date ${k + 1}: the custody account's ${custodyUnits} units of record`);
+    assert.equal(await deposit(investorC), w0 + cUnits * perUnit, `date ${k + 1}: investor C's ${cUnits} of record`);
     await assert.rejects(life.payEvent(operator as any, n.id, k, kinds[0]), /already paid/);
   }
 
@@ -273,7 +401,7 @@ test("a four-date note through its life: each date determined from the scenario'
   view = await life.lifecycleOf((await store.noteById(n.id))!);
   assert.equal(view.closed, true);
   const paid = await life.paymentsTo(custody);
-  assert.deepEqual(paid.filter((p) => p.note.id === n.id).map((p) => `${p.kind}:${p.amount}`), ["coupon:5000", "coupon:5000", "coupon:5000", "redemption:120000"]);
+  assert.deepEqual(paid.filter((p) => p.note.id === n.id).map((p) => `${p.kind}:${p.amount}`), ["coupon:5000", "coupon:5000", "coupon:5000", "redemption:180000"]);
 });
 
 test("an early redemption ends the note: the dates after it fall away", async () => {

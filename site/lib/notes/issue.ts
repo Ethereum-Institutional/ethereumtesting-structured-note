@@ -90,6 +90,9 @@ async function role(c: Ctx, name: "MINTER_ROLE" | "BURNER_ROLE" | "PAUSER_ROLE" 
   return c.s.publicClient.readContract({ address: c.m.assets.note!.address as Address, abi: ROLES, functionName: name });
 }
 
+/** The debt standard's role for partial freezes: a constant, the same on every note. */
+const ERC20ENFORCER_ROLE = keccak256(toBytes("ERC20ENFORCER_ROLE"));
+
 const tx = (key: string, hash: Hex) => (n: DemoNote) => ({ txs: { ...n.txs, [key]: hash } });
 
 /** The issuance, step by step, as IssueNote.s.sol and Lifecycle.sol do it. */
@@ -192,11 +195,19 @@ const STEPS: Step[] = [
     run: async (c) => tx("pauser", await c.s.send("issuer", { address: c.n.addresses.note, abi: ROLES, functionName: "grantRole", args: [await role(c, "PAUSER_ROLE"), c.n.addresses.payingAgent] }))(c.n),
   },
   {
-    label: "Deploy the DvP settlement contract",
+    label: "Deploy the settlement contract (offers locked until they settle)",
     run: async (c) => {
-      const { address, hash } = await c.s.deploy("issuer", { ...art("DvPSettlement"), args: [c.n.addresses.note, c.m.assets.deposit!.address] });
-      return { addresses: { ...c.n.addresses, settlement: address }, ...tx("settlement", hash)(c.n) };
+      const { address, hash } = await c.s.deploy("issuer", { ...art("LockedSettlement"), args: [c.n.addresses.note, c.m.assets.deposit!.address] });
+      return { addresses: { ...c.n.addresses, settlement: address }, data: { ...c.n.data, settlement: "locked" }, ...tx("settlement", hash)(c.n) };
     },
+  },
+  {
+    label: "Let the settlement contract lock the units of open offers",
+    run: async (c) => tx("enforcer", await c.s.send("issuer", { address: c.n.addresses.note, abi: ROLES, functionName: "grantRole", args: [ERC20ENFORCER_ROLE, c.n.addresses.settlement] }))(c.n),
+  },
+  {
+    label: "Let the Agent cancel units from the Issuer's inventory",
+    run: async (c) => tx("agentBurner", await c.s.send("issuer", { address: c.n.addresses.note, abi: ROLES, functionName: "grantRole", args: [await role(c, "BURNER_ROLE"), c.s.address("agent")] }))(c.n),
   },
   {
     label: "Onboard the Paying Agent for the cash leg",
@@ -212,7 +223,9 @@ const STEPS: Step[] = [
     run: async (c) => {
       const f = await flags(c);
       const until = Math.floor(Date.now() / 1000) + 300 * 86_400;
-      const h = await c.s.send("accessIssuer", { address: c.m.instruments!.registry, abi: REGISTRY, functionName: "grant", args: [c.n.addresses.settlement, f.settlement | f.sanctions | f.contract, 276, until, keccak256(toBytes(`${c.n.symbol}/settlement`)), `0x${"00".repeat(32)}`] });
+      // The settlement right for allowances, and the right to hold the deposit of an offer to buy;
+      // never the Regulation S flag the note requires, so it can never hold the note (ADR 0081).
+      const h = await c.s.send("accessIssuer", { address: c.m.instruments!.registry, abi: REGISTRY, functionName: "grant", args: [c.n.addresses.settlement, f.settlement | f.sanctions | f.contract | f.hold | f.receive | f.transfer, 276, until, keccak256(toBytes(`${c.n.symbol}/settlement`)), `0x${"00".repeat(32)}`] });
       return tx("onboardSettlement", h)(c.n);
     },
   },

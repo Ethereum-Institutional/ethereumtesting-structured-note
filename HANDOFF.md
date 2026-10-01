@@ -509,7 +509,14 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   - **Pay what is held**: for a holder the deposit could not credit.
 
   A redemption closes the note. Clients see what was paid to them on Onboard → Notes.
-  Next: buyback and transfers (part 4).
+- **Trading** (ADR 0081; S-11 to S-14, S-16). Notes issued from now on settle through
+  `LockedSettlement`: an offer to sell freezes the seller's units in its own wallet, an offer to buy
+  has the contract hold the price, and acceptance moves both legs or neither.
+  - On the note's page: Arrange a transfer (named, or open), Buy back units, Cancel units from the inventory, and an Offers table to withdraw, take for a custody account, or release.
+  - Clients' Notes pages show what is offered to them, open offers, their own offers (made and withdrawn in MetaMask), and units locked in offers.
+  - Series 2 keeps the old DvP contract: placed only.
+
+  Next: Tier 1 and Tier 2 governance, then Wave 6.
 - **ETH for fees** (ADR 0080). Operator → Keys lists every site key's ETH, with a Top up button
   (0.003 ETH from the best-funded key). Every transaction is refused before signing if its key
   cannot pay twice the estimated fees. A key below 0.001 ETH is warned about on every Operator

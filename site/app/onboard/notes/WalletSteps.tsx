@@ -5,25 +5,30 @@ import { useRouter } from "next/navigation";
 import type { ChainParams } from "@/lib/chains";
 import { confirmed, ensureWalletFees, onChain, walletError } from "../../wallet";
 
-type Tx = { to: string; data: string; label: string };
+type Plan = { txs?: Array<{ to: string; data: string; label: string }>; error?: string };
 
 /**
- * Accepts the Issuer's offer from the client's own wallet (ADR 0075): the site prepares the two
- * transactions for the connected address, the price's allowance and the acceptance; MetaMask
- * sends each; the units and the price move in the second, or neither does.
+ * Sends, from the client's own wallet, the transactions the site prepared for one act (ADR 0081):
+ * accepting or taking an offer, making one, or withdrawing it. The wallet is switched to the
+ * pool's chain and checked for its fees first; each transaction waits for its receipt.
  */
-export function AcceptOffer({
-  noteId,
-  tradeId,
+export function WalletSteps({
+  label,
   chain,
   prepare,
   done,
+  quiet,
+  input,
+  settledSays = "Done.",
 }: {
-  noteId: string;
-  tradeId: string;
+  label: string;
   chain: ChainParams;
-  prepare: (noteId: string, tradeId: string, address: string) => Promise<{ txs?: Tx[]; error?: string }>;
-  done: (noteId: string, tradeId: string, tx: string) => Promise<{ status?: string; error?: string }>;
+  prepare: (...args: any[]) => Promise<Plan>;
+  done: (tx: string) => Promise<{ status?: string; error?: string }>;
+  quiet?: boolean;
+  /** For a form: read when clicked, and passed to `prepare` before the address. */
+  input?: () => Record<string, string>;
+  settledSays?: string;
 }) {
   const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
@@ -33,14 +38,14 @@ export function AcceptOffer({
   async function run() {
     setError(null);
     const eth = (window as any).ethereum;
-    if (!eth) return setError("No browser wallet was found. Install MetaMask to accept from your own wallet.");
+    if (!eth) return setError("No browser wallet was found. Install MetaMask to act from your own wallet.");
     setBusy(true);
     try {
       setStatus("Asking your wallet for its address…");
       const [address] = await eth.request({ method: "eth_requestAccounts" });
-      setStatus("Preparing the acceptance…");
-      const plan = await prepare(noteId, tradeId, address);
-      if (plan.error || !plan.txs?.length) throw new Error(plan.error ?? "The acceptance could not be prepared.");
+      setStatus("Preparing…");
+      const plan = input ? await prepare(input(), address) : await prepare(address);
+      if (plan.error || !plan.txs?.length) throw new Error(plan.error ?? "Nothing was prepared.");
       setStatus("Asking your wallet to switch to the pool's network…");
       await onChain(eth, chain);
       setStatus("Checking your wallet holds ETH for the fees…");
@@ -52,14 +57,14 @@ export function AcceptOffer({
         setStatus(`Step ${i + 1} of ${plan.txs.length}: waiting for it to confirm…`);
         await confirmed(eth, last);
       }
-      setStatus("Confirming the settlement…");
-      const r = await done(noteId, tradeId, last);
+      setStatus("Recording…");
+      const r = await done(last);
       if (r.error) throw new Error(r.error);
-      setStatus(r.status === "settled" ? "Settled: the units are in your wallet." : "Sent; the settlement is not visible yet. This page updates shortly.");
+      setStatus(r.status === "offered" ? "Sent; not visible yet. This page updates shortly." : settledSays);
       router.refresh();
     } catch (e: any) {
       setStatus(null);
-      setError(walletError(e, chain, "The acceptance did not complete."));
+      setError(walletError(e, chain, "The wallet did not complete."));
     } finally {
       setBusy(false);
     }
@@ -68,7 +73,7 @@ export function AcceptOffer({
   return (
     <div className="stack">
       <div className="actions">
-        <button type="button" onClick={run} disabled={busy}>Accept with MetaMask</button>
+        <button type="button" className={quiet ? "quiet" : undefined} onClick={run} disabled={busy}>{label}</button>
         {status && <span role="status" className="muted">{status}</span>}
       </div>
       {error && <p role="alert" className="notice err">{error}</p>}
