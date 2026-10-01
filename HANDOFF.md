@@ -516,7 +516,13 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   - Clients' Notes pages show what is offered to them, open offers, their own offers (made and withdrawn in MetaMask), and units locked in offers.
   - Series 2 keeps the old DvP contract: placed only.
 
-  Next: Tier 1 and Tier 2 governance, then Wave 6.
+- **Governance** (ADR 0082; S-22, S-24 to S-26). Operator → Governance:
+  - **Tier 1:** register correction with its written reason, grant and pool-access withdrawal, and an S-26 demonstration that the Agent alone cannot force a transfer.
+  - **Tier 2:** proposals, each institution's approval, the delay, Execute and Cancel, all signed by site-held owner keys of each 2-of-3 governance wallet.
+  - The controller now has an execution window (one day on the PoC, seven days targeted); a queued proposal not executed within it expires (S-24).
+  - Base Sepolia still runs the earlier controller, without a window, until a fresh deployment.
+
+  Next: Wave 6.
 - **ETH for fees** (ADR 0080). Operator → Keys lists every site key's ETH, with a Top up button
   (0.003 ETH from the best-funded key). Every transaction is refused before signing if its key
   cannot pay twice the estimated fees. A key below 0.001 ETH is warned about on every Operator

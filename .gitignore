@@ -30,3 +30,6 @@ ops/addresses.*.json
 # verified presentations carry issuer and holder identifiers (ADR 0029); only the template is committed
 ops/attestations/*.json
 !ops/attestations/example.json
+
+# Generated documents, such as a PDF of the solution overview: shared by hand, never committed.
+docs/*.pdf

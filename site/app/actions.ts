@@ -672,3 +672,64 @@ export async function topUpAction(_prev: { ok?: string; error?: string }, f: For
     return `Sent ${formatEther(TOP_UP)} ETH.`;
   });
 }
+
+// --- governance (ADR 0082) ---
+
+export async function correctRegisterAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    const units = Number(field(f, "units"));
+    await (await import("@/lib/governance")).correctRegister(op, { from: field(f, "from") as `0x${string}`, to: field(f, "to") as `0x${string}`, units, reason: field(f, "reason") });
+    return `Corrected: ${units} unit${units === 1 ? "" : "s"} moved, the reason recorded on-chain.`;
+  });
+}
+
+export async function tier1WithdrawAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    const what = field(f, "what") === "pool" ? "pool" : "grant";
+    await (await import("@/lib/governance")).withdraw(op, { what, account: field(f, "account") as `0x${string}`, reason: field(f, "reason") });
+    return what === "grant" ? "Withdrawn: the registry grant is gone." : "Withdrawn: the account can no longer use the pool.";
+  });
+}
+
+export async function proposeAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    const g = await import("@/lib/governance");
+    const kind = field(f, "kind") as import("@/lib/governance").Kind;
+    const { id } = await g.propose(op, {
+      by: field(f, "by") as import("@/lib/governance").InstitutionKey,
+      kind,
+      reason: field(f, "reason"),
+      increase: field(f, "direction") !== "reduce",
+      units: Number(field(f, "units")),
+      days: Number(field(f, "days")),
+      account: (field(f, "account") || undefined) as `0x${string}` | undefined,
+      approved: field(f, "approved") !== "remove",
+    });
+    return `Proposed as proposal ${id}, with the proposer's approval.`;
+  });
+}
+
+export async function approveProposalAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    await (await import("@/lib/governance")).approve(op, Number(field(f, "id")), field(f, "by") as import("@/lib/governance").InstitutionKey);
+    return "Approved.";
+  });
+}
+
+export async function executeProposalAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    await (await import("@/lib/governance")).execute(op, Number(field(f, "id")));
+    return "Executed.";
+  });
+}
+
+export async function cancelProposalAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    await (await import("@/lib/governance")).cancel(op, Number(field(f, "id")));
+    return "Cancelled.";
+  });
+}
+
+export async function attemptForcedTransferAction(_prev: { ok?: string; error?: string }) {
+  return lifecycleStep(async (op) => (await import("@/lib/governance")).attemptAgentForcedTransfer(op));
+}

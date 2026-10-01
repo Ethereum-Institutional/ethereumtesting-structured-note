@@ -66,6 +66,9 @@ interface IGovernedCredentials {
  *   to at least `MIN_SIGNATURES` (ADR 0022), and can be executed after `TIER2_DELAY` (ADR 0023).
  *   Thresholds are checked again at execution. The reason is stored and emitted in full, because a
  *   notice that needs an off-chain lookup is not notice.
+ * - **Expiry** (S-24, ADR 0082). A queued proposal not executed within `EXECUTION_WINDOW` of
+ *   becoming ready expires: it can no longer be executed, approved or cancelled, and acting on it
+ *   again means proposing it afresh, with fresh approvals.
  * - **Recovery** (ADR 0019). Replacing an institution's wallet needs every other institution and
  *   the longer `RECOVERY_DELAY`, and the wallet being replaced can cancel it if it still works.
  * - **The venue** (ADR 0039). The controller owns the venue checker and the deposit's permissions
@@ -121,6 +124,8 @@ contract GovernanceController {
     uint256 public immutable MIN_SIGNATURES;
     uint48 public immutable TIER2_DELAY;
     uint48 public immutable RECOVERY_DELAY;
+    /// @notice How long a queued proposal stays executable once its delay has run (S-24).
+    uint48 public immutable EXECUTION_WINDOW;
 
     address[] private _institutions;
     mapping(address wallet => bool) public isInstitution;
@@ -160,6 +165,7 @@ contract GovernanceController {
     error InvalidArgument();
     error NotServicingWallet(address caller);
     error NoVenue();
+    error Expired(uint256 id, uint48 expiredAt);
 
     struct Config {
         address note;
@@ -173,6 +179,7 @@ contract GovernanceController {
         uint256 minSignatures;
         uint48 tier2Delay;
         uint48 recoveryDelay;
+        uint48 executionWindow;
         address checker;
         address adapter;
         address credentialGate;
@@ -181,6 +188,7 @@ contract GovernanceController {
     constructor(Config memory c) {
         if (c.tier2Delay == 0) revert InvalidConfiguration("Tier 2 delay is zero");
         if (c.recoveryDelay <= c.tier2Delay) revert InvalidConfiguration("recovery delay not longer than Tier 2");
+        if (c.executionWindow == 0) revert InvalidConfiguration("execution window is zero");
         if (c.minInstitutions < 2) revert InvalidConfiguration("fewer than two institutions required");
         if (c.institutions.length < c.minInstitutions) revert InvalidConfiguration("too few institutions");
         if (c.minSignatures < c.minInstitutions) revert InvalidConfiguration("fewer signatures than institutions");
@@ -201,6 +209,7 @@ contract GovernanceController {
         MIN_SIGNATURES = c.minSignatures;
         TIER2_DELAY = c.tier2Delay;
         RECOVERY_DELAY = c.recoveryDelay;
+        EXECUTION_WINDOW = c.executionWindow;
         agentGovernance = c.agentGovernance;
         servicingWallet = c.servicingWallet;
 
@@ -468,6 +477,12 @@ contract GovernanceController {
         return _proposals[id];
     }
 
+    /// @notice Whether a queued proposal's execution window has passed (S-24).
+    function expired(uint256 id) public view returns (bool) {
+        Proposal storage p = _proposals[id];
+        return p.readyAt != 0 && !p.executed && !p.cancelled && block.timestamp > uint256(p.readyAt) + EXECUTION_WINDOW;
+    }
+
     function institutions() external view returns (address[] memory) {
         return _institutions;
     }
@@ -500,6 +515,7 @@ contract GovernanceController {
         if (id == 0 || id > proposalCount) revert UnknownProposal(id);
         p = _proposals[id];
         if (p.executed || p.cancelled) revert NotOpen(id);
+        if (expired(id)) revert Expired(id, p.readyAt + EXECUTION_WINDOW);
     }
 
     /// @dev Counts approvals from current institutions only, so a replaced wallet's approval lapses.

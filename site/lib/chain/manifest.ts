@@ -74,6 +74,10 @@ export type Manifest = {
     servicingWallet: Address;
     tier2Delay: number;
     recoveryDelay: number;
+    /** A queued Tier 2 proposal's execution window (ADR 0082); absent for controllers deployed before it. */
+    executionWindow?: number;
+    targetTier2Delay?: number;
+    targetExecutionWindow?: number;
   };
 };
 

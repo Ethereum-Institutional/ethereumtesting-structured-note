@@ -15,6 +15,14 @@ export function OperatorNav({ custodyRequests = 0, lowKeys = 0 }: { custodyReque
     },
     { href: "/operator/admissions", label: "Admissions" },
     { href: "/operator/notes", label: "Notes" },
+    {
+      href: "/operator/governance/tier-1",
+      label: "Governance",
+      children: [
+        { href: "/operator/governance/tier-1", label: "Tier 1" },
+        { href: "/operator/governance/tier-2", label: "Tier 2" },
+      ],
+    },
     { href: "/operator/keys", label: "Keys", badge: lowKeys },
     { href: "/operator/audit", label: "Audit log" },
   ];

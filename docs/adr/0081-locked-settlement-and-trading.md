@@ -70,6 +70,9 @@ On the site:
 
 ## Consequences
 
+- An offer's deadline is 24 hours from the chain's clock, not the server's: the contract compares
+  against the chain's, and a chain's clock may differ from the server's.
+
 - Notes issued before this decision (Series 2 on Base Sepolia) keep `DvPSettlement`. They can be placed but not traded, and the page says so.
 - The note under review needs a Tier 2 approval to reduce its total. Notes issued here use the Agent's burner role, granted at issuance.
 - A buy offer whose proposer later loses its grant cannot be refunded until the grant is live again. Cancel and release revert meanwhile.

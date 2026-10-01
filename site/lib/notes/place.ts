@@ -292,7 +292,10 @@ async function unlockedUnits(s: Signers, n: DemoNote, account: Address, atLeast 
   return held - frozen;
 }
 
-const deadline = () => Math.floor(Date.now() / 1000) + OFFER_HOURS * 3600;
+/** An offer's deadline, from the chain's clock, which is the one the contract compares against. */
+async function deadlineOf(s: Signers): Promise<number> {
+  return Number((await s.publicClient.getBlock()).timestamp) + OFFER_HOURS * 3600;
+}
 
 type Call = { target: Address; data: Hex };
 /** Calls a custody account makes through the custodian, in one transaction. */
@@ -301,9 +304,9 @@ function asCustody(s: Signers, account: Address, calls: Call[]): Promise<Hex> {
 }
 const approveUnits = (n: DemoNote, units: number): Call => ({ target: n.addresses.note as Address, data: encodeFunctionData({ abi: NOTE, functionName: "approve", args: [n.addresses.settlement as Address, BigInt(units)] }) });
 const approveCash = (deposit: Address, n: DemoNote, cents: bigint): Call => ({ target: deposit, data: encodeFunctionData({ abi: DEPOSIT, functionName: "approve", args: [n.addresses.settlement as Address, cents] }) });
-const offerCall = (n: DemoNote, side: number, counterparty: Address | null, units: number, cents: bigint): Call => ({
+const offerCall = (n: DemoNote, side: number, counterparty: Address | null, units: number, cents: bigint, until: number): Call => ({
   target: n.addresses.settlement as Address,
-  data: encodeFunctionData({ abi: SETTLEMENT, functionName: "offer", args: [side, counterparty ?? ZERO, BigInt(units), cents, deadline()] }),
+  data: encodeFunctionData({ abi: SETTLEMENT, functionName: "offer", args: [side, counterparty ?? ZERO, BigInt(units), cents, until] }),
 });
 const acceptCall = (n: DemoNote, id: string): Call => ({ target: n.addresses.settlement as Address, data: encodeFunctionData({ abi: SETTLEMENT, functionName: "accept", args: [BigInt(id)] }) });
 const cancelCall = (n: DemoNote, id: string): Call => ({ target: n.addresses.settlement as Address, data: encodeFunctionData({ abi: SETTLEMENT, functionName: "cancel", args: [BigInt(id)] }) });
@@ -343,7 +346,7 @@ export async function placeUnits(staff: Registrant, noteId: string, admissionId:
 
   await s.send("issuer", { address: n.addresses.note as Address, abi: NOTE, functionName: "approve", args: [n.addresses.settlement as Address, BigInt(units)] });
   await allowed(s, n.addresses.note as Address, issuer, n, BigInt(units));
-  const offered = await s.send("issuer", { address: n.addresses.settlement as Address, abi: SETTLEMENT, functionName: "offer", args: [SELL, buyer, BigInt(units), price, deadline()] });
+  const offered = await s.send("issuer", { address: n.addresses.settlement as Address, abi: SETTLEMENT, functionName: "offer", args: [SELL, buyer, BigInt(units), price, await deadlineOf(s)] });
   const id = await offerIdFrom(s, offered);
   await waitForState(s, n, id, "offered");
   await audit(staff.email, n, `offered ${units} units of ${n.symbol} to ${buyer} for ${euros(price)}, offer ${id}`);
@@ -380,7 +383,7 @@ export async function offerBuyback(staff: Registrant, noteId: string, admissionI
 
   await s.send("issuer", { address: deposit, abi: DEPOSIT, functionName: "approve", args: [n.addresses.settlement as Address, price] });
   await allowed(s, deposit, issuer, n, price);
-  const offered = await s.send("issuer", { address: n.addresses.settlement as Address, abi: SETTLEMENT, functionName: "offer", args: [BUY, holder, BigInt(units), price, deadline()] });
+  const offered = await s.send("issuer", { address: n.addresses.settlement as Address, abi: SETTLEMENT, functionName: "offer", args: [BUY, holder, BigInt(units), price, await deadlineOf(s)] });
   const id = await offerIdFrom(s, offered);
   await waitForState(s, n, id, "offered");
   await audit(staff.email, n, `offered to buy back ${units} units of ${n.symbol} from ${holder} for ${euros(price)}, offer ${id}`);
@@ -452,7 +455,7 @@ export async function arrangeTrade(
 
   if (seller.route === "custodied") {
     // The custodian offers for the seller, its units locked; a custody buyer accepts at once.
-    const id = await offerIdFrom(s, await asCustody(s, from, [approveUnits(n, input.units), offerCall(n, SELL, to, input.units, price)]));
+    const id = await offerIdFrom(s, await asCustody(s, from, [approveUnits(n, input.units), offerCall(n, SELL, to, input.units, price, await deadlineOf(s))]));
     await waitForState(s, n, id, "offered");
     await audit(staff.email, n, `arranged a sale of ${input.units} units of ${n.symbol} from ${from} ${to ? `to ${to}` : "as an open offer"} for ${euros(price)}, offer ${id}`);
     if (buyer?.route === "custodied") {
@@ -463,7 +466,7 @@ export async function arrangeTrade(
   }
   if (buyer?.route === "custodied") {
     // The custodian offers to buy for the buyer, its price held; the seller's wallet accepts.
-    const id = await offerIdFrom(s, await asCustody(s, to!, [approveCash(deposit, n, price), offerCall(n, BUY, from, input.units, price)]));
+    const id = await offerIdFrom(s, await asCustody(s, to!, [approveCash(deposit, n, price), offerCall(n, BUY, from, input.units, price, await deadlineOf(s))]));
     await waitForState(s, n, id, "offered");
     await audit(staff.email, n, `arranged a purchase of ${input.units} units of ${n.symbol} by ${to} from ${from} for ${euros(price)}, offer ${id}`);
     return { offer: await offerById(n, id) };
@@ -639,7 +642,7 @@ export async function offerTxsFor(
     if (available < BigInt(units)) throw new Error(`The wallet has ${available} units not already offered, not ${units}.`);
     if (counterparty) await noteWouldMove(s, n, wallet, counterparty, units);
     const a = approveUnits(n, units);
-    const o = offerCall(n, SELL, counterparty, units, price);
+    const o = offerCall(n, SELL, counterparty, units, price, await deadlineOf(s));
     return [
       { to: a.target, data: a.data, label: "Allow the settlement contract the units" },
       { to: o.target, data: o.data, label: `Offer ${units} units of ${n.symbol} for ${euros(price)}, locked until taken or withdrawn` },
@@ -649,7 +652,7 @@ export async function offerTxsFor(
   const held = await s.publicClient.readContract({ address: deposit, abi: DEPOSIT, functionName: "balanceOf", args: [wallet] });
   if (held < price) throw new Error(`The wallet holds ${euros(held)} of the deposit; the offer needs ${euros(price)}. Ask your bank to credit the deposit.`);
   const a = approveCash(deposit, n, price);
-  const o = offerCall(n, BUY, null, units, price);
+  const o = offerCall(n, BUY, null, units, price, await deadlineOf(s));
   return [
     { to: a.target, data: a.data, label: "Allow the settlement contract the price" },
     { to: o.target, data: o.data, label: `Offer to buy ${units} units of ${n.symbol} for ${euros(price)}, held until taken or withdrawn` },

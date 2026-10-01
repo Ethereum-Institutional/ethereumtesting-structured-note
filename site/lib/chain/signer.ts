@@ -30,13 +30,19 @@ export const CAPACITY_LABEL: Record<string, string> = {
   calculationAgent: "Calculation Agent",
   servicing1: "Servicing wallet owner 1",
   servicing2: "Servicing wallet owner 2",
+  agentGov1: "Agent governance owner 1",
+  agentGov2: "Agent governance owner 2",
+  issuerGov1: "Issuer governance owner 1",
+  issuerGov2: "Issuer governance owner 2",
+  cosigner1: "Co-signer owner 1",
+  cosigner2: "Co-signer owner 2",
   investorA: "Investor A",
   investorB: "Investor B",
   investorC: "Investor C",
   investorD: "Investor D",
 };
 /** Capacities that only sign, and send nothing themselves: they need no ETH. */
-export const SIGNS_ONLY = new Set(["servicing1", "servicing2"]);
+export const SIGNS_ONLY = new Set(["servicing1", "servicing2", "agentGov1", "agentGov2", "issuerGov1", "issuerGov2", "cosigner1", "cosigner2"]);
 
 /** Below this a key is low, and every Operator page says so (ADR 0080). */
 export const feeBuffer = (env: NodeJS.ProcessEnv = process.env) => parseEther(env.FEE_BUFFER_ETH?.trim() || "0.001");
@@ -76,6 +82,14 @@ const LOCAL_KEYS: Record<string, Hex> = {
   // Two of the three owners of the Agent's servicing wallet: mnemonic indices 19 and 20 (Ceremony).
   servicing1: "0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e",
   servicing2: "0xeaa861a9a01391ed3d587d8a5a84ca56ee277629a8b02c22093a419bf240e65d",
+  // Two of the three owners of each institution's governance wallet (ADR 0082): the Agent's
+  // (indices 10, 11), the Issuer's (13, 14) and the co-signing institution's (16, 17).
+  agentGov1: "0xf214f2b2cd398c806f84e317254e0f0b801d0643303237d97a22a48e01628897",
+  agentGov2: "0x701b615bbdfb9de65240bc28bd21bbc0d996645a3dd57e7b12bc2bdf6f192c82",
+  issuerGov1: "0x47c99abed3324a2707c28affff1267e45918ec8c3f20b8aa892e8b065d2942dd",
+  issuerGov2: "0xc526ee95bf44d8fc405a158bb884d9d1238d99f0612e9f33d006bb0789009aaa",
+  cosigner1: "0xea6c44ac03bff858b476bba40716402b03e41b8e97e276d1baec7c37d42484a0",
+  cosigner2: "0x689af8efa8c651a91ad287602527f3af2fe9f6501a7ac4b061667b5a93e037fd",
 };
 
 export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = process.env) {

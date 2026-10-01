@@ -18,7 +18,17 @@ set -a; source "$KEYS"; set +a
 # Two owners of the Agent's 2-of-3 servicing wallet, which pays (ADR 0072): mnemonic indices 19 and 20 (Ceremony).
 export SERVICING1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 19)"
 export SERVICING2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 20)"
+# Two owners of each institution's 2-of-3 governance wallet (ADR 0082): the Agent's (10, 11), the
+# Issuer's (13, 14) and the co-signing institution's (16, 17).
+export AGENT_GOV1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 10)"
+export AGENT_GOV2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 11)"
+export ISSUER_GOV1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 13)"
+export ISSUER_GOV2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 14)"
+export COSIGNER1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 16)"
+export COSIGNER2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 17)"
 export MANIFEST NETWORK
+# The CLI's saved login expires after some hours; any CLI command renews it before it is read.
+npx --yes vercel whoami >/dev/null 2>&1 || { echo "Vercel CLI login failed: run 'npx vercel login'" >&2; exit 1; }
 export VERCEL_TOKEN="$(python3 -c "import json;print(json.load(open('$AUTH'))['token'])")"
 
 python3 - "$PROJECT" "$TEAM" <<'PY'
@@ -35,6 +45,9 @@ env = {
         # The demonstration notes' roles (ADR 0072).
         "issuer": os.environ["ISSUER_PK"], "agent": os.environ["AGENT_PK"], "calculationAgent": os.environ["CALCULATION_AGENT_PK"],
         "servicing1": os.environ["SERVICING1_PK"], "servicing2": os.environ["SERVICING2_PK"],
+        "agentGov1": os.environ["AGENT_GOV1_PK"], "agentGov2": os.environ["AGENT_GOV2_PK"],
+        "issuerGov1": os.environ["ISSUER_GOV1_PK"], "issuerGov2": os.environ["ISSUER_GOV2_PK"],
+        "cosigner1": os.environ["COSIGNER1_PK"], "cosigner2": os.environ["COSIGNER2_PK"],
     }),
     "ADMISSION_ISSUER_DID": net["credentialProtocol"]["issuerDid"],
     "ADMISSION_ISSUER_PUBKEY": bank_key["mlDsaPubkey"],

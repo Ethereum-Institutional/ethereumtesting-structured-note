@@ -172,3 +172,10 @@ export async function reconcile(): Promise<RegisterRow[]> {
   const rank = (r: RegisterRow) => (r.finding ? 0 : r.site ? 1 : 2);
   return rows.sort((x, y) => rank(x) - rank(y) || x.account.localeCompare(y.account));
 }
+
+/** The Ledger's client and the deployment's first block, for other long reads of the chain. */
+export async function ledgerFrom(): Promise<{ client: PublicClient; from: bigint }> {
+  const m = loadManifest();
+  const c = client(m);
+  return { client: c, from: await deploymentBlock(c, m) };
+}

@@ -12,3 +12,5 @@
 **/node_modules
 **/.next
 site/.data
+# Generated documents are not uploaded either.
+docs/*.pdf

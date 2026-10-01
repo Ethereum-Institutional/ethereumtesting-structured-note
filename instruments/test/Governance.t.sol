@@ -42,6 +42,7 @@ contract GovernanceTest is Test {
     uint256 constant T0 = 1_790_000_000;
     uint48 constant TIER2 = 72 hours;
     uint48 constant RECOVERY = 14 days;
+    uint48 constant WINDOW = 7 days;
     uint256[] initial;
     uint32 holder;
 
@@ -92,6 +93,7 @@ contract GovernanceTest is Test {
                 4,
                 TIER2,
                 RECOVERY,
+                WINDOW,
                 Governance.Venue(address(checker), address(adapter), address(gate))
             )
         );
@@ -151,6 +153,7 @@ contract GovernanceTest is Test {
             4,
             0,
             RECOVERY,
+            WINDOW,
             address(0),
             address(0),
             address(0)
@@ -277,6 +280,36 @@ contract GovernanceTest is Test {
         assertEq(d.note.balanceOf(inventory), 25, "tranched up into inventory");
         vm.expectRevert(abi.encodeWithSelector(GovernanceController.NotOpen.selector, id));
         g.execute(id);
+    }
+
+    /// S-24: a queued proposal left unexecuted past its window expires, and nothing more can be done with it.
+    function test_queuedProposalExpiresPastItsWindow() public {
+        uint256 id = _proposeAmend(agentGov, 5);
+        _approve(cosigner, id);
+        uint48 readyAt = g.proposal(id).readyAt;
+        vm.warp(uint256(readyAt) + WINDOW);
+        assertFalse(g.expired(id), "executable to the last second of its window");
+        vm.warp(uint256(readyAt) + WINDOW + 1);
+        assertTrue(g.expired(id));
+        vm.expectRevert(abi.encodeWithSelector(GovernanceController.Expired.selector, id, readyAt + WINDOW));
+        g.execute(id);
+        vm.expectRevert(abi.encodeWithSelector(GovernanceController.Expired.selector, id, readyAt + WINDOW));
+        _approve(issuerGov, id);
+        vm.expectRevert(abi.encodeWithSelector(GovernanceController.Expired.selector, id, readyAt + WINDOW));
+        _via(agentGov, abi.encodeCall(GovernanceController.cancel, (id)));
+        assertEq(d.note.balanceOf(inventory), 20, "nothing was minted");
+        // Proposed afresh, it needs fresh approvals and a fresh delay.
+        uint256 again = _proposeAmend(agentGov, 5);
+        assertEq(g.proposal(again).readyAt, 0);
+    }
+
+    /// An execution window of zero is refused.
+    function test_executionWindowMustBeSet() public {
+        address[] memory inst = g.institutions();
+        vm.expectRevert(abi.encodeWithSelector(GovernanceController.InvalidConfiguration.selector, "execution window is zero"));
+        new GovernanceController(
+            GovernanceController.Config(address(d.note), address(d.deposit), address(d.registry), address(l.payingAgent), inst, address(agentGov), address(servicing), 2, 4, TIER2, RECOVERY, 0, address(0), address(0), address(0))
+        );
     }
 
     /// Thresholds are checked again at execution.
@@ -558,6 +591,7 @@ contract GovernanceTest is Test {
                 4,
                 TIER2,
                 RECOVERY,
+                WINDOW,
                 address(0),
                 address(0),
                 address(0)

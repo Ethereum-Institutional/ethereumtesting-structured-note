@@ -46,6 +46,7 @@ library Governance {
         uint256 minSignatures;
         uint48 tier2Delay;
         uint48 recoveryDelay;
+        uint48 executionWindow;
         Venue venue;
     }
 
@@ -76,6 +77,7 @@ library Governance {
                 minSignatures: c.minSignatures,
                 tier2Delay: c.tier2Delay,
                 recoveryDelay: c.recoveryDelay,
+                executionWindow: c.executionWindow,
                 checker: c.venue.checker,
                 adapter: c.venue.adapter,
                 credentialGate: c.venue.credentialGate
