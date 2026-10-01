@@ -330,7 +330,7 @@ export async function advanceAdmission(id: string): Promise<Advance> {
 }
 
 async function notifyOperators(id: string, origin: string) {
-  await Promise.allSettled(emailList(process.env.OPERATOR_EMAILS).map((to) => sendMail(to, "Pool admission awaiting approval", `Review: ${origin}/operator#admissions\n\nAdmission ${id}\n`)));
+  await Promise.allSettled(emailList(process.env.OPERATOR_EMAILS).map((to) => sendMail(to, "Pool admission awaiting approval", `Review: ${origin}/operator/admissions\n\nAdmission ${id}\n`)));
 }
 
 function extract(body: unknown): Presentation | null {

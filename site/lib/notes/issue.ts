@@ -7,22 +7,22 @@ import { getStore, type DemoNote, type Registrant } from "../store.ts";
 import { isOperator } from "../operators.ts";
 import artifacts from "./artifacts.json" with { type: "json" };
 import scenarios from "./scenarios.json" with { type: "json" };
+import { calendar as calendarOf, calendarProblem, stretch, type Interval } from "./calendar.ts";
 
 /**
- * Issuing a demonstration note (ADR 0072): the same contracts as the note under review, with its
+ * Issuing a note (ADRs 0072, 0073): the same contracts as the note under review, with its
  * own gate and lifecycle contracts, a scenario's terms, and a calendar staff choose at issuance.
  * Issuance is a sequence of single transactions, each recorded as it lands, so the page that
  * starts it can follow it to the end and a failed step can be run again.
  *
- * The note's implementation is not deployed again: the proxy points at the live note's, so a
- * demonstration note runs the very code under review. Roles follow the issuance script: the Issuer
+ * The note's implementation is not deployed again: the proxy points at the live note's, so the
+ * note runs the very code under review. Roles follow the issuance script: the Issuer
  * is admin and holds the inventory, the Agent mints and funds, the Calculation Agent determines,
  * and the Agent's servicing wallet pays.
  */
 
 export type Scenario = (typeof scenarios)[number];
 export const SCENARIOS: Scenario[] = scenarios;
-export const SPACINGS = [5, 10, 30] as const;
 
 const EIP1967_IMPLEMENTATION = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 const ROLES = parseAbi([
@@ -65,14 +65,9 @@ function context() {
 
 const art = (name: keyof typeof artifacts) => ({ abi: artifacts[name].abi as readonly unknown[], bytecode: artifacts[name].bytecode as Hex });
 
-/** The calendar from the moment the terms are fixed: four observations, `spacing` minutes apart. */
-export function calendarFrom(startSec: number, spacingMinutes: number) {
-  const gap = spacingMinutes * 60;
-  return [1, 2, 3, 4].map((k) => {
-    const date = startSec + k * gap;
-    return { date, recordTime: date + Math.floor(gap / 5), paymentDate: date + Math.floor((2 * gap) / 5) };
-  });
-}
+/** The note's observations and the time between them; notes issued before ADR 0073 had four, minutes apart. */
+const shapeOf = (n: DemoNote): { observations: number; interval: Interval } =>
+  n.interval && n.observations ? { observations: n.observations, interval: n.interval } : { observations: 4, interval: { value: n.spacingMinutes ?? 10, unit: "minutes" } };
 
 type Ctx = ReturnType<typeof context> & { n: DemoNote; scenario: Scenario };
 type Step = { label: string; run: (c: Ctx) => Promise<Partial<DemoNote> | void> };
@@ -139,7 +134,9 @@ const STEPS: Step[] = [
     label: "Fix the terms and the calendar (Determination Agent)",
     run: async (c) => {
       const block = await c.s.publicClient.getBlock();
-      const calendar = calendarFrom(Number(block.timestamp), c.n.spacingMinutes);
+      const shape = shapeOf(c.n);
+      const calendar = calendarOf(Number(block.timestamp), shape.observations, shape.interval);
+      const stretched = stretch(c.scenario, shape.observations);
       const t = c.scenario.terms;
       const terms = {
         initialLevels: t.initialLevels.map(BigInt),
@@ -149,7 +146,7 @@ const STEPS: Step[] = [
         memory_: t.memory,
         barrierBps: t.barrierBps,
         twinWin: t.twinWin,
-        schedule: t.schedule.map((o, k) => ({ date: calendar[k].date, recordTime: calendar[k].recordTime, paymentDate: calendar[k].paymentDate, coupon: o.coupon, mer: o.mer, barrier: o.barrier, isFinal: o.isFinal, merTriggerBps: o.merTriggerBps })),
+        schedule: stretched.schedule.map((o, k) => ({ date: calendar[k].date, recordTime: calendar[k].recordTime, paymentDate: calendar[k].paymentDate, coupon: o.coupon, mer: o.mer, barrier: o.barrier, isFinal: o.isFinal, merTriggerBps: o.merTriggerBps })),
       };
       const { address, hash } = await c.s.deploy("issuer", { ...art("DeterminationAgent"), args: [terms, c.s.address("calculationAgent")] });
       return { calendar, addresses: { ...c.n.addresses, determinations: address }, ...tx("determinations", hash)(c.n) };
@@ -240,12 +237,13 @@ const STEPS: Step[] = [
 
 export const ISSUANCE_STEPS = STEPS.map((s) => s.label);
 
-/** Starts a demonstration note; the first step runs at once, the rest as the page asks. */
-export async function startDemoNote(staff: Registrant, input: { scenario: string; spacingMinutes: number; units: number }): Promise<DemoNote> {
+/** Starts a note; the first step runs at once, the rest as the page asks. */
+export async function startNote(staff: Registrant, input: { scenario: string; observations: number; interval: Interval; units: number }): Promise<DemoNote> {
   if (!isOperator(staff.email)) throw new Error("Not permitted.");
   const scenario = SCENARIOS.find((s) => s.name === input.scenario);
   if (!scenario) throw new Error("Choose a scenario.");
-  if (!(SPACINGS as readonly number[]).includes(input.spacingMinutes)) throw new Error("Choose a spacing.");
+  const problem = calendarProblem(input.observations, input.interval);
+  if (problem) throw new Error(problem);
   if (!Number.isInteger(input.units) || input.units < 1 || input.units > 100) throw new Error("Issue between 1 and 100 units.");
   const store = getStore();
   const m: Manifest = loadManifest();
@@ -257,7 +255,8 @@ export async function startDemoNote(staff: Registrant, input: { scenario: string
     name: `${live.name}, Series ${series}`,
     symbol: `${live.symbol}${series}`,
     scenario: scenario.name,
-    spacingMinutes: input.spacingMinutes,
+    observations: input.observations,
+    interval: input.interval,
     units: input.units,
     status: "issuing",
     step: 0,
@@ -268,7 +267,7 @@ export async function startDemoNote(staff: Registrant, input: { scenario: string
     data: {},
   };
   await store.putNote(n);
-  await store.audit({ at: now(), actor: staff.email, action: `started issuing ${n.name} (${n.symbol}), scenario ${scenario.name}, ${n.units} units, every ${n.spacingMinutes} minutes`, subject: n.id });
+  await store.audit({ at: now(), actor: staff.email, action: `started issuing ${n.name} (${n.symbol}), scenario ${scenario.name}, ${n.units} units, ${input.observations} observations every ${input.interval.value} ${input.interval.unit}`, subject: n.id });
   return n;
 }
 

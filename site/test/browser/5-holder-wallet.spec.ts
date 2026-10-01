@@ -15,7 +15,7 @@ test("holder wallet: the officer scans once, the officer's wallet signs in MetaM
   await expect(client.getByText("Received. Awaiting the bank's approval.")).toBeVisible({ timeout: 30_000 });
 
   const staff = await signedIn(browser, PEOPLE.operator);
-  await staff.goto("/operator");
+  await staff.goto("/operator/admissions");
   const row = staff.locator("#admissions + .table-wrap tbody tr").filter({ hasText: wallet });
   await row.getByRole("button", { name: "Approve and write grants" }).click();
   await expect(row.locator(".pill")).toHaveText("admitted", { timeout: 60_000 });

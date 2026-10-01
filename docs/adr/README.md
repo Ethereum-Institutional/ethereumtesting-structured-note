@@ -80,3 +80,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0070](0070-convert-in-the-pool.md) | Converting in the pool: both kinds of wallet, one-time approvals, faucets plus a bank credit, and a 0.5% limit | Accepted |
 | [0071](0071-the-ledger.md) | The Ledger: the lifecycle from the chain alone, through Alchemy, with a register reconciliation for staff | Accepted |
 | [0072](0072-demonstration-notes.md) | Demonstration notes: a second note on the same code, a calendar chosen at issuance, scenario levels, site-held test keys, and Reg S approval per client | Accepted |
+| [0073](0073-operator-console-and-note-calendars.md) | The Operator console in sections, "notes" without qualification, and a calendar configured by observations and interval | Accepted |

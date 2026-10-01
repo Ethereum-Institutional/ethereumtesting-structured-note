@@ -492,6 +492,11 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   MetaMask supplies the address, is switched to the pool's chain or has it added, and signs the
   bank's message. This applies on route 2, and on route 3 after the officer's scan, where the bank
   issues the wallet credential to the officer. The older ways remain, folded away.
+- **Notes** (ADRs 0072, 0073). Staff issue a note on the live note's implementation from
+  `/operator/notes`. They choose a scenario from the payoff model, the number of observations and
+  the time between them; the page previews the calendar and drives the 17 issuance steps. The
+  Operator console now has a navigation column and a page per section. Next: approving clients
+  for the note (Reg S) and placing by DvP, then determinations, payments and closure.
 - **Ledger** (ADR 0071; S-35, S-36). `/ledger` shows every approved user the lifecycle decoded
   from the chain, read through Alchemy (`LEDGER_RPC_URL`). Staff also see the register
   reconciliation. The tests check that every call is recognised, and scan every transaction and

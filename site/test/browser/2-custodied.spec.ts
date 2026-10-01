@@ -5,6 +5,9 @@ const LEGAL_NAME = "Browser Test Institution SA";
 test("staff add a corporate client once, warned before a jurisdiction the pool refuses; the bank issues it", async ({ browser }) => {
   const page = await signedIn(browser, PEOPLE.operator);
   await page.goto("/operator");
+  // The navigation column leads to each part of the console (ADR 0073).
+  await page.getByRole("navigation", { name: "Operator" }).getByRole("link", { name: "Clients" }).click();
+  await expect(page).toHaveURL(/\/operator\/clients$/);
   // The bank's own client, issued elsewhere, is listed to be re-issued here (ADR 0066).
   await expect(page.getByText("Issued outside this site")).toBeVisible();
   const form = page.locator("form").filter({ has: page.getByLabel("Registration number") });
@@ -32,7 +35,7 @@ test("staff add a corporate client once, warned before a jurisdiction the pool r
 
 test("staff admit a custodied client in one action, through a lagging RPC, within the time budget", async ({ browser }) => {
   const page = await signedIn(browser, PEOPLE.operator);
-  await page.goto("/operator");
+  await page.goto("/operator/custody/custodial");
   const form = page.locator("#custodied + .panel form");
   // Only the client: its facts come from Clients, and the site assigns the references (ADRs 0066, 0067).
   await expect(form.getByLabel("Custody account reference")).toHaveCount(0);
@@ -42,7 +45,9 @@ test("staff admit a custodied client in one action, through a lagging RPC, withi
   await form.getByRole("button", { name: "Admit" }).click();
   // The page says it is working while the transactions confirm.
   await expect(form.getByRole("status")).toContainText("This takes up to a minute");
+  await expect(form.getByRole("status")).toHaveCount(0, { timeout: 60_000 }); // the account is opened and bound
 
+  await page.getByRole("navigation", { name: "Operator" }).getByRole("link", { name: "Admissions" }).click();
   const row = page.locator("#admissions + .table-wrap tbody tr").first();
   // First the wallet credential waits for the bank's anchor; the page moves it on by itself (ADR 0060).
   await expect(row.locator(".pill")).toHaveText("awaiting-anchor");

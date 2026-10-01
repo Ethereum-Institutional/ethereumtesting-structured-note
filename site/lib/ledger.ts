@@ -69,7 +69,7 @@ function ownContracts(tape: Tape, m: Manifest): Address[] {
   return tape.watched().filter((a) => !shared.has(a.toLowerCase()));
 }
 
-/** The demonstration notes' contracts, from the site's own record of the notes it issued (ADR 0072). */
+/** The contracts of the notes the site issued, from its own record of them (ADR 0072). */
 async function noteContracts(): Promise<Array<{ address: string; key: string; label: string }>> {
   const PARTS: Record<string, string> = { note: "", gate: "gate", determinations: "Determination Agent", recordDates: "record-date engine", payingAgent: "Paying Agent", settlement: "DvP settlement" };
   return (await getStore().listNotes()).flatMap((n) =>

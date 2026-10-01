@@ -13,7 +13,7 @@ test("self-custody: the client asks, the bank declines, the client asks again, t
   await expect(client.getByRole("button", { name: "Bind wallet" })).toBeDisabled();
 
   // The bank declines the first request.
-  await staff.goto("/operator");
+  await staff.goto("/operator/custody/self-custody");
   let panel = staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email });
   await panel.getByRole("button", { name: "Decline" }).click();
   await expect(staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email })).toHaveCount(0);

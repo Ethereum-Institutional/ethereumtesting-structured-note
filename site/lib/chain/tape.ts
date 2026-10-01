@@ -267,7 +267,7 @@ const PUBLIC_INFRASTRUCTURE: Record<string, { key: string; label: string }> = {
 };
 KIND_OF_KEY["public.delegationManager"] = "delegationManager";
 
-/** A demonstration note's contracts (ADR 0072): `notes.<symbol>.<part>`, decoded as the live note's are. */
+/** The contracts of a note issued from the site (ADR 0072): `notes.<symbol>.<part>`, decoded as the live note's are. */
 const NOTE_PARTS: Record<string, string> = { note: "note", determinations: "determinations", payingAgent: "payingAgent", settlement: "settlement" };
 
 function kindOfKey(key: string): string | undefined {

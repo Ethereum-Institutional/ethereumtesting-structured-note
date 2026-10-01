@@ -39,7 +39,8 @@ async function recorded(run: () => Promise<unknown>, path: string) {
   } catch (e) {
     console.error(e);
   } finally {
-    revalidatePath(path);
+    // Every Operator page shares one layout: refresh them all (ADR 0073).
+    revalidatePath(path, path.startsWith("/operator") ? "layout" : "page");
   }
 }
 
@@ -80,7 +81,7 @@ export async function decideAction(f: FormData) {
   const d = field(f, "decision");
   if (d !== "approve" && d !== "revoke") throw new Error("Unknown decision.");
   await decide(field(f, "id"), d, await siteOrigin());
-  revalidatePath("/operator");
+  revalidatePath("/operator", "layout");
 }
 
 export async function startAdmissionAction() {
@@ -158,7 +159,7 @@ export async function addClientAction(_prev: { ok?: string; error?: string }, f:
     console.error(e);
     return { error: (e as Error).message };
   } finally {
-    revalidatePath("/operator");
+    revalidatePath("/operator", "layout");
   }
 }
 
@@ -388,17 +389,23 @@ export async function creditDepositAction(f: FormData) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Demonstration notes (ADR 0072)
+// Notes (ADRs 0072, 0073)
 // ---------------------------------------------------------------------------------------------
 
-export async function startDemoNoteAction(f: FormData) {
+export async function startNoteAction(f: FormData) {
   const op = await currentOperator();
   if (!op) throw new Error("Not permitted.");
   await recorded(async () => {
-    const { startDemoNote, advanceIssuance } = await import("@/lib/notes/issue");
-    const n = await startDemoNote(op, { scenario: field(f, "scenario"), spacingMinutes: Number(field(f, "spacing")), units: Number(field(f, "units")) });
+    const { startNote, advanceIssuance } = await import("@/lib/notes/issue");
+    const unit = field(f, "intervalUnit") as "minutes" | "hours" | "days" | "months";
+    const n = await startNote(op, {
+      scenario: field(f, "scenario"),
+      observations: Number(field(f, "observations")),
+      interval: { value: Number(field(f, "intervalValue")), unit },
+      units: Number(field(f, "units")),
+    });
     await advanceIssuance(n.id);
-  }, "/operator");
+  }, "/operator/notes");
 }
 
 /** Moves a note's issuance on by a step; the Operator page calls it while a note is being issued. */
@@ -406,5 +413,5 @@ export async function advanceNoteAction(id: string) {
   const op = await currentOperator();
   if (!op) return;
   const { advanceIssuance } = await import("@/lib/notes/issue");
-  await recorded(() => advanceIssuance(id), "/operator");
+  await recorded(() => advanceIssuance(id), "/operator/notes");
 }

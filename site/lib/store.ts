@@ -86,14 +86,17 @@ export type Client = {
   previous: Array<{ credentialId: string; issuedAt: string }>;
 };
 
-/** A demonstration note (ADR 0072): its terms, its contracts as they are deployed, and its life. */
+/** A note issued from the site (ADRs 0072, 0073): its terms, its contracts as they are deployed, and its life. */
 export type DemoNote = {
   id: string;
   series: number;
   name: string;
   symbol: string;
   scenario: string;
-  spacingMinutes: number;
+  /** Notes issued before ADR 0073: minutes between four observations. */
+  spacingMinutes?: number;
+  observations?: number;
+  interval?: { value: number; unit: "minutes" | "hours" | "days" | "months" };
   units: number;
   status: "issuing" | "issued" | "failed" | "closed";
   /** The next issuance step to run; issuance is a sequence of single transactions. */

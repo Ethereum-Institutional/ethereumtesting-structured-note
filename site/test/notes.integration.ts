@@ -1,5 +1,5 @@
 /**
- * Demonstration notes against the local chain (ADR 0072): issued from the site, step by step,
+ * Notes issued from the site, against the local chain (ADRs 0072, 0073): issued from the site, step by step,
  * through the lagging RPC, and checked on-chain.
  *
  *   ../ops/reset.sh && npm run test:admission
@@ -36,10 +36,10 @@ async function issued(id: string) {
   return (await store.noteById(id))!;
 }
 
-test("a demonstration note is issued from the site, step by step, on the live note's implementation", async () => {
-  await assert.rejects(notes.startDemoNote({ ...operator, email: "someone@corp.example" } as any, { scenario: "mer-at-trigger", spacingMinutes: 5, units: 20 }), /Not permitted/);
-  await assert.rejects(notes.startDemoNote(operator as any, { scenario: "nope", spacingMinutes: 5, units: 20 }), /Choose a scenario/);
-  const started = await notes.startDemoNote(operator as any, { scenario: "mer-at-trigger", spacingMinutes: 5, units: 20 });
+test("a note is issued from the site, step by step, on the live note's implementation", async () => {
+  await assert.rejects(notes.startNote({ ...operator, email: "someone@corp.example" } as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 }), /Not permitted/);
+  await assert.rejects(notes.startNote(operator as any, { scenario: "nope", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 }), /Choose a scenario/);
+  const started = await notes.startNote(operator as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 });
   assert.equal(started.symbol, "EURWAN2");
   assert.equal(started.name, "EUR Worst-of Autocallable Note, Series 2");
 
@@ -81,4 +81,22 @@ test("a demonstration note is issued from the site, step by step, on the live no
   const snap = await client.readContract({ address: note, abi: NOTE, functionName: "SNAPSHOOTER_ROLE" });
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "hasRole", args: [snap, m.parties.issuer as Address] }), false);
   assert.ok(lagging.staleReads() > 0, "issued through a lagging RPC");
+});
+
+test("a note with six observations, an hour apart, is issued with that schedule", async () => {
+  const started = await notes.startNote(operator as any, { scenario: "coupon-at-barrier", observations: 6, interval: { value: 1, unit: "hours" }, units: 5 });
+  const n = await issued(started.id);
+  assert.equal(n.status, "issued", n.error);
+  const DET = parseAbi([
+    "function observationCount() view returns (uint256)",
+    "function observation(uint256) view returns ((uint48 date, uint48 recordTime, uint48 paymentDate, bool coupon, bool mer, bool barrier, bool isFinal, uint32 merTriggerBps))",
+  ]);
+  const at = n.addresses.determinations as Address;
+  assert.equal(await client.readContract({ address: at, abi: DET, functionName: "observationCount" }), 6n);
+  const last = await client.readContract({ address: at, abi: DET, functionName: "observation", args: [5n] });
+  const fifth = await client.readContract({ address: at, abi: DET, functionName: "observation", args: [4n] });
+  assert.equal(last.isFinal, true);
+  assert.equal(fifth.isFinal, false);
+  assert.equal(Number(last.date) - Number(fifth.date), 3600);
+  assert.equal(Number(last.recordTime) - Number(last.date), 720, "a fifth of an hour");
 });

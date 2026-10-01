@@ -75,7 +75,7 @@ a:hover { text-decoration-color: var(--fg); }
 
 form.stack, fieldset.stack { display: grid; gap: 0.9rem; }
 label { display: grid; gap: 0.35rem; font-size: 0.875rem; font-weight: 500; color: var(--fg2); }
-input:not([type]), input[type="email"], input[type="text"], input[type="date"], select {
+input:not([type]), input[type="email"], input[type="text"], input[type="date"], input[type="number"], select {
   font: inherit; font-size: 0.9375rem; color: var(--fg); background: #100f0c;
   border: 1px solid var(--border2); border-radius: 10px; padding: 0.65rem 0.8rem; width: 100%;
 }
@@ -156,3 +156,21 @@ td .actions { flex-wrap: nowrap; }
 label .muted { font-weight: 400; font-size: 0.75rem; }
 footer { padding: 3rem 0 4rem; color: var(--fg3); font-size: 0.75rem; }
 .mono { font-family: var(--mono); font-size: 0.85em; }
+
+/* The Operator console: a navigation column beside each page (ADR 0073). */
+.console { display: grid; grid-template-columns: 12.5rem minmax(0, 1fr); gap: 2.25rem; align-items: start; }
+.console-main > h2:first-child { margin-top: 0; }
+.console-nav { position: sticky; top: 1.5rem; }
+.console-nav ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; }
+.console-nav ul ul { margin: 0.15rem 0 0.35rem 0.85rem; padding-left: 0.75rem; border-left: 1px solid var(--border2); }
+.console-nav a, .console-nav .group { display: block; padding: 0.45rem 0.75rem; border-radius: 10px; color: var(--fg2); text-decoration: none; font-size: 0.9375rem; }
+.console-nav .group { color: var(--fg3); font-size: 0.8125rem; font-weight: 600; padding-bottom: 0.2rem; }
+.console-nav .group.active { color: var(--fg); }
+.console-nav a:hover { background: var(--bg2); color: var(--fg); }
+.console-nav a[aria-current="page"] { background: var(--bg3); color: var(--fg); font-weight: 600; }
+@media (max-width: 860px) {
+  .console { grid-template-columns: 1fr; gap: 1.25rem; }
+  .console-nav { position: static; }
+  .console-nav > ul { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .console-nav ul ul { display: flex; gap: 0.35rem; margin: 0; padding: 0; border: 0; }
+}

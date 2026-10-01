@@ -17,7 +17,7 @@ test("holder wallet, another way: the wallet-control credential is presented by 
   await expect(client.getByText("Received. Awaiting the bank's approval.")).toBeVisible({ timeout: 20_000 });
 
   const staff = await signedIn(browser, PEOPLE.operator);
-  await staff.goto("/operator");
+  await staff.goto("/operator/admissions");
   // The wallet it replaces is listed too, "replaced by" this one: this admission's own row is the other.
   const row = staff.locator("#admissions + .table-wrap tbody tr").filter({ hasText: wallet, hasNotText: "replaced by" });
   await row.getByRole("button", { name: "Approve and write grants" }).click();
