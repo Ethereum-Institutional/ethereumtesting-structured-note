@@ -295,3 +295,31 @@ test("an early redemption ends the note: the dates after it fall away", async ()
   await assert.rejects(life.determineDate(operator as any, n.id, 2, view.dates[2].suggested.map(BigInt)), /has redeemed/);
   assert.equal((await store.noteById(n.id))!.status, "closed");
 });
+
+// --- ETH for fees (ADR 0080) ---
+
+test("a key that cannot pay its fees is refused before signing, named, warned about, and topped up from the best-funded key", async () => {
+  const keys = await import("../lib/chain/keys.ts");
+  const { signers } = await import("../lib/chain/signer.ts");
+  const { defineChain } = await import("viem");
+  const s = signers(defineChain({ id: 31337, name: "local", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [RPC] } } }), RPC);
+  const calc = s.address("calculationAgent");
+  await client.request({ method: "anvil_setBalance" as any, params: [calc, "0x3e8"] as any }); // 1,000 wei
+
+  const view = await keys.keyBalances(true);
+  assert.equal(view.rows.find((r) => r.capacity === "calculationAgent")?.state, "empty");
+  assert.equal(view.rows.find((r) => r.capacity === "servicing1")?.state, "signs-only");
+  assert.ok((await keys.lowKeys()).some((r) => r.capacity === "calculationAgent"), "every Operator page warns of it");
+
+  await assert.rejects(
+    s.send("calculationAgent", { address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "revoke", args: [LOCAL.parties.investorD] }),
+    /The Calculation Agent's key 0x[0-9a-fA-F]{40} holds 0\.000000000000001 ETH; this transaction needs about .* Top it up under Operator → Keys\./,
+  );
+
+  await assert.rejects(keys.topUp({ ...operator, email: "someone@corp.example" } as any, "calculationAgent"), /Not permitted/);
+  await assert.rejects(keys.topUp(operator as any, "servicing1"), /only signs; it needs no ETH/);
+  await keys.topUp(operator as any, "calculationAgent");
+  await new Promise((r) => setTimeout(r, 1600));
+  assert.equal(await client.getBalance({ address: calc }), 1_000n + keys.TOP_UP);
+  assert.equal((await keys.keyBalances(true)).rows.find((r) => r.capacity === "calculationAgent")?.state, "ok");
+});

@@ -32,6 +32,29 @@ export async function confirmed(eth: any, hash: string): Promise<void> {
   throw new Error(`The transaction was not confirmed in time (${hash}).`);
 }
 
+/**
+ * Refuses before anything is sent when the client's wallet cannot pay twice the transactions'
+ * estimated fees (ADR 0080). A transaction that cannot be estimated yet (it depends on an earlier
+ * one, such as an approval) is assumed at a generous ceiling.
+ */
+export async function ensureWalletFees(eth: any, chain: ChainParams, from: string, txs: Array<{ to: string; data: string }>): Promise<void> {
+  const hex = (v: unknown) => BigInt(String(v));
+  const [balance, price, gas] = await Promise.all([
+    eth.request({ method: "eth_getBalance", params: [from, "latest"] }).then(hex),
+    eth.request({ method: "eth_gasPrice", params: [] }).then(hex),
+    Promise.all(txs.map((t) => eth.request({ method: "eth_estimateGas", params: [{ from, to: t.to, data: t.data }] }).then(hex).catch(() => 400_000n))),
+  ]);
+  const needed = 2n * price * gas.reduce((a: bigint, b: bigint) => a + b, 0n);
+  if (balance < needed) {
+    const eth18 = (v: bigint) => (Number(v) / 1e18).toLocaleString("en-GB", { maximumFractionDigits: 8 });
+    throw new Error(
+      `Your wallet holds ${eth18(balance)} ETH; ${txs.length === 1 ? "this transaction needs" : `these ${txs.length} transactions need`} about ` +
+        `${eth18(needed)} ETH in fees on ${chain.chainName}, with a margin. Add ETH to ${from} and try again.` +
+        (chain.chainId === "0x14a34" ? " Test ETH: docs.base.org/base-chain/tools/network-faucets." : ""),
+    );
+  }
+}
+
 /** Adds a token to the wallet's list on the pool's chain (EIP-747); the wallet asks to confirm. */
 export async function watchToken(eth: any, chain: ChainParams, asset: { address: string; symbol: string; decimals: number }): Promise<boolean> {
   await onChain(eth, chain);

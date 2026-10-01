@@ -138,7 +138,8 @@ export async function placeUnits(staff: Registrant, noteId: string, admissionId:
 
   // The note's own answer, before anything is sent.
   const [inventory, open, could] = await Promise.all([
-    s.publicClient.readContract({ address: note, abi: NOTE, functionName: "balanceOf", args: [issuer] }),
+    // Just after the issuance's mint a lagging RPC may still show no inventory.
+    until(() => s.publicClient.readContract({ address: note, abi: NOTE, functionName: "balanceOf", args: [issuer] }), (v) => v >= BigInt(units)),
     s.publicClient.readContract({ address: n.addresses.determinations as Address, abi: DETERMINATIONS, functionName: "transfersOpen" }),
     until(() => s.publicClient.readContract({ address: note, abi: NOTE, functionName: "canTransfer", args: [issuer, buyer, BigInt(units)] }), Boolean),
   ]);

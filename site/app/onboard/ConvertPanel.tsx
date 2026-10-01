@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ChainParams } from "@/lib/chains";
 import type { QuoteView } from "../actions";
-import { confirmed, onChain, watchToken, walletError } from "../wallet";
+import { confirmed, ensureWalletFees, onChain, watchToken, walletError } from "../wallet";
 
 type Prepared = { error?: string; approvals?: Array<{ to: string; data: string; label: string }>; swap?: { to: string; data: string }; quote?: QuoteView };
 
@@ -59,6 +59,8 @@ export function ConvertPanel({
       if (plan.error || !plan.swap) throw new Error(plan.error ?? "The conversion could not be prepared.");
       setStatus("Asking your wallet to switch to the pool's network…");
       await onChain(eth, chain);
+      setStatus("Checking your wallet holds ETH for the fees…");
+      await ensureWalletFees(eth, chain, address, [...(plan.approvals ?? []), plan.swap]);
       for (const [i, a] of (plan.approvals ?? []).entries()) {
         setStatus(`Approval ${i + 1} of ${plan.approvals!.length}: ${a.label}. Confirm in your wallet.`);
         const hash = await eth.request({ method: "eth_sendTransaction", params: [{ from: address, to: a.to, data: a.data }] });

@@ -555,3 +555,13 @@ export async function claimHeldAction(_prev: { ok?: string; error?: string }, f:
     return "Paid to the holder.";
   });
 }
+
+/** Staff top up a key from the best-funded one (ADR 0080). */
+export async function topUpAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    const { topUp, TOP_UP } = await import("@/lib/chain/keys");
+    const { formatEther } = await import("viem");
+    await topUp(op, field(f, "capacity"));
+    return `Sent ${formatEther(TOP_UP)} ETH.`;
+  });
+}

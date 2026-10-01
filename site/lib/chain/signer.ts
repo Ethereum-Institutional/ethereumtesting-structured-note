@@ -1,5 +1,5 @@
 import "server-only";
-import { createPublicClient, createWalletClient, http, type Address, type Chain, type Hex } from "viem";
+import { createPublicClient, createWalletClient, encodeDeployData, formatEther, http, parseEther, type Address, type Chain, type Hex } from "viem";
 import { createNonceManager, privateKeyToAccount } from "viem/accounts";
 import { jsonRpc } from "viem/nonce";
 import { signerQueues } from "./queue.ts";
@@ -19,6 +19,48 @@ import { signerQueues } from "./queue.ts";
  */
 
 export const LOCAL_CHAIN_ID = 31337;
+
+/** Who each capacity is, for messages and the Keys page (ADR 0080). */
+export const CAPACITY_LABEL: Record<string, string> = {
+  issuer: "Issuer",
+  agent: "Agent",
+  accessIssuer: "Access Issuer",
+  custodian: "Custodian",
+  depositAgent: "Deposit Agent",
+  calculationAgent: "Calculation Agent",
+  servicing1: "Servicing wallet owner 1",
+  servicing2: "Servicing wallet owner 2",
+  investorA: "Investor A",
+  investorB: "Investor B",
+  investorC: "Investor C",
+  investorD: "Investor D",
+};
+/** Capacities that only sign, and send nothing themselves: they need no ETH. */
+export const SIGNS_ONLY = new Set(["servicing1", "servicing2"]);
+
+/** Below this a key is low, and every Operator page says so (ADR 0080). */
+export const feeBuffer = (env: NodeJS.ProcessEnv = process.env) => parseEther(env.FEE_BUFFER_ETH?.trim() || "0.001");
+
+/** A transaction refused before signing: its key cannot pay twice its estimated fees. */
+export class InsufficientFees extends Error {
+  readonly capacity: string;
+  readonly address: Address;
+  readonly balance: bigint;
+  readonly needed: bigint;
+  constructor(capacity: string, address: Address, balance: bigint, needed: bigint) {
+    super(
+      `The ${CAPACITY_LABEL[capacity] ?? capacity}'s key ${address} holds ${formatEther(balance)} ETH; this transaction needs about ` +
+        `${formatEther(needed)} ETH in fees, with a margin. Top it up under Operator → Keys.`,
+    );
+    this.capacity = capacity;
+    this.address = address;
+    this.balance = balance;
+    this.needed = needed;
+  }
+}
+
+/** Gas assumed when a transaction cannot be estimated beforehand (its estimate is the network's). */
+const GAS_CEILING = { call: 1_500_000n, deploy: 8_000_000n };
 
 const LOCAL_KEYS: Record<string, Hex> = {
   issuer: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
@@ -64,8 +106,33 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     accounts.clear();
   }
 
+  /**
+   * Refuses before signing when the key cannot pay twice the transaction's estimated fees (ADR 0080).
+   * An estimate that fails is left to the transaction itself, with a generous ceiling assumed here.
+   */
+  async function ensureFees(capacity: string, estimate: () => Promise<bigint>, ceiling: bigint, value = 0n): Promise<void> {
+    const address = account(capacity).address;
+    const [balance, gas, price] = await Promise.all([
+      publicClient.getBalance({ address }),
+      estimate().catch(() => ceiling),
+      publicClient.estimateFeesPerGas().then((f) => f.maxFeePerGas ?? 0n).catch(() => publicClient.getGasPrice()),
+    ]);
+    const needed = 2n * gas * price + value;
+    if (balance < needed) throw new InsufficientFees(capacity, address, balance, needed);
+  }
+
+  /** The network's own refusal for want of fees, said as the precheck would say it. */
+  async function feesError(capacity: string, err: unknown): Promise<never> {
+    if (/insufficient funds|exceeds allowance \(0\)|exceeds the balance/i.test(String((err as Error)?.message))) {
+      const address = account(capacity).address;
+      throw new InsufficientFees(capacity, address, await publicClient.getBalance({ address }), 0n);
+    }
+    throw err;
+  }
+
   async function send(capacity: string, params: Record<string, unknown>): Promise<Hex> {
     return enqueue(capacity, async () => {
+      await ensureFees(capacity, () => (publicClient.estimateContractGas as any)({ ...params, account: account(capacity) }), GAS_CEILING.call);
       const attempt = async (): Promise<Hex> => {
         const wallet = createWalletClient({ account: account(capacity), chain, transport: http(rpcUrl) });
         // viem's writeContract generics do not narrow against ABIs assembled at run time.
@@ -76,7 +143,7 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
       try {
         return await attempt();
       } catch (err) {
-        if (!local || !/timed out|timeout/i.test(String((err as Error)?.message))) throw err;
+        if (!local || !/timed out|timeout/i.test(String((err as Error)?.message))) return feesError(capacity, err);
         await publicClient.request({ method: "anvil_dropAllTransactions" as any, params: [] as any });
         resetNonces();
         return attempt();
@@ -87,8 +154,10 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
   /** Deploys a contract as a capacity and waits for it (ADR 0072): returns its address. */
   async function deploy(capacity: string, params: { abi: readonly unknown[]; bytecode: Hex; args: readonly unknown[] }): Promise<{ address: Address; hash: Hex }> {
     return enqueue(capacity, async () => {
+      const data = encodeDeployData({ abi: params.abi as any, bytecode: params.bytecode, args: params.args as any });
+      await ensureFees(capacity, () => publicClient.estimateGas({ account: account(capacity), data }), GAS_CEILING.deploy);
       const wallet = createWalletClient({ account: account(capacity), chain, transport: http(rpcUrl) });
-      const hash = await (wallet.deployContract as any)({ abi: params.abi, bytecode: params.bytecode, args: params.args, account: wallet.account, chain });
+      const hash = await (wallet.deployContract as any)({ abi: params.abi, bytecode: params.bytecode, args: params.args, account: wallet.account, chain }).catch((e: unknown) => feesError(capacity, e));
       const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
       if (receipt.status !== "success" || !receipt.contractAddress) throw new Error(`the deployment reverted (${hash})`);
       return { address: receipt.contractAddress, hash };
@@ -106,5 +175,27 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     return account(capacity).sign({ hash });
   }
 
-  return { publicClient, send, deploy, signTypedData, signHash, resetNonces, address: (capacity: string) => account(capacity).address };
+  /** Sends ETH from a capacity, for topping up another key (ADR 0080). */
+  async function transfer(capacity: string, to: Address, value: bigint): Promise<Hex> {
+    return enqueue(capacity, async () => {
+      await ensureFees(capacity, () => publicClient.estimateGas({ account: account(capacity), to, value }), 21_000n, value);
+      const wallet = createWalletClient({ account: account(capacity), chain, transport: http(rpcUrl) });
+      const hash = await wallet.sendTransaction({ account: account(capacity), to, value, chain }).catch((e: unknown) => feesError(capacity, e));
+      await publicClient.waitForTransactionReceipt({ hash, timeout: 25_000 });
+      return hash;
+    });
+  }
+
+  return {
+    publicClient,
+    send,
+    deploy,
+    transfer,
+    signTypedData,
+    signHash,
+    resetNonces,
+    address: (capacity: string) => account(capacity).address,
+    /** The capacities this deployment holds keys for. */
+    capacities: () => Object.keys(keys),
+  };
 }

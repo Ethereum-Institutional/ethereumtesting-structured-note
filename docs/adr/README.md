@@ -87,3 +87,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0077](0077-unconfirmed-registrations.md) | Unconfirmed registrations: staff resend the link, or approve ahead of confirmation | Accepted |
 | [0078](0078-determinations-payments-closure.md) | Determinations, payments and closure from the site, one step at a time | Accepted |
 | [0079](0079-chain-snapshots-for-tests.md) | Local resets restore a snapshot of the deployed chain | Accepted |
+| [0080](0080-eth-for-fees.md) | ETH for fees: a Keys page, a check before every transaction, and top-ups | Accepted |

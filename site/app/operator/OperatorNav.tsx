@@ -1,7 +1,7 @@
 import { ConsoleNav, type NavItem } from "../ConsoleNav";
 
 /** The Operator pages' navigation column (ADR 0073). */
-export function OperatorNav({ custodyRequests = 0 }: { custodyRequests?: number }) {
+export function OperatorNav({ custodyRequests = 0, lowKeys = 0 }: { custodyRequests?: number; lowKeys?: number }) {
   const items: NavItem[] = [
     { href: "/operator", label: "Access requests" },
     { href: "/operator/clients", label: "Clients" },
@@ -15,6 +15,7 @@ export function OperatorNav({ custodyRequests = 0 }: { custodyRequests?: number 
     },
     { href: "/operator/admissions", label: "Admissions" },
     { href: "/operator/notes", label: "Notes" },
+    { href: "/operator/keys", label: "Keys", badge: lowKeys },
     { href: "/operator/audit", label: "Audit log" },
   ];
   return <ConsoleNav label="Operator" items={items} />;

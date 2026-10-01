@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ChainParams } from "@/lib/chains";
-import { confirmed, onChain, walletError } from "../../wallet";
+import { confirmed, ensureWalletFees, onChain, walletError } from "../../wallet";
 
 type Tx = { to: string; data: string; label: string };
 
@@ -43,6 +43,8 @@ export function AcceptOffer({
       if (plan.error || !plan.txs?.length) throw new Error(plan.error ?? "The acceptance could not be prepared.");
       setStatus("Asking your wallet to switch to the pool's network…");
       await onChain(eth, chain);
+      setStatus("Checking your wallet holds ETH for the fees…");
+      await ensureWalletFees(eth, chain, address, plan.txs);
       let last = "";
       for (const [i, t] of plan.txs.entries()) {
         setStatus(`Step ${i + 1} of ${plan.txs.length}: ${t.label}. Confirm in your wallet.`);

@@ -71,6 +71,8 @@ export async function installWallet(page: Page, seed: string, quirks: WalletQuir
     const r = await reader.getTransactionReceipt({ hash }).catch(() => null);
     return r ? { status: r.status === "success" ? "0x1" : "0x0" } : null;
   });
+  // Reads a wallet passes to its node: a balance, an estimate, the gas price.
+  await page.exposeFunction("__testRpc", async (method: string, params: unknown[]) => reader.request({ method: method as any, params: params as any }));
   await page.exposeFunction("__testSignTypedData", async (json: string) => {
     const td = JSON.parse(json);
     const { EIP712Domain: _d, ...types } = td.types;
@@ -119,6 +121,7 @@ export async function installWallet(page: Page, seed: string, quirks: WalletQuir
           return true;
         }
         if (method === "eth_getTransactionReceipt") return w.__testReceipt(params![0]);
+        if (method === "eth_getBalance" || method === "eth_estimateGas" || method === "eth_gasPrice") return w.__testRpc(method, params ?? []);
         throw new Error(`the test wallet does not support ${method}`);
       },
     };
@@ -135,6 +138,12 @@ export async function fundWallet(address: `0x${string}`, paymentUnits: bigint) {
   const owner = createWalletClient({ account: privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"), transport: http(chainRpc) });
   const hash = await owner.writeContract({ address: manifest.assets.paymentToken.address, abi: parseAbi(["function mint(address to, uint256 amount)"]), functionName: "mint", args: [address, paymentUnits], chain: null });
   await reader.waitForTransactionReceipt({ hash });
+}
+
+/** Sets an address's ETH on the local chain, in wei. */
+export async function setEth(address: string, wei: bigint) {
+  const reader = createPublicClient({ transport: http(process.env.RPC_URL ?? "http://127.0.0.1:8545") });
+  await reader.request({ method: "anvil_setBalance" as any, params: [address, `0x${wei.toString(16)}`] as any });
 }
 
 /** Moves the local chain's clock to just past `t` (Unix seconds) and mines a block there. */

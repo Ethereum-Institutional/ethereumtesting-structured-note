@@ -510,6 +510,12 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
 
   A redemption closes the note. Clients see what was paid to them on Onboard → Notes.
   Next: buyback and transfers (part 4).
+- **ETH for fees** (ADR 0080). Operator → Keys lists every site key's ETH, with a Top up button
+  (0.003 ETH from the best-funded key). Every transaction is refused before signing if its key
+  cannot pay twice the estimated fees. A key below 0.001 ETH is warned about on every Operator
+  page. Client wallets are checked the same way before MetaMask is asked to send. On Base Sepolia
+  the Calculation Agent was funded once by hand (0.003 ETH from the Issuer) for the first live
+  determination.
 - **Unconfirmed registrations** (ADR 0077). Access requests says when someone hasn't confirmed
   their email yet; staff can resend the link, or approve or decline ahead of confirmation.
 - **Onboard pages** (ADR 0076). The client has a navigation column with Account, Convert and

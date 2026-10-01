@@ -1,4 +1,4 @@
-import { test, expect, expectHealthy, fundWallet, installWallet, signedIn, PEOPLE } from "./fixtures.ts";
+import { test, expect, expectHealthy, fundWallet, installWallet, setEth, signedIn, PEOPLE } from "./fixtures.ts";
 
 test("a client binds a new wallet; the note refuses it until staff approve it under Reg S; the client accepts the offer in MetaMask, unbinds, and asks for custody", async ({ browser }) => {
   test.setTimeout(300_000);
@@ -58,6 +58,12 @@ test("a client binds a new wallet; the note refuses it until staff approve it un
   await nav.getByRole("link", { name: /Notes/ }).click();
   const offer = client.getByRole("region", { name: "Offered to you" });
   await expect(offer).toContainText("€2,000.00, €1,000.00 a unit");
+  // With no ETH for fees, nothing is sent: the page says what the wallet needs (ADR 0080).
+  await setEth(wallet, 0n);
+  await offer.getByRole("button", { name: "Accept with MetaMask" }).click();
+  await expect(offer.getByRole("alert")).toContainText("Your wallet holds 0 ETH; these 2 transactions need about");
+  expect((await client.evaluate(() => (window as any).__walletCalls as string[])).filter((m) => m === "eth_sendTransaction")).toHaveLength(0);
+  await setEth(wallet, 10n ** 18n);
   await offer.getByRole("button", { name: "Accept with MetaMask" }).click();
   // Settled, the offer leaves the list: the units are held, and the offer is listed as settled.
   const holding = client.getByRole("region", { name: "Held" });
