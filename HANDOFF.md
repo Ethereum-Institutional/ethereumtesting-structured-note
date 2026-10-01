@@ -524,6 +524,13 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   - The controller now has an execution window (one day on the PoC, seven days targeted); a queued proposal not executed within it expires (S-24).
   - Base Sepolia still runs the earlier controller, without a window, until a fresh deployment.
 
+- **Base Sepolia deployed afresh** (1 October 2026; ADR 0083). The new stack has the controller
+  with its execution window, and every note issued from the site trades by locked offer. The
+  site reads only the current deployment's admissions and notes. Sign-ins, the bank's clients
+  and the audit log carry over, but wallets onboard again. The earlier manifest is kept as
+  `ops/addresses.base-sepolia.2026-09-25.json`. The ceremony now salts each wallet with the
+  deployment's note, so a later deployment by the same signers gets its own wallets.
+
   Next: Wave 6.
 - **ETH for fees** (ADR 0080). Operator → Keys lists every site key's ETH, with a Top up button
   (0.003 ETH from the best-funded key). Every transaction is refused before signing if its key
