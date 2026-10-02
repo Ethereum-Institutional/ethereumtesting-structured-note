@@ -7,6 +7,7 @@ import { routeLabel } from "@/lib/routes";
 import { SCENARIOS } from "@/lib/notes/issue";
 import { holdersOf, inventoryOf, lockedSettlement, offersOf, totalOf, type Arranged, type Placement } from "@/lib/notes/place";
 import { lifecycleOf, type DateView } from "@/lib/notes/lifecycle";
+import { closeOutOf, type CloseOut } from "@/lib/notes/closeout";
 import {
   arrangeTradeAction,
   buybackAction,
@@ -63,6 +64,8 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
   const custodyIds = new Set(admissions.filter((a) => a.route === "custodied" && a.status === "admitted").map((a) => a.id));
   const custody = accounts.filter((a) => custodyIds.has(a.id));
   const live = typeof lifecycle === "string" ? null : lifecycle;
+  // The close-out statement, once the note has redeemed (S-33).
+  const closeOut = live?.terminated ? await closeOutOf(n).catch((e) => (e as Error).message) : null;
   // Waiting for a time to come: the page looks again by itself.
   const waiting = live && !live.closed && live.dates.some((d) => d.waiting);
 
@@ -224,6 +227,11 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
           {live.dates.map((d) => <DateCard key={d.index} noteId={n.id} d={d} chainId={chainId} initial={sc?.terms.initialLevels ?? []} />)}
         </ol>
       )}
+
+      <h3 id="close-out">Close-out</h3>
+      {!closeOut && <section className="panel"><p className="muted" style={{ margin: 0 }}>Shown once the note has redeemed: the statement that every position is at zero (S-33).</p></section>}
+      {typeof closeOut === "string" && <section className="panel"><p role="alert" className="notice err">The close-out could not be read: {closeOut}</p></section>}
+      {closeOut && typeof closeOut !== "string" && <CloseOutPanel noteId={n.id} c={closeOut} />}
     </>
   );
 }
@@ -295,5 +303,47 @@ function DateCard({ noteId, d, chainId, initial }: { noteId: string; d: DateView
         </div>
       ))}
     </li>
+  );
+}
+
+function CloseOutPanel({ noteId, c }: { noteId: string; c: CloseOut }) {
+  return (
+    <section className="panel" aria-label="Close-out">
+      <p className={c.closed ? "notice ok" : "notice err"} role="status" style={{ marginTop: 0 }}>
+        {c.closed
+          ? `Closed: every position is at zero. Read from the chain at block ${c.block}, ${t(Date.parse(c.at) / 1000)}.`
+          : `Not closed: ${c.checks.filter((x) => !x.ok).length} check(s) fail, as of block ${c.block}.`}
+      </p>
+      <ul className="plain" aria-label="Close-out checks">
+        {c.checks.map((x) => (
+          <li key={x.label}><strong>{x.ok ? "✓" : "✗"} {x.label}.</strong> <span className="muted">{x.detail}</span></li>
+        ))}
+      </ul>
+      <div className="table-wrap" style={{ marginTop: "1rem" }}>
+        <table aria-label="Positions">
+          <thead><tr><th>Account</th><th>Units in</th><th>Units out</th><th>Balance</th><th>Coupons</th><th>Redemption</th><th>Held</th></tr></thead>
+          <tbody>
+            {c.positions.map((p) => (
+              <tr key={p.account}>
+                <td>{p.account.slice(0, 10)}…</td>
+                <td>{p.unitsIn}</td>
+                <td>{p.unitsOut}</td>
+                <td>{p.balance}</td>
+                <td>{euros(p.couponCents)}</td>
+                <td>{euros(p.redemptionCents)}</td>
+                <td>{euros(p.heldCents)}</td>
+              </tr>
+            ))}
+            <tr>
+              <td><strong>Total</strong></td><td /><td /><td><strong>{c.totals.units}</strong></td>
+              <td><strong>{euros(c.totals.couponCents)}</strong></td><td><strong>{euros(c.totals.redemptionCents)}</strong></td><td><strong>{euros(c.totals.heldCents)}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p className="muted" style={{ marginBottom: 0 }}>
+        <a href={`/operator/notes/${noteId}/close-out`} download>Download the statement (JSON)</a>, with every figure above, for the evidence pack. Anyone with the chain can reproduce it from the block it was read at.
+      </p>
+    </section>
   );
 }

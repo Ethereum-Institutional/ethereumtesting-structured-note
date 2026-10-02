@@ -629,15 +629,30 @@ a:hover { text-decoration-color: var(--fg); }
           <tr><td><b>Trading</b></td><td>Transfers settle by offer, each side locked until it settles or ends: units frozen in the seller's own wallet, or the price held by the settlement contract. Offers are arranged by the bank or open to any approved client. Buy back into the Issuer's inventory, and reduction of the tranche bounded by that inventory</td><td>S&#8209;11 to S&#8209;14</td></tr>
           <tr><td><b>Governance</b></td><td>Tier 1 register correction with its written reason; Tier 2 proposals with institution thresholds, the timelock and an execution window, each institution's wallet signing as itself. The Agent alone cannot force a transfer</td><td>S&#8209;22 to S&#8209;26</td></tr>
           <tr><td><b>Conversion pool</b></td><td>A whitelisted wallet converts the euro payment token into the tokenized deposit and back; a wallet not whitelisted is refused at the pool</td><td>S&#8209;27, S&#8209;28</td></tr>
-          <tr><td><b>Evidence</b></td><td>The lifecycle reconstructed from chain events alone, the register reconciled against the chain, and every transaction and event scanned for personal data</td><td>S&#8209;35, S&#8209;36</td></tr>
+          <tr><td><b>Evidence</b></td><td>The lifecycle reconstructed from chain events alone, the register reconciled against the chain, and every transaction and event scanned for personal data. For a redeemed note, a close-out statement read from the chain: supply zero, the holder list empty, every distribution paid with nothing held, nothing left in the Paying Agent or the settlement contract, and every account's position reconciled to zero</td><td>S&#8209;33, S&#8209;35, S&#8209;36</td></tr>
         </tbody>
       </table>
     </div>
     <h3>Not yet complete</h3>
     <ul class="plain">
-      <li><strong>Closure evidence (S-33).</strong> A redeemed note's supply reaches zero under test; the close-out statement confirming every position at zero is still to be produced.</li>
-      <li><strong>Proposal expiry on the integration deployment (S-24).</strong> Enforced under test; the integration deployment runs an earlier controller without an execution window until it is redeployed.</li>
-      <li><strong>Shown in contract tests only.</strong> The deployer's renunciation (S-01), reversal and restatement of a distribution (S-21), and non-transferable liquidity positions (S-29). The remaining scenarios (S-04 to S-06, S-10, S-17, S-19, S-20, S-31) are to be confirmed against the contract tests.</li>
+      <li><strong>Shown in contract tests.</strong>
+        <ul class="plain">
+          <li>S-01: the deployer's renunciation;</li>
+          <li>S-04: a second registrar's participant, its registrar visible but not its identity;</li>
+          <li>S-06: the terms and calendar, which have no write path after deployment, and each date determined once;</li>
+          <li>S-10: units are indivisible, so no holding falls below one;</li>
+          <li>S-19 and S-20: a determination by another signer, replayed, or signed for another network;</li>
+          <li>S-21: a distribution reversed and restated;</li>
+          <li>S-29: liquidity positions cannot be transferred;</li>
+          <li>S-31: redemption without a breach, Twin Win included, among 25 payoff vectors matched to the cent.</li>
+        </ul>
+      </li>
+      <li><strong>Partly built.</strong>
+        <ul class="plain">
+          <li>S-05: the registry refuses the Agent acting on another registrar's participant. The same scoping in the credential layer is not yet built, because the protocol's registrar role is global.</li>
+          <li>S-17: a custody account is paid as a holder of record, but under the ordinary payment event. The nominee suspense account and its distinct event are not built.</li>
+        </ul>
+      </li>
       <li><strong>The holder-wallet route for an officer</strong> waits on the bank's side, and an inclusion proof for each anchored credential on the protocol.</li>
       <li><strong>Hardening before execution:</strong> a separate key for each capacity, the freeze of the contracts once the payoff items are confirmed by the Issuer and the Calculation Agent, the internal assurance review, and token naming.</li>
     </ul>

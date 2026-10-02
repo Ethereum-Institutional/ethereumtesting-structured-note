@@ -530,6 +530,14 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   and the audit log carry over, but wallets onboard again. The earlier manifest is kept as
   `ops/addresses.base-sepolia.2026-09-25.json`. The ceremony now salts each wallet with the
   deployment's note, so a later deployment by the same signers gets its own wallets.
+- **Close-out** (ADR 0084; S-33). A redeemed note's page shows a close-out statement read from the
+  chain, also downloadable as JSON. It says closed only when the supply is zero, no account holds a
+  unit, every position reconciles, every distribution is paid with nothing held, and the Paying
+  Agent and settlement contract hold no cash.
+- **Scenario evidence.** S-04/S-05 and S-20 gained Foundry tests. The overview's Build status now
+  places every scenario as shown on the site, shown in contract tests, or partly built.
+  - S-05 is partly built: the credential layer's scoping is not built.
+  - S-17 is partly built: there is no nominee suspense account or distinct event.
 
   Next: Wave 6.
 - **ETH for fees** (ADR 0080). Operator → Keys lists every site key's ETH, with a Top up button

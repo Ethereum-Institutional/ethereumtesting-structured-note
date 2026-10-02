@@ -72,6 +72,26 @@ contract IdentityRegistryTest is Test {
     }
 
     /// Scoped by registrar: a second registrar cannot touch the Agent's participant.
+    /// S-04 and S-05: a second registrar onboards its own participant. The Agent observes the binding
+    /// and which registrar holds it (flags, jurisdiction, expiry, a commitment), not the identity
+    /// behind it, and its own issuing key cannot revoke or rewrite the participant.
+    function test_s04s05_secondRegistrarsParticipantIsItsOwn() public {
+        _grant(secondKey, other, 30 days);
+        IIdentityRegistry.Grant memory g = r.grantOf(other);
+        assertEq(g.registrar, SECOND, "the binding names its registrar");
+        (uint32 f,) = r.liveFlags(other);
+        assertEq(f, flags);
+        assertEq(r.commitmentOf(other), keccak256("salted record"), "a commitment, not the identity");
+        vm.startPrank(agentKey);
+        vm.expectRevert(abi.encodeWithSelector(IIdentityRegistry.NotYourParticipant.selector, other, SECOND));
+        r.revoke(other);
+        vm.expectRevert(abi.encodeWithSelector(IIdentityRegistry.NotYourParticipant.selector, other, SECOND));
+        r.grant(other, flags, 276, uint40(block.timestamp) + 1 days, 0, 0);
+        vm.stopPrank();
+        (f,) = r.liveFlags(other);
+        assertEq(f, flags, "still granted");
+    }
+
     function test_registrarCannotActOnAnothersParticipant() public {
         _grant(agentKey, investor, 30 days);
         vm.startPrank(secondKey);
