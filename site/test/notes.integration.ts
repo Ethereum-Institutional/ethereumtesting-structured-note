@@ -293,6 +293,7 @@ test("S-13: the Issuer buys units back into its inventory; S-14: no more can be 
 // --- determinations, payments and closure (ADR 0078) ---
 
 const life = await import("../lib/notes/lifecycle.ts");
+const closeout = await import("../lib/notes/closeout.ts");
 const REGISTRY = parseAbi([
   "function grantOf(address account) view returns ((uint32 flags, uint16 jurisdiction, uint16 registrar, uint40 grantedAt, uint40 expiresAt))",
   "function credentialRefOf(address) view returns (bytes32)",
@@ -336,6 +337,9 @@ test("a four-date note through its life: each date determined from the scenario'
   const investorC = LOCAL.parties.investorC as Address;
   let view = await life.lifecycleOf(n);
   assert.equal(view.dates.length, 4);
+  const open = await closeout.closeOutOf(n);
+  assert.equal(open.closed, false, "not closed while units are outstanding");
+  assert.equal(open.checks.find((c) => c.label === "Supply is zero")?.ok, false);
   assert.equal(view.dates[0].can.determine, false, "not before its date");
   assert.match(view.dates[0].waiting ?? "", /Determinable from/);
   await assert.rejects(life.determineDate(operator as any, n.id, 0, view.dates[0].suggested.map(BigInt)), /determinable from/);
@@ -400,6 +404,17 @@ test("a four-date note through its life: each date determined from the scenario'
   assert.equal((await store.noteById(n.id))!.status, "closed");
   view = await life.lifecycleOf((await store.noteById(n.id))!);
   assert.equal(view.closed, true);
+  // S-33: the close-out statement confirms every position at zero, with what each was paid.
+  const statement = await closeout.closeOutOf((await store.noteById(n.id))!);
+  assert.deepEqual(statement.checks.filter((c) => !c.ok), [], "every close-out check passes");
+  assert.equal(statement.closed, true);
+  assert.ok(statement.positions.every((p) => p.balance === "0"));
+  assert.equal(statement.totals.units, "0");
+  assert.equal(statement.totals.couponCents, String(3 * 3 * 2_500), "three coupons on three units of record");
+  assert.equal(statement.totals.redemptionCents, String(3 * 60_000), "three units redeemed at €600");
+  const pos = (a: Address) => statement.positions.find((p) => p.account.toLowerCase() === a.toLowerCase())!;
+  assert.deepEqual([pos(custody).couponCents, pos(custody).redemptionCents], [String(3 * 2 * 2_500), String(3 * 60_000)]);
+  assert.deepEqual([pos(investorC).unitsIn, pos(investorC).unitsOut, pos(investorC).couponCents], ["1", "1", String(3 * 2_500)]);
   const paid = await life.paymentsTo(custody);
   assert.deepEqual(paid.filter((p) => p.note.id === n.id).map((p) => `${p.kind}:${p.amount}`), ["coupon:5000", "coupon:5000", "coupon:5000", "redemption:180000"]);
 });

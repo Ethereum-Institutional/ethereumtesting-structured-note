@@ -130,6 +130,24 @@ contract LifecycleTest is Test {
     }
 
     /// D1: only the Calculation Agent's signature is accepted.
+    /// S-20: a determination signed for another network is refused: the signature is bound to the
+    /// network and to this contract by its EIP-712 domain. (A replay is refused by test_orderAndTiming.)
+    function test_determinationSignedForAnotherNetworkRefused() public {
+        vm.warp(_obs(0).date);
+        uint256[] memory lv = _levels(9_000);
+        (IDeterminationAgent.Outcome memory o,) = l.determinations.compute(0, lv);
+        uint256 here = block.chainid;
+        vm.chainId(here + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(caKey, l.determinations.digest(0, lv, o));
+        vm.chainId(here);
+        vm.expectRevert(IDeterminationAgent.BadSignature.selector);
+        l.determinations.determine(0, lv, o, abi.encodePacked(r, s, v));
+        // Signed for this network by the Calculation Agent, the same determination is accepted.
+        (v, r, s) = vm.sign(caKey, l.determinations.digest(0, lv, o));
+        l.determinations.determine(0, lv, o, abi.encodePacked(r, s, v));
+        assertTrue(l.determinations.determined(0));
+    }
+
     function test_otherSignerRefused() public {
         vm.warp(_obs(0).date);
         uint256[] memory lv = _levels(9_000);

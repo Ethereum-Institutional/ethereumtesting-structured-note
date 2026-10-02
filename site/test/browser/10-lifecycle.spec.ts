@@ -39,6 +39,20 @@ test("staff determine a note's first date from the scenario's Levels, the model 
   await coupon.getByRole("button", { name: "Pay what is held" }).click();
   await expect(coupon.getByRole("alert")).toContainText("cannot yet receive the deposit");
 
+  // S-33: the close-out statement does not claim zero while money is held for the unbound wallet.
+  await staff.reload();
+  const closeOut = staff.getByRole("region", { name: "Close-out" });
+  await expect(closeOut.getByRole("status")).toContainText("Not closed: 2 check(s) fail");
+  const checks = closeOut.getByRole("list", { name: "Close-out checks" });
+  await expect(checks.getByRole("listitem").filter({ hasText: "Supply is zero" })).toContainText("✓");
+  await expect(checks.getByRole("listitem").filter({ hasText: "Nothing is held for a holder" })).toContainText("✗");
+  await expect(checks.getByRole("listitem").filter({ hasText: "The Paying Agent holds no cash" })).toContainText("✗");
+  // The same statement, downloaded for the evidence pack.
+  const json = await (await staff.request.get(staff.url() + "/close-out")).json();
+  expect(json.closed).toBe(false);
+  expect(json.totals.heldCents).toBe("205000"); // €50 of coupon and €2,000 of redemption, held
+  expect(json.positions.every((p: { balance: string }) => p.balance === "0")).toBe(true);
+
   await staff.getByRole("link", { name: "← Notes" }).click();
   await expect(staff.locator("tbody tr").filter({ hasText: "EURWAN2" }).locator(".pill")).toHaveText("redeemed");
   await expectHealthy(staff);
