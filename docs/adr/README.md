@@ -90,3 +90,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0080](0080-eth-for-fees.md) | ETH for fees: a Keys page, a check before every transaction, and top-ups | Accepted |
 | [0081](0081-locked-settlement-and-trading.md) | Locked settlement: offers that lock their side, transfers arranged or open, buy-backs, and cancelling from the inventory | Accepted |
 | [0082](0082-governance-console-and-expiry.md) | Governance from the site, and an execution window for Tier 2 proposals | Accepted |
+| [0083](0083-records-scoped-to-a-deployment.md) | Records scoped to a deployment, for a fresh deployment of the test network | Accepted |

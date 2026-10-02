@@ -2,6 +2,7 @@ import "server-only";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import postgres from "postgres";
+import { loadManifest } from "./chain/manifest.ts";
 
 /**
  * Registrations, one-time links, sessions and the audit log.
@@ -582,10 +583,62 @@ let store: Store | null = null;
 export function getStore(): Store {
   if (store) return store;
   const url = process.env.POSTGRES_URL ?? process.env.DATABASE_URL;
-  if (url) return (store = postgresStore(url));
+  if (url) return (store = scopedToDeployment(postgresStore(url)));
   if (process.env.NODE_ENV === "production" && !process.env.ALLOW_FILE_STORE) {
     throw new Error("No database configured. Set POSTGRES_URL. Refusing to hold access state on local disk.");
   }
   // FILE_STORE_DIR lets the browser tests keep a fresh store away from the development one.
-  return (store = fileStore(process.env.FILE_STORE_DIR || join(process.cwd(), ".data")));
+  return (store = scopedToDeployment(fileStore(process.env.FILE_STORE_DIR || join(process.cwd(), ".data"))));
+}
+
+// --------------------------------------------------------------------------------------------
+// One deployment at a time (ADR 0083)
+// --------------------------------------------------------------------------------------------
+
+/**
+ * The deployment the site runs against: its chain and its Identity Registry, which every
+ * deployment has its own of. Null where no manifest is configured, when nothing is scoped.
+ */
+export function currentDeployment(): string | null {
+  try {
+    const m = loadManifest();
+    const registry = m.instruments?.registry;
+    return registry ? `${m.chainId}:${registry.toLowerCase()}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Admissions and notes belong to the deployment whose contracts they act on (ADR 0083). Each is
+ * stamped with it when written, and only the current deployment's are read; a row with no stamp
+ * belongs to an earlier deployment. The rows stay in the store as history. Registrants, sessions,
+ * clients (the bank's KYB) and the audit log are the bank's, not a deployment's, and carry over.
+ */
+function scopedToDeployment(inner: Store): Store {
+  const here = currentDeployment();
+  if (!here) return inner;
+  const ours = (d: Record<string, unknown> | undefined) => d?.deployment === here;
+  const stampA = (a: Admission): Admission => ({ ...a, data: { ...a.data, deployment: here } });
+  const stampN = (n: DemoNote): DemoNote => ({ ...n, data: { ...n.data, deployment: here } });
+  const onlyA = (a: Admission | null) => (a && ours(a.data) ? a : null);
+  return {
+    ...inner,
+    putAdmission: (a) => inner.putAdmission(stampA(a)),
+    updateAdmission: (a, expected) => inner.updateAdmission(stampA(a), expected),
+    admissionById: async (id) => onlyA(await inner.admissionById(id)),
+    admissionByRequest: async (id) => onlyA(await inner.admissionByRequest(id)),
+    // Earlier deployments' rows are filtered after reading, so read past them.
+    listAdmissions: async (limit) => (await inner.listAdmissions(limit + 1000)).filter((a) => ours(a.data)).slice(0, limit),
+    admissionsFor: async (registrantId) => (await inner.admissionsFor(registrantId)).filter((a) => ours(a.data)),
+    latestAdmissionFor: async (registrantId, routes) =>
+      (await inner.admissionsFor(registrantId)).find((a) => ours(a.data) && (!routes || routes.includes(a.route))) ?? null,
+    putNote: (n) => inner.putNote(stampN(n)),
+    updateNote: (n, expectedStep) => inner.updateNote(stampN(n), expectedStep),
+    noteById: async (id) => {
+      const n = await inner.noteById(id);
+      return n && ours(n.data) ? n : null;
+    },
+    listNotes: async () => (await inner.listNotes()).filter((n) => ours(n.data)),
+  };
 }

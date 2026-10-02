@@ -61,7 +61,9 @@ contract Ceremony is Script {
         (Instruments.Deployed memory d, Lifecycle.Issued memory l) = _load();
 
         vm.startBroadcast(deployerPk);
-        Wallets memory w = Wallets(_wallet(10, 1), _wallet(13, 2), _wallet(16, 3), _wallet(19, 4));
+        // Salted with the note, so each deployment of a network gets its own wallets, by the same
+        // signers: a wallet's address follows from its owners and salt alone.
+        Wallets memory w = Wallets(_wallet(10, _salt(d, 1)), _wallet(13, _salt(d, 2)), _wallet(16, _salt(d, 3)), _wallet(19, _salt(d, 4)));
         GovernanceController g = Governance.ceremony(d, l, _config(w, vm.addr(deployerPk)));
         vm.stopBroadcast();
 
@@ -147,6 +149,10 @@ contract Ceremony is Script {
             address(0)
         );
         return IWalletFactory(WALLET_FACTORY).createProxyWithNonce(WALLET_SINGLETON, setup, salt);
+    }
+
+    function _salt(Instruments.Deployed memory d, uint256 k) private pure returns (uint256) {
+        return uint256(keccak256(abi.encode(address(d.note), k)));
     }
 
     function _mnemonic() private view returns (string memory) {

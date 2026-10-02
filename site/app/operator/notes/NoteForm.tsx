@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { calendar, calendarProblem, lifeOf, MAX_OBSERVATIONS, UNITS, type Unit } from "@/lib/notes/calendar";
 import { PendingButton } from "../../PendingButton";
 
@@ -15,8 +15,11 @@ export function NoteForm({ action, scenarios }: { action: (f: FormData) => Promi
   const [unit, setUnit] = useState<Unit>("minutes");
   const interval = { value, unit };
   const problem = calendarProblem(observations, interval);
-  const start = useMemo(() => Math.floor(Date.now() / 1000), [observations, value, unit]);
-  const dates = problem ? [] : calendar(start, observations, interval);
+  // "Now" is taken in the browser, after the page has hydrated: taken while rendering, the server's
+  // minute and the browser's could differ, and the preview would not match the page it came with.
+  const [start, setStart] = useState<number | null>(null);
+  useEffect(() => setStart(Math.floor(Date.now() / 1000)), [observations, value, unit]);
+  const dates = problem || start === null ? [] : calendar(start, observations, interval);
   const at = (s: number) => new Date(s * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 
   return (
@@ -46,7 +49,7 @@ export function NoteForm({ action, scenarios }: { action: (f: FormData) => Promi
       </div>
       {problem ? (
         <p role="alert" className="notice err">{problem}</p>
-      ) : (
+      ) : start === null ? null : (
         <div className="notice ok" role="note">
           <strong>{observations} observation{observations === 1 ? "" : "s"}, maturity {at(dates.at(-1)!.date)}; the note's whole life is about {lifeOf(start, dates)}.</strong>
           <ol style={{ margin: "0.5rem 0 0", paddingLeft: "1.25rem" }}>
