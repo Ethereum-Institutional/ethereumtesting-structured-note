@@ -92,3 +92,6 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0082](0082-governance-console-and-expiry.md) | Governance from the site, and an execution window for Tier 2 proposals | Accepted |
 | [0083](0083-records-scoped-to-a-deployment.md) | Records scoped to a deployment, for a fresh deployment of the test network | Accepted |
 | [0084](0084-close-out-statement.md) | A close-out statement for a redeemed note, read from the chain | Accepted |
+| [0085](0085-t-rex-release-and-scoped-agents.md) | T-REX 5.0.0-beta2 with ONCHAINID 2.2, and agents limited to what each needs | Accepted |
+| [0086](0086-deposit-token-allowlist.md) | The tokenized deposit: an allowlist ERC-20 like JPMD, eligible by the bank's own identity registry | Accepted |
+| [0087](0087-licence-boundary.md) | A narrow GPL-3.0 boundary around T-REX, and no non-commercial modules | Accepted |
