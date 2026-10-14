@@ -1,24 +1,39 @@
-// SPDX-License-Identifier: MPL-2.0
-pragma solidity 0.8.34;
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity 0.8.30;
 
-import {Test, Vm} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Test.sol";
 import {IDeterminationAgent} from "../src/interfaces/IDeterminationAgent.sol";
+import {AgentRestrictions, IOwnable2Step, INote} from "../src/interfaces/INote.sol";
 import {GovernanceController} from "../src/GovernanceController.sol";
 import {PayingAgent} from "../src/PayingAgent.sol";
-import {StructuredNote} from "../src/StructuredNote.sol";
-import {InstrumentGate} from "../src/InstrumentGate.sol";
-import {Instruments} from "../script/Instruments.sol";
-import {Lifecycle} from "../script/Lifecycle.sol";
+import {FixedImplementationAuthority} from "../src/FixedImplementationAuthority.sol";
+import {ClaimTopics} from "../src/claims/ClaimTopics.sol";
+import {ExpiringClaimIssuer} from "../src/claims/ExpiringClaimIssuer.sol";
 import {Governance} from "../script/Governance.sol";
-import {MockWallet, MockVenueChecker, MockVenueAdapter, MockCredentialGate} from "./Fixtures.sol";
+import {Issuance} from "../script/Issuance.sol";
+import {Stack, IERC20Like} from "./Stack.sol";
+import {MockWallet, MockVenueChecker, MockVenueAdapter, MockCredentialGate} from "./Mocks.sol";
+
+interface IProxyAuthority {
+    function getImplementationAuthority() external view returns (address);
+    function setImplementationAuthority(address) external;
+}
+
+interface IRoles {
+    function hasRole(bytes32 role, address account) external view returns (bool);
+}
+
+interface ITrusted {
+    function isTrustedIssuer(address issuer) external view returns (bool);
+    function hasClaimTopic(address issuer, uint256 topic) external view returns (bool);
+}
 
 /**
- * The governance controller and the ceremony: both tiers, both thresholds, both delays, recovery
- * with its veto, the worked example of reversal and restatement, and the renunciation.
+ * The governance controller and the ceremony on the ERC-3643 note: both tiers, both thresholds,
+ * both delays, recovery with its veto, the worked example of reversal and restatement, and the
+ * renunciation.
  */
-contract GovernanceTest is Test {
-    Instruments.Deployed d;
-    Lifecycle.Issued l;
+contract GovernanceTest is Stack {
     GovernanceController g;
 
     MockWallet agentGov;
@@ -30,53 +45,37 @@ contract GovernanceTest is Test {
     MockVenueAdapter adapter;
     MockCredentialGate gate;
 
-    uint256 caKey = 0xCA11;
     address deployer = address(this);
-    address agent = makeAddr("interim Agent key");
-    address accessIssuer = makeAddr("Access Issuer");
-    address depositAgent = makeAddr("Deposit Agent");
-    address inventory = makeAddr("Issuer inventory");
     address a = makeAddr("investor A");
     address b = makeAddr("investor B");
 
-    uint256 constant T0 = 1_790_000_000;
     uint48 constant TIER2 = 72 hours;
     uint48 constant RECOVERY = 14 days;
     uint48 constant WINDOW = 7 days;
-    uint256[] initial;
-    uint32 holder;
 
     function setUp() public {
         vm.warp(T0);
-        d = Instruments.deploy(
-            Instruments.Config(deployer, agent, accessIssuer, depositAgent, 3 * 365 days, 0, "", "N", "N", "D", "D")
-        );
+        _deployScaffolding();
         initial = [uint256(451_200), 1_820_300, 25_000];
-        l = Lifecycle.issue(d, _terms(), Lifecycle.Config(deployer, vm.addr(caKey), agent, inventory, agent));
-
-        holder = d.registry.HOLD() | d.registry.RECEIVE() | d.registry.TRANSFER() | d.registry.SANCTIONS_CLEAR();
-        _grant(a, holder | d.registry.REG_S());
-        _grant(b, holder | d.registry.REG_S());
-        _grant(inventory, holder | d.registry.REG_S());
-        _grant(agent, holder);
-        _grant(address(l.payingAgent), holder | d.registry.CONTRACT_ACCOUNT());
-        vm.prank(depositAgent);
-        d.gateway.credit(agent, 100_000_000_00, "funding");
-        vm.startPrank(agent);
-        d.deposit.approve(address(l.payingAgent), type(uint256).max);
-        d.note.mint(inventory, 20);
-        d.note.mint(a, 7);
-        d.note.mint(b, 3);
+        l = _issueNote("note", _twoDates());
+        _onboard(inventory, true);
+        _onboard(agent, true);
+        _onboard(a, true);
+        _onboard(b, true);
+        _credit(agent, 100_000_000_00);
+        vm.prank(agent);
+        IERC20Like(address(d.deposit)).approve(address(l.payingAgent), type(uint256).max);
+        vm.startPrank(inventory);
+        l.note.mint(inventory, 20);
+        l.note.mint(a, 7);
+        l.note.mint(b, 3);
+        l.note.unpause();
         vm.stopPrank();
 
         agentGov = new MockWallet(2);
         issuerGov = new MockWallet(2);
         cosigner = new MockWallet(2);
         servicing = new MockWallet(2);
-        address[] memory inst = new address[](3);
-        inst[0] = address(agentGov);
-        inst[1] = address(issuerGov);
-        inst[2] = address(cosigner);
         checker = new MockVenueChecker(deployer);
         adapter = new MockVenueAdapter(deployer);
         gate = new MockCredentialGate(deployer);
@@ -85,8 +84,9 @@ contract GovernanceTest is Test {
             l,
             Governance.Config(
                 deployer,
+                inventory,
                 agent,
-                inst,
+                _institutions(),
                 address(agentGov),
                 address(servicing),
                 2,
@@ -101,22 +101,43 @@ contract GovernanceTest is Test {
 
     // --- helpers ---
 
-    function _terms() internal view returns (IDeterminationAgent.Terms memory t) {
-        t.initialLevels = initial;
-        t.calculationAmountCents = 100_000;
-        t.couponBarrierBps = 7_000;
-        t.couponRateBps = 250;
-        t.barrierBps = 6_000;
-        t.schedule = new IDeterminationAgent.Observation[](2);
-        for (uint256 k = 0; k < 2; ++k) {
-            uint48 date = uint48(T0 + (k + 1) * 90 days);
-            t.schedule[k] = IDeterminationAgent.Observation(date, date + 2 days, date + 5 days, true, false, k == 1, k == 1, 0);
-        }
+    function _institutions() internal view returns (address[] memory inst) {
+        inst = new address[](3);
+        inst[0] = address(agentGov);
+        inst[1] = address(issuerGov);
+        inst[2] = address(cosigner);
     }
 
-    function _grant(address x, uint32 f) internal {
-        vm.prank(accessIssuer);
-        d.registry.grant(x, f, 276, uint40(T0 + 2 * 365 days), 0, 0);
+    /// Two dates: a coupon on the first, the final date on the second.
+    function _twoDates() internal view returns (IDeterminationAgent.Terms memory t) {
+        t = _terms();
+        IDeterminationAgent.Observation[] memory s = new IDeterminationAgent.Observation[](2);
+        for (uint256 k = 0; k < 2; ++k) {
+            uint48 date = uint48(T0 + (k + 1) * 90 days);
+            s[k] = IDeterminationAgent.Observation(date, date + 2 days, date + 5 days, true, false, k == 1, k == 1, 0);
+        }
+        t.schedule = s;
+    }
+
+    function _config(address checker_, uint48 window) internal view returns (GovernanceController.Config memory) {
+        return GovernanceController.Config(
+            address(l.note),
+            address(d.deposit),
+            l.trustedIssuers,
+            address(l.recordDates),
+            address(l.payingAgent),
+            _institutions(),
+            address(agentGov),
+            address(servicing),
+            2,
+            4,
+            TIER2,
+            RECOVERY,
+            window,
+            checker_,
+            checker_ == address(0) ? address(0) : address(adapter),
+            checker_ == address(0) ? address(0) : address(gate)
+        );
     }
 
     function _via(MockWallet w, bytes memory data) internal returns (bytes memory) {
@@ -134,30 +155,15 @@ contract GovernanceTest is Test {
         _via(w, abi.encodeCall(GovernanceController.approve, (id)));
     }
 
+    function _same(AgentRestrictions memory x, AgentRestrictions memory y) internal pure returns (bool) {
+        return keccak256(abi.encode(x)) == keccak256(abi.encode(y));
+    }
+
     // --- configuration ---
 
     function test_configurationIsChecked() public {
-        address[] memory inst = new address[](3);
-        inst[0] = address(agentGov);
-        inst[1] = address(issuerGov);
-        inst[2] = address(cosigner);
-        GovernanceController.Config memory c = GovernanceController.Config(
-            address(1),
-            address(2),
-            address(3),
-            address(4),
-            inst,
-            address(agentGov),
-            address(servicing),
-            2,
-            4,
-            0,
-            RECOVERY,
-            WINDOW,
-            address(0),
-            address(0),
-            address(0)
-        );
+        GovernanceController.Config memory c = _config(address(0), WINDOW);
+        c.tier2Delay = 0;
         vm.expectRevert(abi.encodeWithSelector(GovernanceController.InvalidConfiguration.selector, "Tier 2 delay is zero"));
         new GovernanceController(c);
         c.tier2Delay = RECOVERY;
@@ -179,38 +185,49 @@ contract GovernanceTest is Test {
 
     // --- the ceremony ---
 
-    /// The deployer and the interim Agent key hold nothing once the ceremony ends.
+    /// The deployer and the interim keys hold nothing on the note or its lifecycle once the
+    /// ceremony ends.
     function test_ceremonyLeavesTheDeployerAndInterimKeyWithNothing() public view {
-        bytes32[12] memory noteRoles = [
-            bytes32(0x00), d.note.PROXY_UPGRADE_ROLE(), d.note.MINTER_ROLE(), d.note.BURNER_ROLE(),
-            d.note.PAUSER_ROLE(), d.note.ENFORCER_ROLE(), d.note.ERC20ENFORCER_ROLE(), d.note.SNAPSHOOTER_ROLE(),
-            d.note.DOCUMENT_ROLE(), d.note.EXTRA_INFORMATION_ROLE(), d.note.FORCED_TRANSFER_ROLE(), d.note.FORCED_TRANSFER_ROLE()
-        ];
-        address[2] memory gone = [deployer, agent];
+        address[3] memory gone = [deployer, agent, inventory];
+        address[5] memory owned =
+            [address(l.note), address(l.identityRegistry), l.trustedIssuers, l.claimTopics, l.compliance];
         for (uint256 i; i < gone.length; ++i) {
-            for (uint256 k; k < noteRoles.length; ++k) assertFalse(d.note.hasRole(noteRoles[k], gone[i]), "note role");
-            assertFalse(d.deposit.hasRole(0x00, gone[i]), "deposit admin");
-            assertFalse(d.deposit.hasRole(d.deposit.PROXY_UPGRADE_ROLE(), gone[i]), "deposit upgrade");
-            assertFalse(d.registry.hasRole(0x00, gone[i]), "registry admin");
+            assertFalse(l.note.isAgent(gone[i]), "note agent");
+            for (uint256 k; k < owned.length; ++k) assertTrue(IOwnable2Step(owned[k]).owner() != gone[i], "owner");
+            assertFalse(IRoles(address(d.deposit)).hasRole(0x00, gone[i]), "deposit admin");
             assertFalse(l.payingAgent.hasRole(0x00, gone[i]), "Paying Agent admin");
             assertFalse(l.payingAgent.hasRole(l.payingAgent.PAYER_ROLE(), gone[i]), "payer");
-            assertFalse(d.gateway.hasRole(0x00, gone[i]), "gateway admin");
+            assertFalse(IRoles(address(d.gateway)).hasRole(0x00, gone[i]), "gateway admin");
         }
     }
 
     function test_ceremonyPlacesEachPower() public view {
         address c = address(g);
-        assertTrue(d.note.hasRole(0x00, c));
-        assertTrue(d.note.hasRole(d.note.PROXY_UPGRADE_ROLE(), c));
-        assertTrue(d.note.hasRole(d.note.FORCED_TRANSFER_ROLE(), c));
-        assertTrue(d.note.hasRole(d.note.MINTER_ROLE(), c), "notional amendment is Tier 2");
-        assertFalse(d.note.hasRole(d.note.MINTER_ROLE(), address(servicing)), "servicing cannot mint");
-        assertTrue(d.note.hasRole(d.note.PAUSER_ROLE(), address(servicing)));
+        address[5] memory owned =
+            [address(l.note), address(l.identityRegistry), l.trustedIssuers, l.claimTopics, l.compliance];
+        for (uint256 k; k < owned.length; ++k) assertEq(IOwnable2Step(owned[k]).owner(), c, "the controller owns the suite");
+        assertTrue(l.note.isAgent(c));
+        assertTrue(_same(l.note.getAgentRestrictions(c), Issuance.controllerRestrictions()), "controller restricted");
+        assertTrue(l.note.isAgent(address(servicing)));
+        assertTrue(_same(l.note.getAgentRestrictions(address(servicing)), g.servicingRestrictions()), "servicing restricted");
+        assertTrue(l.note.getAgentRestrictions(address(servicing)).disableMint, "servicing cannot mint");
+        assertTrue(_same(l.note.getAgentRestrictions(address(l.payingAgent)), Issuance.payingAgentRestrictions()));
+        assertTrue(_same(l.note.getAgentRestrictions(address(l.settlement)), Issuance.settlementRestrictions()));
         assertTrue(l.payingAgent.hasRole(l.payingAgent.PAYER_ROLE(), address(servicing)));
-        assertTrue(d.registry.hasRole(d.registry.SUPERVISOR_ROLE(), c));
-        assertTrue(d.deposit.hasRole(d.deposit.FORCED_TRANSFER_ROLE(), address(l.payingAgent)));
-        assertFalse(d.note.hasRole(d.note.SNAPSHOOTER_ROLE(), c), "the record-date engine is fixed");
-        assertFalse(d.note.hasRole(d.note.EXTRA_INFORMATION_ROLE(), c), "the terms are fixed");
+        assertTrue(IRoles(address(d.deposit)).hasRole(d.deposit.FORCED_TRANSFER_ROLE(), address(l.payingAgent)));
+        assertTrue(INote(address(l.identityRegistry)).isAgent(onboardingAgent), "the onboarding agent registers identities");
+    }
+
+    /// The note's logic is fixed: its proxies answer to an authority that can switch nothing,
+    /// and no one else can repoint them.
+    function test_noteLogicIsFixed() public {
+        address authority = IProxyAuthority(address(l.note)).getImplementationAuthority();
+        assertEq(authority, address(d.trexAuthority));
+        vm.expectRevert();
+        IProxyAuthority(address(l.note)).setImplementationAuthority(address(1));
+        vm.prank(address(g));
+        vm.expectRevert();
+        IProxyAuthority(address(l.note)).setImplementationAuthority(address(1));
     }
 
     // --- Tier 1 ---
@@ -219,7 +236,7 @@ contract GovernanceTest is Test {
         string memory reason = "Register correction: units delivered to investor B's old address";
         vm.recordLogs();
         _via(agentGov, abi.encodeCall(GovernanceController.correctRegister, (a, b, 2, reason)));
-        assertEq(d.note.balanceOf(b), 5);
+        assertEq(l.note.balanceOf(b), 5);
         bool found;
         Vm.Log[] memory logs = vm.getRecordedLogs();
         for (uint256 k; k < logs.length; ++k) {
@@ -236,10 +253,36 @@ contract GovernanceTest is Test {
         _via(agentGov, abi.encodeCall(GovernanceController.correctRegister, (a, b, 1, "")));
     }
 
-    function test_tier1WithdrawsAGrant() public {
-        _via(agentGov, abi.encodeCall(GovernanceController.withdrawGrant, (b, "Sanctions designation")));
-        (uint32 f,) = d.registry.liveFlags(b);
-        assertEq(f, 0);
+    /// The supervisory stop: an account frozen at once, whichever institution vouched for it.
+    function test_tier1FreezesAnAccount() public {
+        _via(agentGov, abi.encodeCall(GovernanceController.freezeAccount, (b, true, "Sanctions designation")));
+        assertTrue(l.note.isFrozen(b));
+        vm.prank(b);
+        vm.expectRevert();
+        IERC20Like(address(l.note)).transfer(a, 1);
+        _via(agentGov, abi.encodeCall(GovernanceController.freezeAccount, (b, false, "Designation lifted")));
+        assertFalse(l.note.isFrozen(b));
+    }
+
+    /// S-25: a holder's units recovered from its lost wallet to a new one, the identity moved
+    /// with them and the record dates kept in step; never while transfers are stopped.
+    function test_tier1RecoversALostWallet() public {
+        address replacement = makeAddr("investor B, new wallet");
+        address id = address(l.identityRegistry.identity(b));
+        _via(agentGov, abi.encodeCall(GovernanceController.recoverWallet, (b, replacement, id, "Key lost")));
+        assertEq(l.note.balanceOf(replacement), 3);
+        assertEq(l.note.balanceOf(b), 0);
+        assertEq(address(l.identityRegistry.identity(replacement)), id, "the identity moves with the units");
+        assertFalse(l.identityRegistry.contains(b), "the lost wallet is removed");
+        assertEq(l.recordDates.balanceAt(replacement, block.timestamp), 3, "the record dates follow");
+        assertEq(l.recordDates.balanceAt(b, block.timestamp), 0);
+
+        // From the final date's Record Time, the holder of record must stay the account paid.
+        address again = makeAddr("investor A, new wallet");
+        vm.warp(l.determinations.observation(1).recordTime + 1);
+        address idA = address(l.identityRegistry.identity(a));
+        vm.expectRevert(GovernanceController.TransfersClosed.selector);
+        _via(agentGov, abi.encodeCall(GovernanceController.recoverWallet, (a, again, idA, "Key lost")));
     }
 
     // --- Tier 2: two thresholds ---
@@ -277,7 +320,7 @@ contract GovernanceTest is Test {
         g.execute(id);
         vm.warp(readyAt);
         g.execute(id);
-        assertEq(d.note.balanceOf(inventory), 25, "tranched up into inventory");
+        assertEq(l.note.balanceOf(inventory), 25, "tranched up into inventory");
         vm.expectRevert(abi.encodeWithSelector(GovernanceController.NotOpen.selector, id));
         g.execute(id);
     }
@@ -297,7 +340,7 @@ contract GovernanceTest is Test {
         _approve(issuerGov, id);
         vm.expectRevert(abi.encodeWithSelector(GovernanceController.Expired.selector, id, readyAt + WINDOW));
         _via(agentGov, abi.encodeCall(GovernanceController.cancel, (id)));
-        assertEq(d.note.balanceOf(inventory), 20, "nothing was minted");
+        assertEq(l.note.balanceOf(inventory), 20, "nothing was minted");
         // Proposed afresh, it needs fresh approvals and a fresh delay.
         uint256 again = _proposeAmend(agentGov, 5);
         assertEq(g.proposal(again).readyAt, 0);
@@ -305,11 +348,8 @@ contract GovernanceTest is Test {
 
     /// An execution window of zero is refused.
     function test_executionWindowMustBeSet() public {
-        address[] memory inst = g.institutions();
         vm.expectRevert(abi.encodeWithSelector(GovernanceController.InvalidConfiguration.selector, "execution window is zero"));
-        new GovernanceController(
-            GovernanceController.Config(address(d.note), address(d.deposit), address(d.registry), address(l.payingAgent), inst, address(agentGov), address(servicing), 2, 4, TIER2, RECOVERY, 0, address(0), address(0), address(0))
-        );
+        new GovernanceController(_config(address(0), 0));
     }
 
     /// Thresholds are checked again at execution.
@@ -358,7 +398,7 @@ contract GovernanceTest is Test {
         assertFalse(g.isInstitution(address(agentGov)));
         assertEq(g.agentGovernance(), address(replacement), "Tier 1 moves with the Agent's seat");
         vm.expectRevert(abi.encodeWithSelector(GovernanceController.NotAgentGovernance.selector, address(agentGov)));
-        _via(agentGov, abi.encodeCall(GovernanceController.withdrawGrant, (b, "x")));
+        _via(agentGov, abi.encodeCall(GovernanceController.freezeAccount, (b, true, "x")));
     }
 
     /// A wallet that still works can veto its own replacement.
@@ -393,8 +433,41 @@ contract GovernanceTest is Test {
         g.execute(id);
         assertTrue(l.payingAgent.hasRole(l.payingAgent.PAYER_ROLE(), address(fresh)));
         assertFalse(l.payingAgent.hasRole(l.payingAgent.PAYER_ROLE(), address(servicing)));
-        assertTrue(d.note.hasRole(d.note.PAUSER_ROLE(), address(fresh)));
-        assertFalse(d.note.hasRole(d.note.PAUSER_ROLE(), address(servicing)));
+        assertTrue(l.note.isAgent(address(fresh)));
+        assertTrue(_same(l.note.getAgentRestrictions(address(fresh)), g.servicingRestrictions()));
+        assertFalse(l.note.isAgent(address(servicing)));
+    }
+
+    // --- whose claims the note accepts ---
+
+    /// Trusting a further onboarding agent's claim issuer for the note, and ceasing to trust one,
+    /// are Tier 2.
+    function test_trustedIssuerIsTier2() public {
+        ExpiringClaimIssuer dealer = new ExpiringClaimIssuer(makeAddr("dealer"), 365 days);
+        uint256[] memory topics = new uint256[](1);
+        topics[0] = ClaimTopics.NOTE_ELIGIBLE;
+        uint256 id = abi.decode(
+            _via(agentGov, abi.encodeCall(GovernanceController.proposeSetTrustedIssuer, (address(dealer), topics, "Dealer appointed"))),
+            (uint256)
+        );
+        assertEq(g.proposal(id).readyAt, 0, "one institution cannot queue");
+        _approve(issuerGov, id);
+        vm.warp(block.timestamp + TIER2);
+        g.execute(id);
+        assertTrue(ITrusted(l.trustedIssuers).hasClaimTopic(address(dealer), ClaimTopics.NOTE_ELIGIBLE));
+
+        // Ceasing to trust the original onboarding agent stops its clients at once.
+        id = abi.decode(
+            _via(agentGov, abi.encodeCall(GovernanceController.proposeSetTrustedIssuer, (address(d.onboardingIssuer), new uint256[](0), "Mandate ended"))),
+            (uint256)
+        );
+        _approve(cosigner, id);
+        vm.warp(block.timestamp + TIER2);
+        g.execute(id);
+        assertFalse(ITrusted(l.trustedIssuers).isTrustedIssuer(address(d.onboardingIssuer)));
+        assertFalse(l.identityRegistry.isVerified(a), "its claims no longer verify");
+        vm.expectRevert(GovernanceController.InvalidArgument.selector);
+        _via(agentGov, abi.encodeCall(GovernanceController.proposeSetTrustedIssuer, (address(d.onboardingIssuer), new uint256[](0), "again")));
     }
 
     // --- the worked example: reversal and restatement (ADR 0014) ---
@@ -405,13 +478,12 @@ contract GovernanceTest is Test {
         uint256[] memory lv = new uint256[](3);
         for (uint256 k; k < 3; ++k) lv[k] = initial[k] * 9_000 / 10_000;
         (IDeterminationAgent.Outcome memory out,) = l.determinations.compute(0, lv);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(caKey, l.determinations.digest(0, lv, out));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(CA_KEY, l.determinations.digest(0, lv, out));
         l.determinations.determine(0, lv, out, abi.encodePacked(r, s, v));
 
         // Investor A sells to B after the calendar's Record Time, before the true one.
         vm.warp(o.recordTime + 1 hours);
-        vm.prank(a);
-        d.note.transfer(b, 7);
+        _send(a, b, 7);
         uint48 trueRecordTime = o.recordTime + 1 days;
 
         vm.warp(o.paymentDate);
@@ -451,40 +523,6 @@ contract GovernanceTest is Test {
         servicing.exec(address(l.payingAgent), abi.encodeCall(PayingAgent.pay, (restated, onlyB)));
         assertEq(d.deposit.balanceOf(b), 10 * 2_500, "B, the holder at the true Record Time, is paid for all ten");
         assertEq(d.deposit.balanceOf(a), 0);
-    }
-
-    // --- upgrade and gate replacement ---
-
-    function test_upgradeIsTier2() public {
-        address impl = address(new StructuredNote());
-        uint256 id = abi.decode(
-            _via(agentGov, abi.encodeCall(GovernanceController.proposeUpgrade, (address(d.note), impl, "Fix"))), (uint256)
-        );
-        _approve(issuerGov, id);
-        vm.warp(block.timestamp + TIER2);
-        g.execute(id);
-        bytes32 slot = bytes32(uint256(keccak256("eip1967.proxy.implementation")) - 1);
-        assertEq(address(uint160(uint256(vm.load(address(d.note), slot)))), impl);
-    }
-
-    function test_onlyTheGovernedTokens() public {
-        vm.expectRevert(abi.encodeWithSelector(GovernanceController.NotGoverned.selector, address(d.registry)));
-        _via(agentGov, abi.encodeCall(GovernanceController.proposeUpgrade, (address(d.registry), address(1), "x")));
-    }
-
-    function test_gateReplacementIsTier2() public {
-        InstrumentGate next = new InstrumentGate(d.registry, 0, 0, 0, new uint16[](0));
-        uint256 id = abi.decode(
-            _via(
-                agentGov,
-                abi.encodeCall(GovernanceController.proposeReplaceGate, (address(d.deposit), address(next), "New mask"))
-            ),
-            (uint256)
-        );
-        _approve(issuerGov, id);
-        vm.warp(block.timestamp + TIER2);
-        g.execute(id);
-        assertEq(address(d.deposit.ruleEngine()), address(next));
     }
 
     // --- the venue (ADR 0039) ---
@@ -577,30 +615,12 @@ contract GovernanceTest is Test {
 
     /// A controller with no venue refuses every venue act.
     function test_noVenueRefusesVenueActs() public {
-        address[] memory inst = g.institutions();
-        GovernanceController bare = new GovernanceController(
-            GovernanceController.Config(
-                address(d.note),
-                address(d.deposit),
-                address(d.registry),
-                address(l.payingAgent),
-                inst,
-                address(agentGov),
-                address(servicing),
-                2,
-                4,
-                TIER2,
-                RECOVERY,
-                WINDOW,
-                address(0),
-                address(0),
-                address(0)
-            )
-        );
-        vm.expectRevert(GovernanceController.NoVenue.selector);
-        bare.acceptVenueOwnership();
+        GovernanceController bare = new GovernanceController(_config(address(0), WINDOW));
         vm.prank(address(servicing));
         vm.expectRevert(GovernanceController.NoVenue.selector);
         bare.setVenueSwapping(false);
+        vm.prank(address(agentGov));
+        vm.expectRevert(GovernanceController.NoVenue.selector);
+        bare.withdrawPoolAccess(a, "x");
     }
 }

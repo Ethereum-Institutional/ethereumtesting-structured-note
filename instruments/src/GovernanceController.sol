@@ -1,24 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
-pragma solidity 0.8.34;
+pragma solidity 0.8.30;
+
+import {INote, IRecordDates, IOwnable2Step, AgentRestrictions} from "./interfaces/INote.sol";
 
 interface IThresholdWallet {
     function getThreshold() external view returns (uint256);
 }
 
-interface IGovernedToken {
-    function forcedTransfer(address from, address to, uint256 value, bytes calldata data) external returns (bool);
-    function mint(address account, uint256 value) external;
-    function burn(address account, uint256 value) external;
-    function setRuleEngine(address ruleEngine) external;
-    function upgradeToAndCall(address newImplementation, bytes calldata data) external payable;
-    function grantRole(bytes32 role, address account) external;
-    function revokeRole(bytes32 role, address account) external;
-}
-
-interface IGovernedRegistry {
-    function withdraw(address account, string calldata reason) external;
-    function setRegistrar(address issuingKey, uint16 registrar) external;
-    function setMaxValidity(uint40 maxValidity) external;
+/// @dev The note's trusted issuers registry: which institutions' claims it accepts, for which topics.
+interface IGovernedIssuers {
+    function addTrustedIssuer(address issuer, uint256[] calldata topics) external;
+    function removeTrustedIssuer(address issuer) external;
+    function updateIssuerClaimTopics(address issuer, uint256[] calldata topics) external;
+    function isTrustedIssuer(address issuer) external view returns (bool);
 }
 
 interface IGovernedPayingAgent {
@@ -51,40 +45,46 @@ interface IGovernedCredentials {
 
 /**
  * @title GovernanceController
- * @notice Every privileged power over the note, the deposit, the registry, the Paying Agent and
- *         the conversion venue, exercised in two tiers through a fixed set of typed acts, and
- *         nothing else.
+ * @notice Every privileged power over the note, its identities, the Paying Agent and the
+ *         conversion venue, exercised in two tiers through a fixed set of typed acts, and nothing
+ *         else. The note is an ERC-3643 token (T-REX): this controller owns it and its registries,
+ *         and is one of its agents, with only the powers its acts need (ADRs 0085, 0088).
  *
  * - **No general call path** (section 7, ADR 0021). Each permitted act is its own entry point
  *   with typed arguments; a proposal stores those arguments, never calldata, and the controller
  *   builds every downstream call itself. This source is the complete permitted set.
  * - **Tier 1, register correction** (overview; ADR 0025). The Agent's governance wallet alone,
- *   with no delay: correcting the note's register by a reason-carrying forced transfer, and
- *   supervisory withdrawal of a grant (ADR 0004). Each carries its written reason in full.
+ *   with no delay, each act carrying its written reason in full:
+ *   - correcting the note's register by a forced transfer;
+ *   - freezing or unfreezing an account at once, whichever institution vouched for it, as a
+ *     supervisory stop (ADR 0004);
+ *   - recovering a holder's units from a lost wallet to a new one (S-25), which ERC-3643 does
+ *     natively, never while transfers are stopped at a Record Time.
  * - **Tier 2, intervention.** Proposed and approved by the institution wallets. It is queued once
  *   approvals come from at least `MIN_INSTITUTIONS` institutions whose wallets' own thresholds sum
  *   to at least `MIN_SIGNATURES` (ADR 0022), and can be executed after `TIER2_DELAY` (ADR 0023).
  *   Thresholds are checked again at execution. The reason is stored and emitted in full, because a
  *   notice that needs an off-chain lookup is not notice.
+ * - **Whose claims the note accepts** is Tier 2: trusting an institution's claim issuer for the
+ *   note's claim topics, changing them, or ceasing to trust it.
  * - **Expiry** (S-24, ADR 0082). A queued proposal not executed within `EXECUTION_WINDOW` of
  *   becoming ready expires: it can no longer be executed, approved or cancelled, and acting on it
  *   again means proposing it afresh, with fresh approvals.
- * - **Recovery** (ADR 0019). Replacing an institution's wallet needs every other institution and
- *   the longer `RECOVERY_DELAY`, and the wallet being replaced can cancel it if it still works.
+ * - **Recovery of an institution** (ADR 0019). Replacing an institution's wallet needs every other
+ *   institution and the longer `RECOVERY_DELAY`, and the wallet being replaced can cancel it if it
+ *   still works.
  * - **The venue** (ADR 0039). The controller owns the venue checker and the deposit's permissions
  *   adapter and administers the pool's credential gate. The servicing wallet switches swapping
  *   off and on; supervisory withdrawal of pool access is Tier 1; every other venue act is Tier 2.
- * - **Nothing is upgradeable,** and no act changes the thresholds or the delays.
+ * - **Nothing is upgradeable.** The note's implementation is fixed by the T-REX implementation
+ *   authority, which no one owns after deployment, and no act changes the thresholds or the delays.
  */
 contract GovernanceController {
     enum Kind {
-        Upgrade,
-        ReplaceGate,
         AmendNotional,
         ReverseDistribution,
         RestateDistribution,
-        SetRegistrar,
-        SetMaxValidity,
+        SetTrustedIssuer,
         ReplaceServicingWallet,
         ReplaceInstitution,
         SetCredentialGate,
@@ -104,17 +104,16 @@ contract GovernanceController {
         string reason;
     }
 
-    // Roles on the governed contracts, by name, for the typed role changes below.
-    bytes32 private constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-    bytes32 private constant ENFORCER_ROLE = keccak256("ENFORCER_ROLE");
-    bytes32 private constant ERC20ENFORCER_ROLE = keccak256("ERC20ENFORCER_ROLE");
-    bytes32 private constant DOCUMENT_ROLE = keccak256("DOCUMENT_ROLE");
     bytes32 private constant PAYER_ROLE = keccak256("PAYER_ROLE");
     bytes32 private constant ATTESTER_ROLE = keccak256("ATTESTER_ROLE");
 
-    IGovernedToken public immutable NOTE;
-    IGovernedToken public immutable DEPOSIT;
-    IGovernedRegistry public immutable REGISTRY;
+    INote public immutable NOTE;
+    /// @notice The deposit, as the venue's checker knows it.
+    address public immutable DEPOSIT;
+    /// @notice The note's trusted issuers registry.
+    IGovernedIssuers public immutable TRUSTED_ISSUERS;
+    /// @notice The note's record dates, which a wallet recovery must keep in step.
+    IRecordDates public immutable RECORD_DATES;
     IGovernedPayingAgent public immutable PAYING_AGENT;
     /// @notice The venue checker and the deposit's permissions adapter; zero where no venue.
     IGovernedChecker public immutable CHECKER;
@@ -161,16 +160,17 @@ contract GovernanceController {
     error ThresholdsNotMet(uint256 institutions, uint256 signatures);
     error NotReady(uint48 readyAt);
     error NotCancellable(address caller);
-    error NotGoverned(address token);
     error InvalidArgument();
     error NotServicingWallet(address caller);
     error NoVenue();
     error Expired(uint256 id, uint48 expiredAt);
+    error TransfersClosed();
 
     struct Config {
         address note;
         address deposit;
-        address registry;
+        address trustedIssuers;
+        address recordDates;
         address payingAgent;
         address[] institutions;
         address agentGovernance;
@@ -201,9 +201,10 @@ contract GovernanceController {
             _institutions.push(w);
         }
         if (!isInstitution[c.agentGovernance]) revert InvalidConfiguration("Agent governance is not an institution");
-        NOTE = IGovernedToken(c.note);
-        DEPOSIT = IGovernedToken(c.deposit);
-        REGISTRY = IGovernedRegistry(c.registry);
+        NOTE = INote(c.note);
+        DEPOSIT = c.deposit;
+        TRUSTED_ISSUERS = IGovernedIssuers(c.trustedIssuers);
+        RECORD_DATES = IRecordDates(c.recordDates);
         PAYING_AGENT = IGovernedPayingAgent(c.payingAgent);
         MIN_INSTITUTIONS = c.minInstitutions;
         MIN_SIGNATURES = c.minSignatures;
@@ -228,6 +229,34 @@ contract GovernanceController {
     }
 
     // ------------------------------------------------------------------------------------------
+    // The servicing wallet's restrictions, and the handover in the ceremony
+    // ------------------------------------------------------------------------------------------
+
+    /// @notice What the servicing wallet may do on the note as an agent: pause, and freeze part
+    ///         of a holding. Address freezing, forced transfer and recovery are Tier 1 here;
+    ///         minting and burning are the Issuer's, the Paying Agent's and Tier 2's.
+    function servicingRestrictions() public pure returns (AgentRestrictions memory) {
+        return AgentRestrictions({
+            disableMint: true,
+            disableBurn: true,
+            disablePartialFreeze: false,
+            disableAddressFreeze: true,
+            disableRecovery: true,
+            disableForceTransfer: true,
+            disablePause: false
+        });
+    }
+
+    /// @notice Completes the handover of ownership in the ceremony: the note and its registries,
+    ///         and the venue where there is one. Anyone may call; it only accepts ownership that
+    ///         was already transferred to this controller.
+    function acceptOwnerships(address[] calldata owned) external {
+        for (uint256 k = 0; k < owned.length; ++k) {
+            IOwnable2Step(owned[k]).acceptOwnership();
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------
     // Tier 1: the Agent's governance wallet, no delay, written reason
     // ------------------------------------------------------------------------------------------
 
@@ -237,15 +266,34 @@ contract GovernanceController {
         withReason(reason)
     {
         _onlyAgentGovernance();
-        NOTE.forcedTransfer(from, to, units, bytes(reason));
+        NOTE.forcedTransfer(from, to, units);
         emit Tier1("correctRegister", reason);
     }
 
-    /// @notice Withdraws any grant at once, whichever registrar wrote it (Tier 1, ADR 0004).
-    function withdrawGrant(address account, string calldata reason) external withReason(reason) {
+    /// @notice Freezes or unfreezes an account on the note at once, whichever institution vouched
+    ///         for it (Tier 1, ADR 0004): the supervisory stop, for a sanctions designation.
+    function freezeAccount(address account, bool frozen, string calldata reason) external withReason(reason) {
         _onlyAgentGovernance();
-        REGISTRY.withdraw(account, reason);
-        emit Tier1("withdrawGrant", reason);
+        NOTE.setAddressFrozen(account, frozen);
+        emit Tier1(frozen ? "freezeAccount" : "unfreezeAccount", reason);
+    }
+
+    /**
+     * @notice Recovers a holder's units from a lost wallet to its new one, with the identity
+     *         re-registered to it (Tier 1, S-25). Refused while transfers are stopped at a Record
+     *         Time, so the holder of record and the account paid stay the same.
+     */
+    function recoverWallet(address lostWallet, address newWallet, address identity, string calldata reason)
+        external
+        withReason(reason)
+    {
+        _onlyAgentGovernance();
+        if (!RECORD_DATES.transfersOpen()) revert TransfersClosed();
+        NOTE.recoveryAddress(lostWallet, newWallet, identity);
+        address[] memory moved = new address[](2);
+        (moved[0], moved[1]) = (lostWallet, newWallet);
+        RECORD_DATES.sync(moved);
+        emit Tier1("recoverWallet", reason);
     }
 
     /// @notice Withdraws an account's access to the conversion pool at once (Tier 1, ADR 0039).
@@ -268,39 +316,9 @@ contract GovernanceController {
         emit VenueSwapping(enabled);
     }
 
-    /// @notice Completes the venue's handover in the ceremony. Anyone may call; it only accepts
-    ///         ownership that was already transferred to this controller.
-    function acceptVenueOwnership() external {
-        _venue();
-        CHECKER.acceptOwnership();
-        ADAPTER.acceptOwnership();
-    }
-
     // ------------------------------------------------------------------------------------------
     // Tier 2: proposals, one typed entry point per permitted act
     // ------------------------------------------------------------------------------------------
-
-    /// @notice Upgrades the note or the deposit to a new implementation.
-    function proposeUpgrade(address token, address implementation, string calldata reason)
-        external
-        withReason(reason)
-        returns (uint256)
-    {
-        _governed(token);
-        if (implementation == address(0)) revert InvalidArgument();
-        return _propose(Kind.Upgrade, abi.encode(token, implementation), reason);
-    }
-
-    /// @notice Points the note or the deposit at a new gate.
-    function proposeReplaceGate(address token, address gate, string calldata reason)
-        external
-        withReason(reason)
-        returns (uint256)
-    {
-        _governed(token);
-        if (gate == address(0)) revert InvalidArgument();
-        return _propose(Kind.ReplaceGate, abi.encode(token, gate), reason);
-    }
 
     /// @notice Tranches the notional up or reduces it, in the Issuer's inventory only.
     function proposeAmendNotional(bool increase, uint256 units, string calldata reason)
@@ -331,27 +349,21 @@ contract GovernanceController {
         return _propose(Kind.RestateDistribution, abi.encode(original, recordTime), reason);
     }
 
-    /// @notice Appoints or removes a registrar's issuing key.
-    function proposeSetRegistrar(address issuingKey, uint16 registrar, string calldata reason)
+    /**
+     * @notice Trusts an institution's claim issuer for the given claim topics of the note, changes
+     *         the topics it is trusted for, or, with no topics, ceases to trust it.
+     */
+    function proposeSetTrustedIssuer(address issuer, uint256[] calldata topics, string calldata reason)
         external
         withReason(reason)
         returns (uint256)
     {
-        if (issuingKey == address(0)) revert InvalidArgument();
-        return _propose(Kind.SetRegistrar, abi.encode(issuingKey, registrar), reason);
+        if (issuer == address(0)) revert InvalidArgument();
+        if (topics.length == 0 && !TRUSTED_ISSUERS.isTrustedIssuer(issuer)) revert InvalidArgument();
+        return _propose(Kind.SetTrustedIssuer, abi.encode(issuer, topics), reason);
     }
 
-    /// @notice Sets the longest a grant may run.
-    function proposeSetMaxValidity(uint40 maxValidity, string calldata reason)
-        external
-        withReason(reason)
-        returns (uint256)
-    {
-        if (maxValidity == 0) revert InvalidArgument();
-        return _propose(Kind.SetMaxValidity, abi.encode(maxValidity), reason);
-    }
-
-    /// @notice Moves every servicing role from the servicing wallet to a new one, as one act.
+    /// @notice Moves every servicing power from the servicing wallet to a new one, as one act.
     function proposeReplaceServicingWallet(address newWallet, string calldata reason)
         external
         withReason(reason)
@@ -553,13 +565,7 @@ contract GovernanceController {
 
     function _dispatch(Proposal storage p) private {
         Kind k = p.kind;
-        if (k == Kind.Upgrade) {
-            (address token, address impl) = abi.decode(p.args, (address, address));
-            IGovernedToken(token).upgradeToAndCall(impl, "");
-        } else if (k == Kind.ReplaceGate) {
-            (address token, address gate) = abi.decode(p.args, (address, address));
-            IGovernedToken(token).setRuleEngine(gate);
-        } else if (k == Kind.AmendNotional) {
+        if (k == Kind.AmendNotional) {
             (bool increase, uint256 units) = abi.decode(p.args, (bool, uint256));
             address inventory = PAYING_AGENT.INVENTORY();
             if (increase) NOTE.mint(inventory, units);
@@ -570,11 +576,11 @@ contract GovernanceController {
         } else if (k == Kind.RestateDistribution) {
             (bytes32 original, uint48 recordTime) = abi.decode(p.args, (bytes32, uint48));
             PAYING_AGENT.restate(original, recordTime, p.reason);
-        } else if (k == Kind.SetRegistrar) {
-            (address key, uint16 registrar) = abi.decode(p.args, (address, uint16));
-            REGISTRY.setRegistrar(key, registrar);
-        } else if (k == Kind.SetMaxValidity) {
-            REGISTRY.setMaxValidity(abi.decode(p.args, (uint40)));
+        } else if (k == Kind.SetTrustedIssuer) {
+            (address issuer, uint256[] memory topics) = abi.decode(p.args, (address, uint256[]));
+            if (topics.length == 0) TRUSTED_ISSUERS.removeTrustedIssuer(issuer);
+            else if (TRUSTED_ISSUERS.isTrustedIssuer(issuer)) TRUSTED_ISSUERS.updateIssuerClaimTopics(issuer, topics);
+            else TRUSTED_ISSUERS.addTrustedIssuer(issuer, topics);
         } else if (k == Kind.ReplaceServicingWallet) {
             _replaceServicing(abi.decode(p.args, (address)));
         } else if (k == Kind.ReplaceInstitution) {
@@ -582,12 +588,12 @@ contract GovernanceController {
             _replaceInstitution(oldWallet, newWallet);
         } else if (k == Kind.SetCredentialGate) {
             address gate = abi.decode(p.args, (address));
-            CHECKER.setCredentialGate(address(DEPOSIT), gate);
+            CHECKER.setCredentialGate(DEPOSIT, gate);
             emit CredentialGateReplaced(credentialGate, gate);
             credentialGate = gate;
         } else if (k == Kind.SetLiquidityProvider) {
             (address account, bool approved) = abi.decode(p.args, (address, bool));
-            CHECKER.setLiquidityApproved(address(DEPOSIT), account, approved);
+            CHECKER.setLiquidityApproved(DEPOSIT, account, approved);
         } else if (k == Kind.SetVenueWrapper) {
             (address wrapper, bool allowed) = abi.decode(p.args, (address, bool));
             ADAPTER.updateAllowedWrapper(wrapper, allowed);
@@ -601,14 +607,13 @@ contract GovernanceController {
         }
     }
 
-    /// @dev The servicing roles of ADR 0025, moved together.
+    /// @dev The servicing powers of ADR 0025, moved together: the note's agent, with the same
+    ///      restrictions, and paying.
     function _replaceServicing(address newWallet) private {
         address old = servicingWallet;
-        bytes32[4] memory noteRoles = [PAUSER_ROLE, ENFORCER_ROLE, ERC20ENFORCER_ROLE, DOCUMENT_ROLE];
-        for (uint256 k = 0; k < noteRoles.length; ++k) {
-            NOTE.revokeRole(noteRoles[k], old);
-            NOTE.grantRole(noteRoles[k], newWallet);
-        }
+        NOTE.removeAgent(old);
+        NOTE.addAgent(newWallet);
+        NOTE.setAgentRestrictions(newWallet, servicingRestrictions());
         PAYING_AGENT.revokeRole(PAYER_ROLE, old);
         PAYING_AGENT.grantRole(PAYER_ROLE, newWallet);
         servicingWallet = newWallet;
@@ -632,9 +637,5 @@ contract GovernanceController {
 
     function _venue() private view {
         if (address(CHECKER) == address(0)) revert NoVenue();
-    }
-
-    function _governed(address token) private view {
-        if (token != address(NOTE) && token != address(DEPOSIT)) revert NotGoverned(token);
     }
 }

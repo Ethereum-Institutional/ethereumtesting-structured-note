@@ -4,6 +4,9 @@ node_modules/
 # the directory silently kept their gitlinks out of the tree -- so a fresh clone got an
 # empty lib/ and could not compile.
 
+# Soldeer dependencies, fetched from instruments/soldeer.lock
+instruments/dependencies/
+
 # build output
 out/
 cache/

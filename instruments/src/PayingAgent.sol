@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-pragma solidity 0.8.34;
+pragma solidity 0.8.30;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IDeterminationAgent} from "./interfaces/IDeterminationAgent.sol";
@@ -14,7 +14,7 @@ interface INoteServicing {
 
 interface ICashLeg {
     function balanceOf(address account) external view returns (uint256);
-    function forcedTransfer(address from, address to, uint256 value, bytes calldata data) external returns (bool);
+    function forcedTransfer(address from, address to, uint256 value) external returns (bool);
     function transfer(address to, uint256 value) external returns (bool);
     function transferFrom(address from, address to, uint256 value) external returns (bool);
     function canTransfer(address from, address to, uint256 value) external view returns (bool);
@@ -47,7 +47,7 @@ interface IRecordDates {
  *
  * - **Reversal and restatement** (ADR 0014) belong to the governance controller alone. A coupon is
  *   reversed holder by holder against its original credit, by a forced transfer on the deposit
- *   carrying the written reason, back to the funding account; a shortfall is recorded, never
+ *   back to the funding account, the written reason emitted with it; a shortfall is recorded, never
  *   hidden, and an amount that was held and never paid is cancelled instead. The original
  *   distribution stays on record, marked reversed. It may then be restated against a corrected
  *   Record Time, as a new distribution paid in the ordinary way.
@@ -185,7 +185,7 @@ contract PayingAgent is AccessControl {
         if (d.kind != Kind.Coupon) revert OnlyCouponsReverse();
         if (!d.closed) revert NotClosed(id);
         for (uint256 k = 0; k < holders.length; ++k) {
-            d.unitsReversed += uint64(_reverseOne(id, d, holders[k], reason));
+            d.unitsReversed += uint64(_reverseOne(id, d, holders[k]));
         }
         if (d.unitsReversed == d.unitsPaid && !d.reversed) {
             d.reversed = true;
@@ -193,7 +193,7 @@ contract PayingAgent is AccessControl {
         }
     }
 
-    function _reverseOne(bytes32 id, Distribution storage d, address h, string calldata reason)
+    function _reverseOne(bytes32 id, Distribution storage d, address h)
         private
         returns (uint256 units)
     {
@@ -212,7 +212,7 @@ contract PayingAgent is AccessControl {
         uint256 due = uint256(d.perCa) * units;
         uint256 balance = CASH.balanceOf(h);
         uint256 recovered = due < balance ? due : balance;
-        if (recovered > 0) CASH.forcedTransfer(h, FUNDER, recovered, bytes(reason));
+        if (recovered > 0) CASH.forcedTransfer(h, FUNDER, recovered);
         emit Reversed(id, h, recovered, 0, due - recovered);
     }
 

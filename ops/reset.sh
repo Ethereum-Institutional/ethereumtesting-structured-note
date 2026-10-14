@@ -17,7 +17,7 @@ SNAPSHOTS="$ROOT/ops/.chain-snapshots"
 key() {
   {
     git ls-files -co --exclude-standard -- contracts script instruments/src instruments/script \
-      foundry.toml instruments/foundry.toml remappings.txt instruments/remappings.txt \
+      foundry.toml instruments/foundry.toml instruments/soldeer.lock remappings.txt instruments/remappings.txt \
       'ops/*.sh' ops/keys.env | grep -v '^ops/reset.sh$' | sort | xargs shasum 2>/dev/null
     git submodule status --recursive 2>/dev/null
     anvil --version | head -1

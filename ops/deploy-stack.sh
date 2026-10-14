@@ -28,7 +28,7 @@ step() { printf '\n\033[1m── %s\033[0m\n' "$1"; }
 # build of both units costs seconds and rules that out.
 step "forced build of both compilation units"
 forge build --force >/dev/null 2>&1 || forge build --force
-( cd instruments && { forge build --force >/dev/null 2>&1 || forge build --force; } )
+( cd instruments && forge soldeer install >/dev/null && { forge build --force >/dev/null 2>&1 || forge build --force; } )
 
 if [ "${PUBLIC_NETWORK:-0}" != 1 ]; then
   step "Permit2, the multi-signature wallet and the credential protocol at their canonical addresses"
@@ -40,7 +40,7 @@ fi
 step "payment token and credential protocol"
 forge script script/00_DeployBase.s.sol:DeployBase $FS >/dev/null
 
-step "instruments: registry, gates, note, deposit, gateway  (solc 0.8.34)"
+step "scaffolding: identities, T-REX, claim issuers, deposit, gateway; the cast onboarded by role  (solc 0.8.30)"
 ( cd instruments && forge script script/DeployInstruments.s.sol:DeployInstruments $FS >/dev/null )
 
 step "venue around the deposit, with the pool's credential gate"
@@ -53,7 +53,7 @@ forge script script/03_DeployLens.s.sol:DeployLens $FS >/dev/null
 step "Custodian and segregated client accounts"
 forge script script/04_DeployCustody.s.sol:DeployCustody $FS >/dev/null
 
-step "issuance: terms fixed, lifecycle attached, units placed by DvP"
+step "issuance: the note as a T-REX suite, lifecycle attached as restricted agents, units placed by locked offer"
 ( cd instruments && forge script script/IssueNote.s.sol:IssueNote $FS >/dev/null )
 
 step "governance ceremony: wallets, controller, roles moved, venue handed over, deployer renounces"

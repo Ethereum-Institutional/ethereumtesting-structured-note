@@ -1,15 +1,15 @@
-# The instruments' compilation unit: the note and the tokenized deposit.
+# The instruments' compilation unit: the note as an ERC-3643 token (T-REX), its identities and
+# lifecycle, and the tokenized deposit.
 #
-# Separate from the venue's unit by necessity (spike 1). The note fits under EIP-170 only on
-# the legacy pipeline at solc 0.8.27 or later, while the venue is pinned to 0.8.26 on the IR
-# pipeline. The debt standard is pinned at its release candidate; see HANDOFF.md section 3.
+# T-REX 5.0.0-beta2 pins solc 0.8.30 exactly, so the whole unit compiles with it (ADR 0085).
+# Dependencies are pinned through Soldeer (soldeer.lock); `forge soldeer install` fetches them.
 [profile.default]
 src = "src"
 test = "test"
 out = "out"
-libs = ["lib"]
+libs = ["dependencies"]
 allow_paths = ["../lib/forge-std"]
-solc_version = "0.8.34"
+solc_version = "0.8.30"
 evm_version = "cancun"
 via_ir = false
 optimizer = true
@@ -18,9 +18,10 @@ bytecode_hash = "none"
 # The deploy script extends the venue stack's manifest.
 fs_permissions = [{ access = "read-write", path = "../ops" }, { access = "read", path = "./test/vectors" }]
 remappings = [
-  "debt-standard/=lib/debt-standard/contracts/",
-  "@openzeppelin/contracts-upgradeable/=lib/debt-standard/lib/openzeppelin-contracts-upgradeable/contracts/",
-  "@openzeppelin/contracts/=lib/debt-standard/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/",
+  "@openzeppelin/contracts/=dependencies/@openzeppelin-contracts-5.6.1/",
+  "@openzeppelin/contracts-upgradeable/=dependencies/@openzeppelin-contracts-upgradeable-5.6.1/",
+  "@onchain-id/solidity/=dependencies/onchain-id-2.2.2-beta3/",
+  "t-rex/=dependencies/t-rex-5.0.0-beta2/contracts/",
   "forge-std/=../lib/forge-std/src/",
 ]
 
@@ -30,9 +31,9 @@ remappings = [
 src = "src"
 test = "test-fork"
 out = "out"
-libs = ["lib"]
+libs = ["dependencies"]
 allow_paths = ["../lib/forge-std"]
-solc_version = "0.8.34"
+solc_version = "0.8.30"
 evm_version = "cancun"
 via_ir = false
 optimizer = true
@@ -40,8 +41,19 @@ optimizer_runs = 200
 bytecode_hash = "none"
 fs_permissions = [{ access = "read", path = "../ops" }]
 remappings = [
-  "debt-standard/=lib/debt-standard/contracts/",
-  "@openzeppelin/contracts-upgradeable/=lib/debt-standard/lib/openzeppelin-contracts-upgradeable/contracts/",
-  "@openzeppelin/contracts/=lib/debt-standard/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/",
+  "@openzeppelin/contracts/=dependencies/@openzeppelin-contracts-5.6.1/",
+  "@openzeppelin/contracts-upgradeable/=dependencies/@openzeppelin-contracts-upgradeable-5.6.1/",
+  "@onchain-id/solidity/=dependencies/onchain-id-2.2.2-beta3/",
+  "t-rex/=dependencies/t-rex-5.0.0-beta2/contracts/",
   "forge-std/=../lib/forge-std/src/",
 ]
+
+[soldeer]
+remappings_generate = false
+remappings_regenerate = false
+
+[dependencies]
+"@openzeppelin-contracts" = "5.6.1"
+"@openzeppelin-contracts-upgradeable" = "5.6.1"
+onchain-id = { version = "2.2.2-beta3", git = "https://github.com/onchain-id/solidity.git", tag = "2.2.2-beta3" }
+t-rex = { version = "5.0.0-beta2", git = "https://github.com/T-REX-Network/T-REX.git", tag = "5.0.0-beta2" }

@@ -1,16 +1,12 @@
-// SPDX-License-Identifier: MPL-2.0
-pragma solidity 0.8.34;
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity 0.8.30;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {GovernanceController} from "../src/GovernanceController.sol";
-import {IdentityRegistry} from "../src/IdentityRegistry.sol";
-import {StructuredNote} from "../src/StructuredNote.sol";
-import {TokenizedDeposit} from "../src/TokenizedDeposit.sol";
-import {DepositGateway} from "../src/DepositGateway.sol";
-import {PayingAgent} from "../src/PayingAgent.sol";
-import {Instruments} from "./Instruments.sol";
-import {Lifecycle} from "./Lifecycle.sol";
+import {Scaffolding} from "./Scaffolding.sol";
+import {Issuance} from "./Issuance.sol";
 import {Governance} from "./Governance.sol";
+import {Manifest} from "./Manifest.sol";
 
 interface IWalletFactory {
     function createProxyWithNonce(address singleton, bytes memory initializer, uint256 saltNonce)
@@ -58,12 +54,14 @@ contract Ceremony is Script {
 
     function run() external {
         uint256 deployerPk = vm.envUint("ISSUER_PK");
-        (Instruments.Deployed memory d, Lifecycle.Issued memory l) = _load();
+        string memory j = vm.readFile(_manifest());
+        Scaffolding.Deployed memory d = Manifest.scaffolding(j);
+        Issuance.Issued memory l = Manifest.issued(j);
 
         vm.startBroadcast(deployerPk);
         // Salted with the note, so each deployment of a network gets its own wallets, by the same
         // signers: a wallet's address follows from its owners and salt alone.
-        Wallets memory w = Wallets(_wallet(10, _salt(d, 1)), _wallet(13, _salt(d, 2)), _wallet(16, _salt(d, 3)), _wallet(19, _salt(d, 4)));
+        Wallets memory w = Wallets(_wallet(10, _salt(l, 1)), _wallet(13, _salt(l, 2)), _wallet(16, _salt(l, 3)), _wallet(19, _salt(l, 4)));
         GovernanceController g = Governance.ceremony(d, l, _config(w, vm.addr(deployerPk)));
         vm.stopBroadcast();
 
@@ -73,15 +71,6 @@ contract Ceremony is Script {
         _record(g, w);
     }
 
-    function _load() private view returns (Instruments.Deployed memory d, Lifecycle.Issued memory l) {
-        string memory j = vm.readFile(_manifest());
-        d.registry = IdentityRegistry(vm.parseJsonAddress(j, ".instruments.registry"));
-        d.note = StructuredNote(vm.parseJsonAddress(j, ".instruments.note"));
-        d.deposit = TokenizedDeposit(vm.parseJsonAddress(j, ".instruments.deposit"));
-        d.gateway = DepositGateway(vm.parseJsonAddress(j, ".instruments.gateway"));
-        l.payingAgent = PayingAgent(vm.parseJsonAddress(j, ".lifecycle.payingAgent"));
-    }
-
     function _config(Wallets memory w, address deployer) private view returns (Governance.Config memory) {
         address[] memory institutions = new address[](3);
         institutions[0] = w.agentGov;
@@ -89,6 +78,7 @@ contract Ceremony is Script {
         institutions[2] = w.cosigner;
         return Governance.Config({
             deployer: deployer,
+            issuer: deployer,
             interimAgent: vm.addr(vm.envUint("AGENT_PK")),
             institutions: institutions,
             agentGovernance: w.agentGov,
@@ -151,8 +141,8 @@ contract Ceremony is Script {
         return IWalletFactory(WALLET_FACTORY).createProxyWithNonce(WALLET_SINGLETON, setup, salt);
     }
 
-    function _salt(Instruments.Deployed memory d, uint256 k) private pure returns (uint256) {
-        return uint256(keccak256(abi.encode(address(d.note), k)));
+    function _salt(Issuance.Issued memory l, uint256 k) private pure returns (uint256) {
+        return uint256(keccak256(abi.encode(address(l.note), k)));
     }
 
     function _mnemonic() private view returns (string memory) {
