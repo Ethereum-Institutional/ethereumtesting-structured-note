@@ -48,22 +48,24 @@ test("staff determine a note's first date from the scenario's Levels, the model 
   await first.getByRole("button", { name: "Pay the redemption" }).click();
   const redemption = first.locator(".event").filter({ hasText: "Redemption" });
   await expect(redemption).toContainText("Paid to 2 units; closed.", { timeout: 60_000 });
-  await expect(staff.locator(".facts")).toContainText("Redeemed and closed");
+  await expect(staff.locator("dl.facts:not([aria-label])")).toContainText("Redeemed and closed");
 
   // A held amount waits for the bank's claim: asking now says why it cannot be paid.
   await coupon.getByRole("button", { name: "Pay what is held" }).click();
   await expect(coupon.getByRole("alert")).toContainText("cannot yet receive the deposit");
 
-  // S-33: the close-out statement does not claim zero while money is held for the wallet.
+  // S-33: the statement does not claim zero while money is held for the wallet (ADR 0094).
   await staff.reload();
-  const closeOut = staff.getByRole("region", { name: "Close-out" });
-  await expect(closeOut.getByRole("status")).toContainText("Not closed: 2 check(s) fail");
-  const checks = closeOut.getByRole("list", { name: "Close-out checks" });
+  const statement = staff.getByRole("region", { name: "Reconciliation" });
+  await expect(statement.getByRole("status")).toContainText("Redeemed, not closed: 2 check(s) fail");
+  const checks = statement.getByRole("list", { name: "Reconciliation checks" });
   await expect(checks.getByRole("listitem").filter({ hasText: "Supply is zero" })).toContainText("✓");
   await expect(checks.getByRole("listitem").filter({ hasText: "Nothing is held for a holder" })).toContainText("✗");
   await expect(checks.getByRole("listitem").filter({ hasText: "The Paying Agent holds no cash" })).toContainText("✗");
+  await expect(checks.getByRole("listitem").filter({ hasText: "The Paying Agent holds what it owes" })).toContainText("✓");
   // The same statement, downloaded for the evidence pack.
-  const json = await (await staff.request.get(staff.url() + "/close-out")).json();
+  const href = await statement.getByRole("link", { name: "JSON" }).getAttribute("href");
+  const json = await (await staff.request.get(new URL(href!, staff.url()).toString())).json();
   expect(json.closed).toBe(false);
   expect(json.totals.heldCents).toBe("205000"); // €50 of coupon and €2,000 of redemption, held
   expect(json.positions.every((p: { balance: string }) => p.balance === "0")).toBe(true);

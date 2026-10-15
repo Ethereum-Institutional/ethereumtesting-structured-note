@@ -143,24 +143,29 @@ async function fromBlock(s: { publicClient: ReturnType<typeof signers>["publicCl
 
 const at = (t: number) => new Date(t * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 
-/** Everything the Notes page shows of a note's life, read from the chain. */
-export async function lifecycleOf(n: DemoNote): Promise<Lifecycle> {
+/**
+ * Everything the Notes page shows of a note's life, read from the chain: at the latest block, or
+ * at block `atBlock`, for a statement as at a moment past (ADR 0094).
+ */
+export async function lifecycleOf(n: DemoNote, atBlock?: bigint): Promise<Lifecycle> {
   const { s, logs } = context();
   const da = n.addresses.determinations as Address;
   const pa = n.addresses.payingAgent as Address;
   const c = s.publicClient;
+  const pin = atBlock === undefined ? {} : { blockNumber: atBlock };
+  const to = atBlock ?? ("latest" as const);
   const [count, next, terminated, block, start] = await Promise.all([
-    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "observationCount" }),
-    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "nextDate" }),
-    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "terminated" }),
-    c.getBlock(),
+    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "observationCount", ...pin }),
+    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "nextDate", ...pin }),
+    c.readContract({ address: da, abi: DETERMINATIONS, functionName: "terminated", ...pin }),
+    c.getBlock(pin),
     fromBlock(s, n),
   ]);
   const chainNow = Number(block.timestamp);
   const [paid, held, claimed] = await Promise.all([
-    logs.getLogs({ address: pa, event: PAID, fromBlock: start, toBlock: "latest" }),
-    logs.getLogs({ address: pa, event: HELD, fromBlock: start, toBlock: "latest" }),
-    logs.getLogs({ address: pa, event: CLAIMED, fromBlock: start, toBlock: "latest" }),
+    logs.getLogs({ address: pa, event: PAID, fromBlock: start, toBlock: to }),
+    logs.getLogs({ address: pa, event: HELD, fromBlock: start, toBlock: to }),
+    logs.getLogs({ address: pa, event: CLAIMED, fromBlock: start, toBlock: to }),
   ]);
   const scenario = SCENARIOS.find((x) => x.name === n.scenario);
   const shape = scenario ? stretch(scenario, Number(count)) : null;
@@ -168,13 +173,13 @@ export async function lifecycleOf(n: DemoNote): Promise<Lifecycle> {
   const dates: DateView[] = [];
   for (let k = 0; k < Number(count); k++) {
     const [obs, determined] = await Promise.all([
-      c.readContract({ address: da, abi: DETERMINATIONS, functionName: "observation", args: [BigInt(k)] }),
-      c.readContract({ address: da, abi: DETERMINATIONS, functionName: "determined", args: [BigInt(k)] }),
+      c.readContract({ address: da, abi: DETERMINATIONS, functionName: "observation", args: [BigInt(k)], ...pin }),
+      c.readContract({ address: da, abi: DETERMINATIONS, functionName: "determined", args: [BigInt(k)], ...pin }),
     ]);
     const [outcome, levels] = determined
       ? await Promise.all([
-          c.readContract({ address: da, abi: DETERMINATIONS, functionName: "outcomeOf", args: [BigInt(k)] }).then(toOutcome),
-          c.readContract({ address: da, abi: DETERMINATIONS, functionName: "levelsOf", args: [BigInt(k)] }),
+          c.readContract({ address: da, abi: DETERMINATIONS, functionName: "outcomeOf", args: [BigInt(k)], ...pin }).then(toOutcome),
+          c.readContract({ address: da, abi: DETERMINATIONS, functionName: "levelsOf", args: [BigInt(k)], ...pin }),
         ])
       : [null, null];
 
@@ -182,7 +187,7 @@ export async function lifecycleOf(n: DemoNote): Promise<Lifecycle> {
     for (const [kind, due] of [["coupon", outcome?.couponPaid], ["redemption", outcome?.redeemed]] as const) {
       if (!due) continue;
       const id = await c.readContract({ address: pa, abi: PAYING, functionName: "idOf", args: [BigInt(k), kind === "coupon" ? COUPON : REDEMPTION] });
-      const d = await c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] });
+      const d = await c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id], ...pin });
       const mine = (l: { args: { id?: Hex } }) => l.args.id?.toLowerCase() === id.toLowerCase();
       const payments: Payment[] = [
         ...paid.filter(mine).map((l) => ({ holder: l.args.holder!, units: String(l.args.units), amount: String(l.args.amount), tx: l.transactionHash })),

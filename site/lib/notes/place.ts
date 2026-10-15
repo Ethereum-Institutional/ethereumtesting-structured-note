@@ -149,19 +149,21 @@ async function startBlock(s: Signers, n: DemoNote): Promise<bigint> {
   return (await s.publicClient.getTransactionReceipt({ hash }).catch(() => null))?.blockNumber ?? 0n;
 }
 
-/** Every offer on the note's settlement contract, newest first. */
-export async function offersOf(n: DemoNote): Promise<Offer[]> {
+/** Every offer on the note's settlement contract, newest first: at the latest block, or at block `at` (ADR 0094). */
+export async function offersOf(n: DemoNote, at?: bigint): Promise<Offer[]> {
   if (!lockedSettlement(n)) return [];
   const { s, logs } = context();
   const settlement = n.addresses.settlement as Address;
   const from = await startBlock(s, n);
+  const to = at ?? ("latest" as const);
   const [offered, settled, byAddress] = await Promise.all([
-    logs.getLogs({ address: settlement, event: OFFERED, fromBlock: from, toBlock: "latest" }),
-    logs.getLogs({ address: settlement, event: SETTLED, fromBlock: from, toBlock: "latest" }),
+    logs.getLogs({ address: settlement, event: OFFERED, fromBlock: from, toBlock: to }),
+    logs.getLogs({ address: settlement, event: SETTLED, fromBlock: from, toBlock: to }),
     admissionsByAddress(),
   ]);
   const issuer = s.address("issuer");
-  const states = await Promise.all(offered.map((l) => s.publicClient.readContract({ address: settlement, abi: SETTLEMENT, functionName: "offers", args: [l.args.id!] })));
+  const pin = at === undefined ? {} : { blockNumber: at };
+  const states = await Promise.all(offered.map((l) => s.publicClient.readContract({ address: settlement, abi: SETTLEMENT, functionName: "offers", args: [l.args.id!], ...pin })));
   const nameOf = (a: Address | null) => (!a ? null : same(a, issuer) ? "issuer" : byAddress.get(a.toLowerCase())?.id ?? null);
   return offered
     .map((l, i): Offer => {

@@ -12,6 +12,7 @@ export default async function AgentLayout({ children }: { children: React.ReactN
       items={[
         { href: "/agent", label: "Participants" },
         { href: "/agent/notes", label: "Notes" },
+        { href: "/agent/reconciliation", label: "Reconciliation" },
         {
           href: "/agent/governance/tier-1",
           label: "Governance",

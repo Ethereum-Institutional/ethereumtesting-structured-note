@@ -320,7 +320,11 @@ test("S-13: the Issuer buys units back into its inventory; S-14: no more can be 
 // --- determinations, payments and closure (ADR 0078) ---
 
 const life = await import("../lib/notes/lifecycle.ts");
-const closeout = await import("../lib/notes/closeout.ts");
+const reconcile = await import("../lib/notes/reconcile.ts");
+const registry = await import("../lib/notes/registry.ts");
+/** A note's reconciliation statement (ADR 0094), now or as at another moment. */
+const statementOf = async (n: { addresses: Record<string, string> }, asAt?: import("../lib/notes/reconcile.ts").AsAt) =>
+  reconcile.statementOf((await registry.noteOnRecord(n.addresses.note))!, asAt);
 const SUPPLY = parseAbi(["function totalSupply() view returns (uint256)", "function paused() view returns (bool)"]);
 
 /** Moves the local chain's clock to just past `t`, and mines a block there. */
@@ -358,9 +362,11 @@ test("a four-date note through its life: each date determined from the scenario'
   const investorC = LOCAL.parties.investorC as Address;
   let view = await life.lifecycleOf(n);
   assert.equal(view.dates.length, 4);
-  const open = await closeout.closeOutOf(n);
+  const open = await statementOf(n);
   assert.equal(open.closed, false, "not closed while units are outstanding");
-  assert.equal(open.checks.find((c) => c.label === "Supply is zero")?.ok, false);
+  assert.equal(open.state, "open");
+  assert.deepEqual(open.checks.filter((c) => !c.ok), [], "mid-life, every check that holds on any day passes");
+  assert.equal(open.checks.find((c) => c.label === "Supply is zero"), undefined, "the close-out's checks wait for the redemption");
   assert.equal(view.dates[0].can.determine, false, "not before its date");
   assert.match(view.dates[0].waiting ?? "", /Determinable from/);
   await assert.rejects(life.determineDate(operator as any, n.id, 0, view.dates[0].suggested.map(BigInt)), /determinable from/);
@@ -421,8 +427,8 @@ test("a four-date note through its life: each date determined from the scenario'
   assert.equal((await store.noteById(n.id))!.status, "closed");
   view = await life.lifecycleOf((await store.noteById(n.id))!);
   assert.equal(view.closed, true);
-  // S-33: the close-out statement confirms every position at zero, with what each was paid.
-  const statement = await closeout.closeOutOf((await store.noteById(n.id))!);
+  // S-33: the statement, once redeemed, confirms every position at zero, with what each was paid.
+  const statement = await statementOf((await store.noteById(n.id))!);
   assert.deepEqual(statement.checks.filter((c) => !c.ok), [], "every close-out check passes");
   assert.equal(statement.closed, true);
   assert.ok(statement.positions.every((p) => p.balance === "0"));
@@ -434,6 +440,32 @@ test("a four-date note through its life: each date determined from the scenario'
   assert.deepEqual([pos(investorC).unitsIn, pos(investorC).unitsOut, pos(investorC).couponCents], ["1", "1", String(3 * 2_500)]);
   const paid = await life.paymentsTo(custody);
   assert.deepEqual(paid.filter((p) => p.note.id === n.id).map((p) => `${p.kind}:${p.amount}`), ["coupon:5000", "coupon:5000", "coupon:5000", "redemption:180000"]);
+
+  // As at the block of the first statement, before any date, the same note was open, with the same figures (ADR 0094).
+  const before = await statementOf((await store.noteById(n.id))!, { kind: "block", block: BigInt(open.block) });
+  assert.equal(before.state, "open");
+  assert.equal(before.block, open.block, "read at the block asked for");
+  assert.equal(before.totals.units, open.totals.units, "the same figures as when it was read then");
+  assert.deepEqual(before.checks.filter((c) => !c.ok), []);
+  // The CSV carries every position, one row each.
+  const csv = reconcile.positionsCsv(statement).trim().split("\n");
+  assert.equal(csv[0], "note,block,as_at,account,name,units_in,units_out,balance,locked_units,eligible,coupons_eur,redemption_eur,held_eur");
+  assert.equal(csv.length, statement.positions.length + 1);
+});
+
+test("every note the factory issued has a statement, the deployment's note under review included; a day before issuance is refused", async () => {
+  const notes = await registry.notesOnRecord();
+  const underReview = notes.find((n) => n.underReview);
+  assert.ok(underReview, "the deployment's own note");
+  assert.ok(notes.length >= 2, "and the notes issued here");
+  const s = await reconcile.statementOf(underReview!);
+  assert.equal(s.note.symbol, "EURWAN");
+  assert.deepEqual(s.checks.filter((c) => !c.ok), [], "the note under review reconciles");
+  assert.ok(s.positions.some((p) => p.balance !== "0" && p.eligible));
+  const today = new Date(Number((await client.getBlock()).timestamp) * 1000).toISOString().slice(0, 10);
+  const asAtToday = await reconcile.statementOf(underReview!, { kind: "day", day: today });
+  assert.match(asAtToday.asAt, /the close of .* \(UTC\), so far/);
+  await assert.rejects(reconcile.statementOf(underReview!, { kind: "day", day: "2001-01-01" }), /issued after 2001-01-01/);
 });
 
 test("an early redemption ends the note: the dates after it fall away", async () => {
