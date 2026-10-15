@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { getStore, type Registrant } from "./store";
 import { sendMail } from "./mail";
-import { emailList as list, isOperator, normaliseEmail } from "./operators";
+import { emailList as list, hasRole, isOperator, normaliseEmail, type Role } from "./operators";
 
 export { isOperator, normaliseEmail };
 
@@ -174,6 +174,12 @@ export async function currentRegistrant(): Promise<Registrant | null> {
 export async function currentOperator(): Promise<Registrant | null> {
   const r = await currentRegistrant();
   return r && isOperator(r.email) ? r : null;
+}
+
+/** The signed-in registrant, if staff in the given portal (ADR 0089). */
+export async function currentStaff(role: Role): Promise<Registrant | null> {
+  const r = await currentRegistrant();
+  return r && hasRole(r.email, role) ? r : null;
 }
 
 export async function signOut() {

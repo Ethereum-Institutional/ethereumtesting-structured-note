@@ -2,31 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { confirm, currentOperator, currentRegistrant, decide, register, requestSignIn, resendConfirmation, signOut } from "@/lib/access";
-import {
-  admitCustodied,
-  advanceAdmission,
-  bindNewWallet,
-  completeOfficerWalletBinding,
-  startOfficerWalletBinding,
-  offboardAdmission,
-  revokeAtBank,
-  cancelAdmission,
-  finishCustodied,
-  decideAdmission,
-  renewRequest,
-  renewSelfCustodyChallenge,
-  requestSelfCustody,
-  startWalletBinding,
-  reviewSelfCustody,
-  startAdmission,
-  submitSelfCustodySignature,
-  unbindWallet,
-  requestCustody,
-  withdrawCustodyRequest,
-} from "@/lib/admission/service";
+import { confirm, currentRegistrant, currentStaff, decide, register, requestSignIn, resendConfirmation, signOut } from "@/lib/access";
+import * as onboarding from "@/lib/identity/onboarding";
 import { getStore } from "@/lib/store";
-import { addClient, rescreenClient } from "@/lib/admission/clients";
+import { addClient, rescreenClient } from "@/lib/identity/clients";
 import { MailUnavailable } from "@/lib/mail";
 import { siteOrigin } from "@/lib/origin";
 
@@ -42,8 +21,8 @@ async function recorded(run: () => Promise<unknown>, path: string) {
   } catch (e) {
     console.error(e);
   } finally {
-    // Every Operator page shares one layout: refresh them all (ADR 0073).
-    revalidatePath(path, path.startsWith("/operator") ? "layout" : "page");
+    // Every page of a staff portal shares its layout: refresh them all (ADR 0089).
+    revalidatePath(path, /^\/(agent|bank|onboarding|custodian)/.test(path) ? "layout" : "page");
   }
 }
 
@@ -83,12 +62,14 @@ export async function signOutAction() {
 export async function decideAction(f: FormData) {
   const d = field(f, "decision");
   if (d !== "approve" && d !== "revoke") throw new Error("Unknown decision.");
+  if (!(await currentStaff("bank"))) throw new Error("Not permitted.");
   await decide(field(f, "id"), d, await siteOrigin());
-  revalidatePath("/operator", "layout");
+  revalidatePath("/bank", "layout");
 }
 
 /** Staff resend the confirmation link; whether the mail went is said on the row. */
 export async function resendLinkAction(_prev: FormState, f: FormData): Promise<FormState> {
+  if (!(await currentStaff("bank"))) return { error: "Not permitted." };
   try {
     await resendConfirmation(field(f, "id"), await siteOrigin());
     return { sent: true };
@@ -96,146 +77,54 @@ export async function resendLinkAction(_prev: FormState, f: FormData): Promise<F
     console.error(e);
     return { error: e instanceof MailUnavailable ? "Email delivery is unavailable: the link was not sent." : (e as Error).message };
   } finally {
-    revalidatePath("/operator", "layout");
+    revalidatePath("/bank", "layout");
   }
 }
 
-export async function startAdmissionAction() {
-  const who = await currentRegistrant();
-  if (!who) redirect("/");
-  const origin = await siteOrigin();
-  await recorded(() => startAdmission(who, origin), "/onboard");
-}
+// ---------------------------------------------------------------------------------------------
+// Onboarding by role (ADR 0089)
+// ---------------------------------------------------------------------------------------------
 
-export async function renewAdmissionAction(f: FormData) {
-  const who = await currentRegistrant();
-  if (!who) redirect("/");
-  const a = await getStore().admissionById(field(f, "id"));
-  const origin = await siteOrigin();
-  if (a && a.registrantId === who.id) await recorded(() => renewRequest(a, origin), "/onboard");
-}
+type Result = { ok?: string; error?: string };
 
-/** Moves a waiting admission on once its credentials are anchored (ADR 0060); for staff or the admission's own client. */
-export async function advanceAdmissionAction(id: string) {
-  const who = await currentRegistrant();
-  if (!who) return;
-  const a = await getStore().admissionById(id);
-  if (!a || (a.registrantId !== who.id && !(await currentOperator()))) return;
-  await recorded(() => advanceAdmission(id), a.registrantId === who.id ? "/onboard" : "/operator");
-}
-
-export async function cancelAdmissionAction(f: FormData) {
-  const who = await currentRegistrant();
-  if (!who) redirect("/");
-  await recorded(() => cancelAdmission(who, field(f, "id")), "/onboard");
-}
-
-export async function decideAdmissionAction(f: FormData) {
-  const op = await currentOperator();
-  if (!op) throw new Error("Not permitted.");
-  const d = field(f, "decision");
-  await recorded(async () => {
-    if (d !== "approve" && d !== "decline") throw new Error(`Unknown decision: ${d || "none"}.`);
-    await decideAdmission(field(f, "id"), d, op);
-  }, "/operator");
-}
-
-export async function admitCustodiedAction(f: FormData) {
-  const op = await currentOperator();
-  if (!op) throw new Error("Not permitted.");
-  await recorded(
-    () =>
-      admitCustodied(op, { kycReference: field(f, "kycReference").trim() }),
-    "/operator",
-  );
-}
-
-/** Adds a corporate client; the bank issues its corporate identity from what staff enter (ADR 0066). */
-export async function addClientAction(_prev: { ok?: string; error?: string }, f: FormData): Promise<{ ok?: string; error?: string }> {
-  const op = await currentOperator();
-  if (!op) return { error: "Not permitted." };
-  const get = (k: string) => field(f, k).trim();
+/** A staff step that says how it went beside its button, the refusal included. */
+async function staffStep(role: import("@/lib/operators").Role, path: string, run: (staff: import("@/lib/store").Registrant) => Promise<string | void>): Promise<Result> {
+  const staff = await currentStaff(role);
+  if (!staff) return { error: "Not permitted." };
   try {
-    const c = await addClient(op, {
-      kycReference: get("kycReference"),
-      subjectDid: get("subjectDid"),
-      legalName: get("legalName"),
-      legalForm: get("legalForm"),
-      registrationNumber: get("registrationNumber"),
-      jurisdiction: get("jurisdiction"),
-      incorporationDate: get("incorporationDate"),
-      status: get("status"),
-      investorClass: get("investorClass"),
-      ceoOfficerDid: get("ceoOfficerDid"),
-      cooOfficerDid: get("cooOfficerDid"),
-      cfoOfficerDid: get("cfoOfficerDid"),
-    });
-    return { ok: `Added ${c.claims.legalName} as ${c.kycReference}. The bank issued its corporate identity; it is anchored within about a minute.` };
+    const ok = await run(staff);
+    return { ok: ok || "Done." };
   } catch (e) {
     console.error(e);
     return { error: (e as Error).message };
   } finally {
-    revalidatePath("/operator", "layout");
+    revalidatePath(path, "layout");
   }
 }
 
-export async function rescreenClientAction(f: FormData) {
-  const op = await currentOperator();
-  if (!op) throw new Error("Not permitted.");
-  await recorded(() => rescreenClient(op, field(f, "id")), "/operator");
-}
+// --- the client ---
 
-export async function offboardAction(f: FormData) {
-  const op = await currentOperator();
-  if (!op) throw new Error("Not permitted.");
-  await recorded(() => offboardAdmission(op, field(f, "id"), field(f, "reason")), "/operator");
-}
-
-export async function revokeAtBankAction(f: FormData) {
-  const op = await currentOperator();
-  if (!op) throw new Error("Not permitted.");
-  const which = field(f, "which") === "corporate" ? "corporate" : "wallet";
-  await recorded(
-    () => revokeAtBank(op, field(f, "id"), which, field(f, "reason"), which === "corporate" ? Number(field(f, "affected")) : undefined),
-    "/operator",
-  );
-}
-
-export async function finishCustodiedAction(f: FormData) {
-  const op = await currentOperator();
-  if (!op) throw new Error("Not permitted.");
-  await recorded(() => finishCustodied(op, field(f, "id")), "/operator");
-}
-
-export async function reviewSelfCustodyAction(f: FormData) {
-  const op = await currentOperator();
-  if (!op) throw new Error("Not permitted.");
-  const d = field(f, "decision");
-  await recorded(async () => {
-    if (d !== "approve" && d !== "decline") throw new Error(`Unknown decision: ${d || "none"}.`);
-    await reviewSelfCustody(op, field(f, "id"), d, d === "approve" ? field(f, "kycReference").trim() : undefined);
-  }, "/operator");
-}
-
-export async function requestSelfCustodyAction(f: FormData) {
+export async function requestRouteAction(f: FormData) {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  await recorded(() => requestSelfCustody(who), "/onboard");
+  const route = field(f, "route") as (typeof onboarding.CLIENT_ROUTES)[number];
+  await recorded(() => onboarding.requestRoute(who, route, field(f, "knownReference")), "/onboard");
 }
 
-/**
- * The browser wallet's two calls (ADR 0068): the bank's message for the connected address, then the
- * signature. Each returns its outcome to the page, rather than failing into a server log.
- */
+export async function cancelOnboardingAction(f: FormData) {
+  const who = await currentRegistrant();
+  if (!who) redirect("/");
+  await recorded(() => onboarding.cancel(who, field(f, "id")), "/onboard");
+}
+
+/** The browser wallet's two calls (ADR 0068): the message for the connected address, then the signature. */
 export async function browserWalletStartAction(id: string, address: string): Promise<{ typedData?: Record<string, unknown>; error?: string }> {
   const who = await currentRegistrant();
   if (!who) return { error: "Sign in again." };
   try {
     const a = await getStore().admissionById(id);
-    if (a?.route === "holder-wallet") return { typedData: await startOfficerWalletBinding(who, id, address) };
-    await startWalletBinding(who, id, { walletAddress: address, addressType: "eoa" });
-    const bound = await getStore().admissionById(id);
-    return { typedData: (bound?.data as Record<string, any>)?.challenge?.typedData };
+    if (a?.route === "existing-identity") return { typedData: await onboarding.startExistingWallet(who, id, address) };
+    return { typedData: await onboarding.startWallet(who, id, address) };
   } catch (e) {
     console.error(e);
     return { error: (e as Error).message };
@@ -247,8 +136,8 @@ export async function browserWalletFinishAction(id: string, signature: string): 
   if (!who) return { error: "Sign in again." };
   try {
     const a = await getStore().admissionById(id);
-    if (a?.route === "holder-wallet") await completeOfficerWalletBinding(who, id, signature as `0x${string}`, await siteOrigin());
-    else await submitSelfCustodySignature(who, id, signature as `0x${string}`);
+    if (a?.route === "existing-identity") await onboarding.completeExisting(who, id, signature as `0x${string}`);
+    else await onboarding.completeWallet(who, id, signature as `0x${string}`);
     return {};
   } catch (e) {
     console.error(e);
@@ -258,30 +147,160 @@ export async function browserWalletFinishAction(id: string, signature: string): 
   }
 }
 
-/** An onboarded client binds a new wallet under its confirmed KYB (ADR 0069). */
-export async function bindNewWalletAction() {
+export async function requestNoteAction(_prev: Result, f: FormData): Promise<Result> {
   const who = await currentRegistrant();
-  if (!who) redirect("/");
-  await recorded(() => bindNewWallet(who), "/onboard");
+  if (!who) return { error: "Sign in again." };
+  try {
+    await onboarding.requestNote(who, field(f, "id"), {
+      notUsPerson: field(f, "notUsPerson") === "on",
+      investorClass: field(f, "investorClass"),
+      relyOnBankKyb: field(f, "relyOnBankKyb") === "on",
+    });
+    return { ok: "Asked. The onboarding agent decides." };
+  } catch (e) {
+    return { error: (e as Error).message };
+  } finally {
+    revalidatePath("/onboard", "layout");
+  }
 }
 
-export async function bindWalletAction(f: FormData) {
+export async function bringIdentityAction(_prev: Result, f: FormData): Promise<Result> {
   const who = await currentRegistrant();
-  if (!who) redirect("/");
-  const type = field(f, "addressType") === "smart_contract" ? "smart_contract" : "eoa";
-  await recorded(() => startWalletBinding(who, field(f, "id"), { walletAddress: field(f, "walletAddress").trim(), addressType: type }), "/onboard");
+  if (!who) return { error: "Sign in again." };
+  try {
+    await onboarding.requestExisting(who, field(f, "identity").trim());
+    return { ok: "Now connect the wallet to register against it, and sign." };
+  } catch (e) {
+    return { error: (e as Error).message };
+  } finally {
+    revalidatePath("/onboard", "layout");
+  }
 }
 
-export async function submitSignatureAction(f: FormData) {
-  const who = await currentRegistrant();
-  if (!who) redirect("/");
-  await recorded(() => submitSelfCustodySignature(who, field(f, "id"), field(f, "signature").trim() as `0x${string}`), "/onboard");
+// --- the bank ---
+
+/** Adds a corporate client to the bank's records (ADR 0089). */
+export async function addClientAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank", async (staff) => {
+    const get = (k: string) => field(f, k).trim();
+    const c = await addClient(staff, {
+      kycReference: get("kycReference"),
+      legalName: get("legalName"),
+      legalForm: get("legalForm"),
+      registrationNumber: get("registrationNumber"),
+      jurisdiction: get("jurisdiction"),
+      incorporationDate: get("incorporationDate"),
+      status: get("status"),
+      investorClass: get("investorClass"),
+    });
+    return `Added ${String(c.claims.legalName)} as ${c.kycReference}.`;
+  });
 }
 
-export async function renewChallengeAction(f: FormData) {
-  const who = await currentRegistrant();
-  if (!who) redirect("/");
-  await recorded(() => renewSelfCustodyChallenge(who, field(f, "id")), "/onboard");
+export async function rescreenClientAction(f: FormData) {
+  const staff = await currentStaff("bank");
+  if (!staff) throw new Error("Not permitted.");
+  await recorded(() => rescreenClient(staff, field(f, "id")), "/bank");
+}
+
+export async function confirmRouteAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank", async (staff) => {
+    const a = await onboarding.confirmRoute(staff, field(f, "id"), field(f, "kycReference"));
+    return a.status === "onboarded" ? "Confirmed: the custody account is open and onboarded for the deposit." : "Confirmed.";
+  });
+}
+
+export async function declineRouteAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank", (staff) => onboarding.decline(staff, field(f, "id"), field(f, "reason")));
+}
+
+export async function revokeDepositAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank", async (staff) => {
+    await onboarding.revokeDeposit(staff, field(f, "id"), field(f, "reason"));
+    return "Revoked: the wallet can no longer hold or receive the deposit.";
+  });
+}
+
+export async function renewDepositAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank", async (staff) => {
+    await onboarding.renewDeposit(staff, field(f, "id"));
+    return "Renewed against the client's current record.";
+  });
+}
+
+export async function offboardAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank", async (staff) => {
+    await onboarding.offboard(staff, field(f, "id"), field(f, "reason"));
+    return "Offboarded.";
+  });
+}
+
+/** The bank credits its deposit to an onboarded wallet, through the gateway. */
+export async function creditDepositAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank", async (staff) => {
+    const store = getStore();
+    const a = await store.admissionById(field(f, "id"));
+    if (!a || a.status !== "onboarded") throw new Error("Only an onboarded wallet is credited.");
+    const { creditDeposit, depositToken } = await import("@/lib/identity/deposit");
+    const t = depositToken();
+    const account = onboarding.walletOf(a);
+    const amount = units(field(f, "amount"), t.decimals);
+    const done = await creditDeposit(account, amount);
+    const latest = (await store.admissionById(a.id))!;
+    const d = latest.data as Record<string, any>;
+    const entry = { at: new Date().toISOString(), by: staff.email, tx: done.tx, bookingRef: done.bookingRef, amount: human(amount, t.decimals) };
+    await store.updateAdmission({ ...latest, data: { ...d, credits: [...(d.credits ?? []), entry] } }, latest.status);
+    await store.audit({ at: entry.at, actor: staff.email, action: `credited ${entry.amount} ${t.symbol} to ${account}, booking ${done.bookingRef}`, subject: a.id });
+    return `Credited ${entry.amount} ${t.symbol}, booking ${done.bookingRef}.`;
+  });
+}
+
+// --- the custodians ---
+
+export async function openAccountAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("custodian", "/custodian", async (staff) => {
+    const a = await onboarding.openForClient(staff, field(f, "id"), "third-party");
+    return `Opened ${onboarding.walletOf(a)} and onboarded it for the deposit.`;
+  });
+}
+
+// --- the onboarding agent ---
+
+export async function decideNoteAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("onboarding", "/onboarding", async (staff) => {
+    const outcome = field(f, "decision") === "decline" ? "decline" : "approve";
+    await onboarding.decideNote(staff, field(f, "id"), outcome, field(f, "reason"));
+    return outcome === "approve" ? "Approved: the note claim is on the client's identity." : "Declined.";
+  });
+}
+
+export async function revokeNoteAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("onboarding", "/onboarding", async (staff) => {
+    await onboarding.revokeNote(staff, field(f, "id"), field(f, "reason"));
+    return "Revoked: the wallet can no longer receive the note.";
+  });
+}
+
+export async function admitToPoolAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank/pool", async (staff) => {
+    await onboarding.admitToPool(staff, field(f, "id"), field(f, "investorClass"));
+    return "Admitted: the wallet may convert in the pool.";
+  });
+}
+
+export async function revokePoolAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank/pool", async (staff) => {
+    await onboarding.revokePool(staff, field(f, "id"), field(f, "reason"));
+    return "Revoked: the wallet can no longer convert in the pool.";
+  });
+}
+
+export async function acceptExistingAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("onboarding", "/onboarding", async (staff) => {
+    await onboarding.acceptExisting(staff, field(f, "id"));
+    const a = await getStore().admissionById(field(f, "id"));
+    return a?.status === "onboarded" ? "Registered: the note's registry verifies the identity." : "Refused: no issuer the note trusts vouches for it.";
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -320,8 +339,8 @@ export async function quoteAction(direction: string, amount: string): Promise<Qu
 /** The client's own onboarded wallet, and only that one, converts from the Onboard page. */
 async function ownWallet(who: { id: string }): Promise<string | null> {
   const mine = await getStore().admissionsFor(who.id);
-  const admitted = mine.find((x) => x.status === "admitted" && x.route !== "custodied");
-  return (admitted?.data as Record<string, any>)?.assessment?.summary?.wallet ?? null;
+  const own = mine.find((x) => x.status === "onboarded" && x.route === "self-custody");
+  return own ? onboarding.walletOf(own) : null;
 }
 
 export async function prepareConversionAction(
@@ -335,13 +354,15 @@ export async function prepareConversionAction(
     const wallet = await ownWallet(who);
     if (!wallet) return { error: "Only an onboarded wallet can convert." };
     if (wallet.toLowerCase() !== address.toLowerCase()) return { error: `The wallet connected is ${address}; switch MetaMask to your onboarded wallet, ${wallet}.` };
+    const standing = await (await import("@/lib/identity/onchain")).poolStanding(wallet as `0x${string}`);
+    if (standing !== "admitted") return { error: `The pool refuses your wallet: ${standing ?? "there is no pool"}.` };
     const c = await import("@/lib/pool/convert");
     const t = c.tokens();
     const dir = asDirection(direction);
     const amountIn = units(amount, dir === "into-deposit" ? t.payment.decimals : t.deposit.decimals);
     const have = await c.balances(wallet as `0x${string}`);
     if ((dir === "into-deposit" ? have.payment : have.deposit) < amountIn) return { error: "The wallet does not hold that much." };
-    const nowSec = Math.floor(Date.now() / 1000);
+    const nowSec = await c.chainNow();
     const q = await c.quote(dir, amountIn);
     const approvals = await c.approvalsNeeded(wallet as `0x${string}`, dir, amountIn, nowSec);
     return {
@@ -361,18 +382,19 @@ export async function conversionDoneAction(tx: string, summary: string) {
   revalidatePath("/onboard");
 }
 
-/** Staff convert for a custody account; the custodian's key signs through the account. */
-export async function custodyConvertAction(f: FormData) {
-  const op = await currentOperator();
-  if (!op) throw new Error("Not permitted.");
-  await recorded(async () => {
+/** The bank's custody platform converts for a custody account it holds; its key signs through the account. */
+export async function custodyConvertAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("custodian", "/custodian", async (op) => {
     const store = getStore();
     const a = await store.admissionById(field(f, "id"));
-    if (!a || a.route !== "custodied" || a.status !== "admitted") throw new Error("Only an admitted custody account converts here.");
+    if (!a || a.route !== "bank-custody" || a.status !== "onboarded") throw new Error("Only an onboarded account in the bank's custody converts here.");
     const c = await import("@/lib/pool/convert");
+    const { poolStanding } = await import("@/lib/identity/onchain");
+    const account = onboarding.walletOf(a);
+    const standing = await poolStanding(account);
+    if (standing !== "admitted") throw new Error(`The pool refuses this account: ${standing ?? "there is no pool"}.`);
     const t = c.tokens();
     const dir = asDirection(field(f, "direction"));
-    const account = (a.data as Record<string, any>).assessment.summary.wallet as `0x${string}`;
     const amountIn = units(field(f, "amount"), dir === "into-deposit" ? t.payment.decimals : t.deposit.decimals);
     const done = await c.convertForCustody(account, dir, amountIn);
     const summary = `${human(done.quote.amountIn, done.quote.paidDecimals)} ${done.quote.paid} into ${done.quote.received} (at least ${human(done.quote.minimumOut, done.quote.receivedDecimals)})`;
@@ -380,36 +402,17 @@ export async function custodyConvertAction(f: FormData) {
     const d = latest.data as Record<string, any>;
     await store.updateAdmission({ ...latest, data: { ...d, conversions: [...(d.conversions ?? []), { at: new Date().toISOString(), by: op.email, tx: done.tx, summary }] } }, latest.status);
     await store.audit({ at: new Date().toISOString(), actor: op.email, action: `converted for custody account ${account}: ${summary}`, subject: a.id });
-  }, "/operator");
+    return `Converted ${summary}.`;
+  });
 }
 
-/** Staff credit the deposit to an onboarded account: the Deposit Agent, through the gateway. */
-export async function creditDepositAction(f: FormData) {
-  const op = await currentOperator();
-  if (!op) throw new Error("Not permitted.");
-  await recorded(async () => {
-    const store = getStore();
-    const a = await store.admissionById(field(f, "id"));
-    if (!a || a.status !== "admitted") throw new Error("Only an admitted account is credited.");
-    const c = await import("@/lib/pool/convert");
-    const t = c.tokens();
-    const account = (a.data as Record<string, any>).assessment.summary.wallet as `0x${string}`;
-    const amount = units(field(f, "amount"), t.deposit.decimals);
-    const done = await c.creditDeposit(account, amount);
-    const latest = (await store.admissionById(a.id))!;
-    const d = latest.data as Record<string, any>;
-    const entry = { at: new Date().toISOString(), by: op.email, tx: done.tx, bookingRef: done.bookingRef, amount: human(amount, t.deposit.decimals) };
-    await store.updateAdmission({ ...latest, data: { ...d, credits: [...(d.credits ?? []), entry] } }, latest.status);
-    await store.audit({ at: entry.at, actor: op.email, action: `credited ${entry.amount} ${t.deposit.symbol} to ${account}, booking ${done.bookingRef}`, subject: a.id });
-  }, "/operator");
-}
 
 // ---------------------------------------------------------------------------------------------
 // Notes (ADRs 0072, 0073)
 // ---------------------------------------------------------------------------------------------
 
 export async function startNoteAction(f: FormData) {
-  const op = await currentOperator();
+  const op = await currentStaff("agent");
   if (!op) throw new Error("Not permitted.");
   await recorded(async () => {
     const { startNote, advanceIssuance } = await import("@/lib/notes/issue");
@@ -421,47 +424,24 @@ export async function startNoteAction(f: FormData) {
       units: Number(field(f, "units")),
     });
     await advanceIssuance(n.id);
-  }, "/operator/notes");
+  }, "/agent/notes");
 }
 
-/** Moves a note's issuance on by a step; the Operator page calls it while a note is being issued. */
+/** Moves a note's issuance on by a step; the Agent's Notes page calls it while a note is being issued. */
 export async function advanceNoteAction(id: string) {
-  const op = await currentOperator();
+  const op = await currentStaff("agent");
   if (!op) return;
   const { advanceIssuance } = await import("@/lib/notes/issue");
-  await recorded(() => advanceIssuance(id), "/operator/notes");
+  await recorded(() => advanceIssuance(id), "/agent/notes");
 }
 
-/** The client unbinds its onboarded wallet (ADR 0076). */
-export async function unbindWalletAction(f: FormData) {
-  const who = await currentRegistrant();
-  if (!who) redirect("/");
-  await recorded(() => unbindWallet(who, field(f, "id")), "/onboard");
-}
 
-/** The client asks its bank to hold its account in custody, or withdraws the request (ADR 0076). */
-export async function requestCustodyAction() {
-  const who = await currentRegistrant();
-  if (!who) redirect("/");
-  await recorded(() => requestCustody(who), "/onboard");
-}
 
-export async function withdrawCustodyRequestAction() {
-  const who = await currentRegistrant();
-  if (!who) redirect("/");
-  await recorded(() => withdrawCustodyRequest(who), "/onboard");
-}
 
-/** Staff approve an admitted account for the note under Regulation S (ADR 0075). */
-export async function approveForNoteAction(f: FormData) {
-  const op = await currentOperator();
-  if (!op) throw new Error("Not permitted.");
-  await recorded(async () => (await import("@/lib/notes/place")).approveForNote(op, field(f, "id")), "/operator/admissions");
-}
 
 /** Staff place units with an account (S-08); the note's refusal, such as S-09's, comes back to the form. */
 export async function placeUnitsAction(_prev: { ok?: string; error?: string }, f: FormData): Promise<{ ok?: string; error?: string }> {
-  const op = await currentOperator();
+  const op = await currentStaff("agent");
   if (!op) return { error: "Not permitted." };
   try {
     const place = await import("@/lib/notes/place");
@@ -476,7 +456,7 @@ export async function placeUnitsAction(_prev: { ok?: string; error?: string }, f
     console.error(e);
     return { error: (e as Error).message };
   } finally {
-    revalidatePath("/operator", "layout");
+    revalidatePath("/agent", "layout");
   }
 }
 
@@ -589,7 +569,7 @@ export async function walletActedAction(noteId: string, arranged: string, tx: st
     return { error: (e as Error).message };
   } finally {
     revalidatePath("/onboard", "layout");
-    revalidatePath("/operator", "layout");
+    revalidatePath("/agent", "layout");
   }
 }
 
@@ -620,8 +600,8 @@ export async function acceptanceDoneAction(noteId: string, tradeId: string, tx: 
 }
 
 /** The lifecycle's steps (ADR 0078): each says what it did, or the contract's refusal. */
-async function lifecycleStep(run: (op: NonNullable<Awaited<ReturnType<typeof currentOperator>>>) => Promise<string>): Promise<{ ok?: string; error?: string }> {
-  const op = await currentOperator();
+async function lifecycleStep(run: (op: NonNullable<Awaited<ReturnType<typeof currentRegistrant>>>) => Promise<string>): Promise<{ ok?: string; error?: string }> {
+  const op = await currentStaff("agent");
   if (!op) return { error: "Not permitted." };
   try {
     return { ok: await run(op) };
@@ -629,7 +609,7 @@ async function lifecycleStep(run: (op: NonNullable<Awaited<ReturnType<typeof cur
     console.error(e);
     return { error: (e as Error).message };
   } finally {
-    revalidatePath("/operator", "layout");
+    revalidatePath("/agent", "layout");
     revalidatePath("/onboard", "layout");
   }
 }
@@ -685,9 +665,22 @@ export async function correctRegisterAction(_prev: { ok?: string; error?: string
 
 export async function tier1WithdrawAction(_prev: { ok?: string; error?: string }, f: FormData) {
   return lifecycleStep(async (op) => {
-    const what = field(f, "what") === "pool" ? "pool" : "grant";
+    const w = field(f, "what");
+    const what = w === "pool" || w === "restore-pool" || w === "unfreeze" ? w : "freeze";
     await (await import("@/lib/governance")).withdraw(op, { what, account: field(f, "account") as `0x${string}`, reason: field(f, "reason") });
-    return what === "grant" ? "Withdrawn: the registry grant is gone." : "Withdrawn: the account can no longer use the pool.";
+    return {
+      freeze: "Frozen: the account can neither send nor receive the note.",
+      unfreeze: "Unfrozen.",
+      pool: "Withdrawn: the account can no longer use the pool.",
+      "restore-pool": "Restored: the account uses the pool again while its pool-access claim stands.",
+    }[what];
+  });
+}
+
+export async function recoverWalletAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    await (await import("@/lib/governance")).recoverWallet(op, { lost: field(f, "lost") as `0x${string}`, replacement: field(f, "replacement").trim() as `0x${string}`, reason: field(f, "reason") });
+    return "Recovered: the units and the identity are on the new wallet, the reason recorded on-chain.";
   });
 }
 
@@ -701,8 +694,7 @@ export async function proposeAction(_prev: { ok?: string; error?: string }, f: F
       reason: field(f, "reason"),
       increase: field(f, "direction") !== "reduce",
       units: Number(field(f, "units")),
-      days: Number(field(f, "days")),
-      account: (field(f, "account") || undefined) as `0x${string}` | undefined,
+      account: ((kind === "SetTrustedIssuer" ? field(f, "issuer") : field(f, "account")).trim() || undefined) as `0x${string}` | undefined,
       approved: field(f, "approved") !== "remove",
     });
     return `Proposed as proposal ${id}, with the proposer's approval.`;

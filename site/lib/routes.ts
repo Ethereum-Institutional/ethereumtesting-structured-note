@@ -1,12 +1,12 @@
 /**
- * The onboarding routes as people see them (ADR 0074). The stored values stay as they are; the
- * route kept as "self-custody" is shown as Third party, because the bank knows the client controls
- * the wallet, not whether the client holds it itself or another custodian holds it for it.
+ * The onboarding routes as people see them (ADR 0089). Kept free of server code, so client pages
+ * and the Ledger can name a route.
  */
 export const ROUTE_LABEL: Record<string, string> = {
-  custodied: "Custodial",
-  "self-custody": "Third party",
-  "holder-wallet": "Holder wallet",
+  "bank-custody": "Bank custody",
+  "third-party": "Third-party custodian",
+  "self-custody": "Self-custody",
+  "existing-identity": "Existing identity",
 };
 
 export const routeLabel = (route: string | undefined | null) => (route ? ROUTE_LABEL[route] ?? route : "");

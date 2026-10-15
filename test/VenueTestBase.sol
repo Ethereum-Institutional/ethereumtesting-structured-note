@@ -12,21 +12,42 @@ import {PermissionFlag} from "@uniswap/v4-periphery/src/hooks/permissionedPools/
 
 import {ERC7943AllowlistChecker} from "../contracts/ERC7943AllowlistChecker.sol";
 import {PermissionedSwapRouter} from "../contracts/PermissionedSwapRouter.sol";
-import {PoolCredentialRegistry} from "../contracts/PoolCredentialRegistry.sol";
+import {IdentityPoolGate} from "../contracts/IdentityPoolGate.sol";
 import {Manifest} from "../script/Manifest.sol";
+import {PoolAccess} from "../script/PoolAccess.sol";
 
 /// The deposit's surface the venue tests drive. It is in the other compilation unit.
 interface IDeposit is IERC20 {
     function canSend(address account) external view returns (bool);
     function canReceive(address account) external view returns (bool);
     function pause() external;
-    function setAddressFrozen(address account, bool frozen) external;
+    function setFrozenTokens(address account, uint256 amount) external;
+    function setAllowlisted(address account, bool allowed) external;
+}
+
+/// A claim issuer, which can revoke a claim by its signature.
+interface IClaimIssuer {
+    function revokeClaimBySignature(bytes calldata signature) external;
+}
+
+/// An ONCHAINID identity's claims.
+interface IClaims {
+    function getClaim(bytes32 claimId)
+        external
+        view
+        returns (uint256 topic, uint256 scheme, address issuer, bytes memory signature, bytes memory data, string memory uri);
+}
+
+/// The pool's identity registry's trusted issuers, which only the controller may change.
+interface ITrustedIssuers {
+    function removeTrustedIssuer(address issuer) external;
 }
 
 /// The controller's venue acts and Tier 1 withdrawal, in the other compilation unit.
 interface IController {
-    function withdrawGrant(address account, string calldata reason) external;
+    function freezeAccount(address account, bool frozen, string calldata reason) external;
     function withdrawPoolAccess(address account, string calldata reason) external;
+    function restorePoolAccess(address account, string calldata reason) external;
     function setVenueSwapping(bool enabled) external;
     function credentialGate() external view returns (address);
 }
@@ -46,12 +67,11 @@ abstract contract VenueTestBase is Test {
     address posm;
     address permit2;
     ERC7943AllowlistChecker checker;
-    PoolCredentialRegistry gate;
+    IdentityPoolGate gate;
     IController controller;
     address agentGovernance;
     address servicingWallet;
     address depositAgent;
-    address accessIssuer;
 
     PoolKey key;
 
@@ -64,12 +84,11 @@ abstract contract VenueTestBase is Test {
         posm = _addr(".venue.positionManager");
         permit2 = _addr(".venue.permit2");
         checker = ERC7943AllowlistChecker(_addr(".venue.allowlistChecker"));
-        gate = PoolCredentialRegistry(_addr(".venue.credentialGate"));
+        gate = IdentityPoolGate(_addr(".venue.credentialGate"));
         controller = IController(_addr(".governance.controller"));
         agentGovernance = _addr(".governance.agentGovernance");
         servicingWallet = _addr(".governance.servicingWallet");
         depositAgent = _addr(".parties.depositAgent");
-        accessIssuer = _addr(".parties.accessIssuer");
 
         key = PoolKey({
             currency0: Currency.wrap(_addr(".pool.currency0")),
@@ -122,28 +141,19 @@ abstract contract VenueTestBase is Test {
         return (checker.checkAllowlist(account, address(deposit)) & flag) == flag;
     }
 
-    /// The same attestation the deploy scripts write (script/Admission.sol), for a new entity:
-    /// its corporate identity, which carries its screening.
+    /// The bank's pool-access claim on the wallet's identity, as the deploy scripts write it
+    /// (script/PoolAccess.sol).
     function _admit(address account) internal {
-        bytes32 entity = keccak256(bytes(vm.parseJsonString(manifest, ".credentialProtocol.corporateIdentitySchema")));
-        bytes32 credential = keccak256(abi.encodePacked(account, "/corporate-identity"));
-        PoolCredentialRegistry.Attestation memory a = PoolCredentialRegistry.Attestation({
-            account: account,
-            path: PoolCredentialRegistry.Path.Entity,
-            primaryCredential: credential,
-            screeningCredential: credential,
-            walletCredential: keccak256(abi.encodePacked(account, "/wallet")),
-            authorityCredential: keccak256(abi.encodePacked(account, "/officer")),
-            primarySchema: entity,
-            screeningSchema: entity,
-            checks: 1 | 2 | 4 | 16,
-            jurisdiction: "NL",
-            investorClass: 2,
-            screenedAt: uint40(block.timestamp - 1 days),
-            credentialExpiry: uint40(block.timestamp + 365 days),
-            evidence: keccak256("evidence")
-        });
-        _as(accessIssuer);
-        gate.grant(a);
+        if (depositAgent.balance == 0) vm.deal(depositAgent, 1 ether);
+        vm.startPrank(depositAgent);
+        PoolAccess.admit(manifest, vm.envUint("DEPOSIT_AGENT_PK"), account);
+        vm.stopPrank();
+    }
+
+    /// The pool-access claim the bank's issuer gave `account`.
+    function _poolClaim(address account) internal view returns (bytes memory signature, bytes memory data) {
+        address issuer = _addr(".identity.bankIssuer");
+        bytes32 claimId = keccak256(abi.encode(issuer, PoolAccess.TOPIC));
+        (,,, signature, data,) = IClaims(PoolAccess.identityOf(manifest, account)).getClaim(claimId);
     }
 }

@@ -200,3 +200,9 @@ footer { padding: 3rem 0 4rem; color: var(--fg3); font-size: 0.75rem; }
 .date-card .event { display: grid; gap: 0.6rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
 .model.ok { color: var(--accent); }
 .model.bad { color: var(--err, #e5735f); }
+
+/* A record set out as terms and values (ADR 0089). */
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1.25rem; margin: 0 0 1rem; }
+.facts dt { color: var(--fg2); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; margin-bottom: 1rem; }

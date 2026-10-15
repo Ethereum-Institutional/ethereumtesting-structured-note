@@ -21,20 +21,12 @@ import {HookMiner} from "@uniswap/v4-periphery/test/shared/HookMiner.sol";
 import {ERC7943AllowlistChecker} from "../contracts/ERC7943AllowlistChecker.sol";
 import {PermissionedComplianceHook} from "../contracts/PermissionedComplianceHook.sol";
 import {PermissionedSwapRouter} from "../contracts/PermissionedSwapRouter.sol";
-import {PoolCredentialRegistry} from "../contracts/PoolCredentialRegistry.sol";
-import {ICredentialIssuers, ICredentialRevocations} from "../contracts/interfaces/ICredentialProtocol.sol";
+import {IdentityPoolGate, IPoolIdentityRegistry} from "../contracts/IdentityPoolGate.sol";
 import {Manifest} from "./Manifest.sol";
 
-/// The instruments are in the other compilation unit; the venue reaches them here.
-interface IIdentityRegistryWriter {
-    function HOLD() external view returns (uint32);
-    function RECEIVE() external view returns (uint32);
-    function TRANSFER() external view returns (uint32);
-    function SANCTIONS_CLEAR() external view returns (uint32);
-    function CONTRACT_ACCOUNT() external view returns (uint32);
-    function SETTLEMENT() external view returns (uint32);
-    function grant(address account, uint32 flags, uint16 jurisdiction, uint40 expiresAt, bytes32 ref, bytes32 commitment)
-        external;
+/// The deposit is in the other compilation unit; the venue reaches it here.
+interface IDepositAllowlist {
+    function setAllowlisted(address account, bool allowed) external;
 }
 
 interface IDepositGateway {
@@ -43,24 +35,24 @@ interface IDepositGateway {
 
 /**
  * Deploys the venue around the deposit: the pool manager (locally), the permissioned-pool
- * periphery, the checker, the pool's credential gate and the compliance hook, and wraps the
- * deposit in its permissions adapter (ADRs 0030, 0031, 0038).
+ * periphery, the checker, the pool's gate and the compliance hook, and wraps the deposit in its
+ * permissions adapter (ADRs 0030, 0031, 0038, 0090).
  *
- * The adapter holds the deposit, and Permit2 moves it under allowances, so the Access Issuer
- * onboards both to the Identity Registry: the adapter as a contract holder, Permit2 with the
- * settlement right only (ADR 0013). The Deposit Agent then credits the adapter one cent, which is
- * what the factory's verification checks, in script/02_ActivateVenue.s.sol.
+ * The gate reads the pool's ERC-3643 identity registry, deployed with the scaffolding: a wallet
+ * converts when it holds a valid pool-access claim and its recorded country is one the pool
+ * serves.
+ *
+ * The adapter holds the deposit, and Permit2 moves it under allowances. Neither is a client with
+ * an identity, so the bank allowlists both on the deposit as infrastructure. The Deposit Agent
+ * then credits the adapter one cent, which is what the factory's verification checks, in
+ * script/02_ActivateVenue.s.sol.
  *
  * Every venue contract is owned by the deployer until the ceremony hands it to the controller
- * (ADR 0039). The credential gate's attester is the Access Issuer.
+ * (ADR 0039).
  */
 contract DeployVenue is Script {
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-
-    uint40 constant POOL_MAX_VALIDITY = 90 days;
-    uint40 constant SCREENING_MAX_AGE = 30 days;
-    uint40 constant INFRASTRUCTURE_GRANT = 180 days;
 
     struct Venue {
         address manager;
@@ -96,7 +88,7 @@ contract DeployVenue is Script {
         checker.setLiquidityApproved(deposit, depositAgent, true);
         vm.stopBroadcast();
 
-        _onboardInfrastructure(j, v.adapter);
+        _allowlistInfrastructure(deposit, v.adapter);
 
         vm.startBroadcast(vm.envUint("DEPOSIT_AGENT_PK"));
         IDepositGateway(vm.parseJsonAddress(j, ".instruments.gateway")).credit(v.adapter, 1, "VEN-0001");
@@ -118,7 +110,11 @@ contract DeployVenue is Script {
         if (v.weth == address(0)) v.weth = address(new WETH());
         v.factory = address(new PermissionsAdapterFactory(v.manager));
         v.checker = address(new ERC7943AllowlistChecker(issuer));
-        v.gate = address(new PoolCredentialRegistry(_policy(issuer, j)));
+        v.gate = address(
+            new IdentityPoolGate(
+                issuer, IPoolIdentityRegistry(vm.parseJsonAddress(j, ".identity.poolRegistry")), _jurisdictions()
+            )
+        );
         v.hook = _deployHook(v.manager, v.factory);
         v.router = address(
             new PermissionedSwapRouter(
@@ -128,60 +124,23 @@ contract DeployVenue is Script {
         v.posm = _deployPositionManager(v.manager, v.weth, v.factory);
     }
 
-    /// The pool's credential policy (ADRs 0032 to 0035).
-    function _policy(address issuer, string memory j) internal view returns (PoolCredentialRegistry.Config memory c) {
-        uint32 walletControl = 1 << 0;
-        uint32 notExpired = 1 << 1;
-        uint32 entityActive = 1 << 2;
-        uint32 over18 = 1 << 3;
-        uint32 sanctionsClean = 1 << 4;
-        uint32 notPep = 1 << 5;
-        bytes32 corporate = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.corporateIdentitySchema")));
-        bytes32 screening = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.screeningSchema")));
-        c = PoolCredentialRegistry.Config({
-            admin: issuer,
-            attester: vm.parseJsonAddress(j, ".parties.accessIssuer"),
-            issuers: ICredentialIssuers(vm.parseJsonAddress(j, ".credentialProtocol.issuers")),
-            revocations: ICredentialRevocations(vm.parseJsonAddress(j, ".credentialProtocol.revocations")),
-            issuerDid: vm.parseJsonString(j, ".credentialProtocol.issuerDid"),
-            // An entity's screening rides inside its corporate identity (ADR 0033).
-            entity: PoolCredentialRegistry.PathPolicy(
-                corporate, corporate, walletControl | notExpired | entityActive | sanctionsClean
-            ),
-            person: PoolCredentialRegistry.PathPolicy(
-                keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.passportSchema"))),
-                screening,
-                walletControl | notExpired | over18 | sanctionsClean | notPep
-            ),
-            jurisdictions: _jurisdictions(),
-            investorClasses: uint8(1 << 1 | 1 << 2), // professional, institutional
-            maxValidity: POOL_MAX_VALIDITY,
-            screeningMaxAge: SCREENING_MAX_AGE,
-            rootFreshness: 0,
-            // The bank's KYB establishes who may act for an entity (ADR 0054).
-            entityRequiresAuthority: false
-        });
-    }
-
-    /// The 30 states of the European Economic Area, Switzerland and the United Kingdom (ADR 0033).
-    function _jurisdictions() internal pure returns (bytes2[] memory js) {
-        bytes2[32] memory list = [
-            bytes2("AT"), "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV",
-            "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "IS", "LI", "NO", "CH", "GB"
+    /// The 30 states of the European Economic Area, Switzerland and the United Kingdom (ADR 0033),
+    /// by ISO 3166-1 numeric code, as the identity storage records countries.
+    function _jurisdictions() internal pure returns (uint16[] memory js) {
+        uint16[32] memory list = [
+            uint16(40), 56, 100, 191, 196, 203, 208, 233, 246, 250, 276, 300, 348, 372, 380, 428,
+            440, 442, 470, 528, 616, 620, 642, 703, 705, 724, 752, 352, 438, 578, 756, 826
         ];
-        js = new bytes2[](list.length);
+        js = new uint16[](list.length);
         for (uint256 k = 0; k < list.length; ++k) {
             js[k] = list[k];
         }
     }
 
-    function _onboardInfrastructure(string memory j, address adapter) internal {
-        IIdentityRegistryWriter r = IIdentityRegistryWriter(vm.parseJsonAddress(j, ".instruments.registry"));
-        vm.startBroadcast(vm.envUint("ACCESS_ISSUER_PK"));
-        uint40 until = uint40(block.timestamp) + INFRASTRUCTURE_GRANT;
-        uint32 contractHolder = r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT();
-        r.grant(adapter, contractHolder, 276, until, "ONB-0009", bytes32(0));
-        r.grant(PERMIT2, r.SETTLEMENT() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT(), 276, until, "ONB-0010", bytes32(0));
+    function _allowlistInfrastructure(address deposit, address adapter) internal {
+        vm.startBroadcast(vm.envUint("DEPOSIT_AGENT_PK"));
+        IDepositAllowlist(deposit).setAllowlisted(adapter, true);
+        IDepositAllowlist(deposit).setAllowlisted(PERMIT2, true);
         vm.stopBroadcast();
     }
 
@@ -226,7 +185,7 @@ contract DeployVenue is Script {
         console2.log("poolManager    :", v.manager);
         console2.log("adapterFactory :", v.factory);
         console2.log("checker        :", v.checker);
-        console2.log("credential gate:", v.gate);
+        console2.log("pool gate      :", v.gate);
         console2.log("hook           :", v.hook);
         console2.log("router         :", v.router);
         console2.log("positionManager:", v.posm);

@@ -3,9 +3,9 @@ import { test, expect, expectHealthy, signedIn, warpTo, PEOPLE } from "./fixture
 test("governance: Tier 1 corrects the register with its reason; the Agent alone cannot force a transfer; Tier 2 needs two institutions and the delay", async ({ browser }) => {
   test.setTimeout(240_000);
   const staff = await signedIn(browser, PEOPLE.operator);
-  await staff.goto("/operator");
-  await staff.getByRole("navigation", { name: "Operator" }).getByRole("link", { name: "Tier 1" }).click();
-  await expect(staff).toHaveURL(/\/operator\/governance\/tier-1$/);
+  await staff.goto("/agent");
+  await staff.getByRole("navigation", { name: "The Agent" }).getByRole("link", { name: "Tier 1" }).click();
+  await expect(staff).toHaveURL(/\/agent\/governance\/tier-1$/);
 
   // S-25: a register correction, at once, its written reason recorded on-chain.
   await staff.getByText("Correct the register…").click();
@@ -25,12 +25,12 @@ test("governance: Tier 1 corrects the register with its reason; the Agent alone 
   await expect(attempt.getByRole("status")).toContainText("Only the governance controller may force a transfer (S-26)", { timeout: 30_000 });
 
   // Tier 2: the Issuer proposes; alone it cannot queue (S-22); with the co-signer it queues; after the delay it executes.
-  await staff.getByRole("navigation", { name: "Operator" }).getByRole("link", { name: "Tier 2" }).click();
+  await staff.getByRole("navigation", { name: "The Agent" }).getByRole("link", { name: "Tier 2" }).click();
   await expect(staff.locator(".facts")).toContainText("At least 2 institutions, whose wallets need 4 signatures between them");
   await expect(staff.locator(".facts")).toContainText("1 day after the delay");
   await staff.getByText("Propose…").click();
   const propose = staff.locator("form").filter({ has: staff.getByRole("button", { name: "Propose" }) });
-  await expect(propose.locator('select[name="kind"] option', { hasText: "Upgrade an instrument" })).toHaveAttribute("disabled", "");
+  await expect(propose.locator('select[name="kind"] option', { hasText: "Replace the Agent's servicing wallet" })).toHaveAttribute("disabled", "");
   await propose.getByLabel("Notional: units").fill("3");
   await propose.getByLabel("Written reason").fill("Browser test: tranche up by three units");
   await propose.getByRole("button", { name: "Propose" }).click();

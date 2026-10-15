@@ -73,16 +73,23 @@ contract MockVenueAdapter is Ownable2Step {
     }
 }
 
+/// The pool's gate as the controller sees it: supervisory withdrawal over an identity registry.
 contract MockCredentialGate is AccessControl {
-    bytes32 public constant ATTESTER_ROLE = keccak256("ATTESTER_ROLE");
     bytes32 public constant SUPERVISOR_ROLE = keccak256("SUPERVISOR_ROLE");
+    address public immutable registry;
     mapping(address account => string) public withdrawnFor;
+    mapping(address account => string) public restoredFor;
 
-    constructor(address admin) {
+    constructor(address admin, address registry_) {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        registry = registry_;
     }
 
     function withdraw(address account, string calldata reason) external onlyRole(SUPERVISOR_ROLE) {
         withdrawnFor[account] = reason;
+    }
+
+    function restore(address account, string calldata reason) external onlyRole(SUPERVISOR_ROLE) {
+        restoredFor[account] = reason;
     }
 }

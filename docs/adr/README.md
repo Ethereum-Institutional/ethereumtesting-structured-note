@@ -96,3 +96,5 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0086](0086-deposit-token-allowlist.md) | The tokenized deposit: an allowlist ERC-20 like JPMD, eligible by the bank's own identity registry | Accepted |
 | [0087](0087-licence-boundary.md) | A narrow GPL-3.0 boundary around T-REX, and no non-commercial modules | Accepted |
 | [0088](0088-erc-3643-core.md) | The note as an ERC-3643 token: identities, claims by role, record dates as compliance, and restricted agents | Accepted |
+| [0089](0089-onboarding-by-role.md) | Onboarding by role: five portals, custody routes on identities, and no credential platform | Accepted |
+| [0090](0090-pool-on-identities.md) | The conversion pool, on by default, gated on the same ONCHAINID identities | Accepted |

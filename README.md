@@ -25,12 +25,13 @@ both under EIP-170 (spike 1).
 | `site/` | Next.js | The registration-gated site, and the chain library the operations console will use |
 | `ops/` | | Local chain and deploy scripts |
 
-The venue is the conversion pool: the euro payment token against the tokenized deposit, gated by
-the deposit's own eligibility and by the pool's credential gate, which admits only holders of a
-credential from the configured issuer whose attributes meet the configured policy (ADRs 0028 to
-0041). Locally the payment token is a stand-in in `test/fixtures/` and the credential protocol's
-released registries are installed at their canonical addresses; on the test network both are the
-real deployments, named in the network file (`ops/networks/`).
+The venue is the conversion pool, deployed by default: the euro payment token against the
+tokenized deposit, gated by the deposit's own eligibility and by the pool's gate on the same
+ONCHAINID identities (ADR 0090). The gate reads the pool's own ERC-3643 identity registry, which
+requires the onboarding agent's pool-access claim, and admits a wallet whose country is one the
+pool serves and whom supervision has not withdrawn. Locally the payment token is a stand-in in
+`test/fixtures/`; on the test network it is the real deployment, named in the network file
+(`ops/networks/`).
 
 ## Running it locally
 
@@ -57,30 +58,30 @@ every refusal has a positive control. They run against the deployed stack, after
 
 | Control | Test |
 |---|---|
-| An admitted entity converts the payment token into the deposit near par (S-27) | `test_credentialedEntity_convertsIntoTheDeposit` |
-| An admitted natural person converts the deposit back | `test_credentialedPerson_convertsOutOfTheDeposit` |
-| A wallet the deposit accepts but with no credential is refused by the pool; admitted, it converts (S-28) | `test_noCredential_refusedByThePoolThoughTheDepositAccepts` |
+| An admitted investor converts the payment token into the deposit near par (S-27) | `test_admittedInvestor_convertsIntoTheDeposit` |
+| An admitted investor converts the deposit back | `test_admittedInvestor_convertsOutOfTheDeposit` |
+| A wallet the deposit accepts but with no pool-access claim is refused by the pool; admitted, it converts (S-28) | `test_noPoolClaim_refusedByThePoolThoughTheDepositAccepts` |
 | A wallet onboarded nowhere is refused despite funds and approvals | `test_notOnboarded_refused` |
 | Only the Deposit Agent provides liquidity; the same plan is refused for an investor | `test_onlyTheDepositAgentProvidesLiquidity` |
 | A liquidity position cannot be transferred (S-29) | `test_liquidityPositionIsNotTransferable` |
-| A credential the protocol revokes is voided by anyone and stops the wallet | `test_protocolRevocation_voidedByAnyone_stopsTheWallet` |
-| Deactivating the issuer in the protocol suspends the pool | `test_issuerDeactivation_suspendsThePool` |
-| Supervisory withdrawal of pool access is Tier 1 | `test_tier1WithdrawalOfPoolAccess` |
-| Withdrawing the registry grant stops the pool at once (ADR 0004) | `test_registryWithdrawal_stopsThePool` |
+| The onboarding agent revoking its pool-access claim stops the wallet at once | `test_claimRevocation_stopsTheWallet` |
+| Ceasing to trust the onboarding agent's issuer for pool access closes the pool | `test_issuerNoLongerTrusted_closesThePool` |
+| Supervisory withdrawal and restoration of pool access are Tier 1 | `test_tier1WithdrawalAndRestorationOfPoolAccess` |
+| The bank revoking its deposit claim stops the pool at once (ADR 0004) | `test_depositClaimRevocation_stopsThePool` |
 | A deposit freeze stops the wallet; a deposit pause halts the pool | `test_depositFreeze_stopsTheWallet`, `test_depositPause_haltsThePool` |
 | The servicing wallet switches swapping off and on through the controller | `test_servicingWalletSwitchesSwapping` |
-| A pool grant lapses without any transaction | `test_grantLapses` |
-| A gate or token that cannot answer denies rather than reverting | `test_unanswerableCredentialGate_deniesEveryone`, `test_checkerFailsClosedOnNonConformingToken` |
+| A pool-access claim lapses without any transaction | `test_poolClaimLapses` |
+| The pool serves the EEA, Switzerland and the United Kingdom | `test_jurisdictionsServed` |
+| A gate or token that cannot answer denies rather than reverting | `test_unanswerableGate_deniesEveryone`, `test_checkerFailsClosedOnNonConformingToken` |
 | The venue answers to the controller alone | `test_theVenueIsGoverned` |
 | The Custodian converts for an admitted client that never holds a key; only the Custodian operates it | `test_custodianConvertsForAdmittedClient`, `test_onlyCustodianCanOperateClientAccount` |
 | A client account not admitted, or not onboarded, is refused | `test_notAdmittedClient_refusedByThePool`, `test_notOnboardedClient_refused` |
 | Freezing or withdrawing one client leaves its sibling converting | `test_freezingOneClientDoesNotAffectOthers`, `test_withdrawingOneClientsAccessDoesNotAffectOthers` |
 
-`test/PoolCredentialRegistry.t.sol` tests the credential gate alone, against a stand-in for the
-protocol, with no chain: each policy parameter refused and then met, bounded expiry, revocation by
-each route, the wallet-control credential required and voidable, a swap-path read of two storage slots that never calls the protocol and never reverts,
-and no attribute value stored. Ten deliberate errors in the gate and one in the checker were
-each caught. The venue tests pass unchanged against a fork of the test network
+`test/IdentityPoolGate.t.sol` tests the gate alone, against a stand-in for the pool's identity
+registry, with no chain: verified and served, not verified, a jurisdiction not served, withdrawal
+and restoration by the supervisor alone with a reason, a registry that cannot answer denying, and
+the configuration checked. The venue tests run against a fork of the test network too
 (`ops/dry-run-fork.sh`).
 
 ## What the instruments tests show

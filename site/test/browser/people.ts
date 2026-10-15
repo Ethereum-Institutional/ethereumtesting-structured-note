@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 export const PORT = 3031;
 export const SITE = `http://localhost:${PORT}`;
-export const STANDINS_PORT = 4021;
+export const MAILBOX_PORT = 4021;
 export const LAGGING_RPC_PORT = 4022;
 export const WORK = join(tmpdir(), "structurednote-browser");
 export const STORE_DIR = join(WORK, "store");
@@ -20,9 +20,13 @@ export type Person = { id: string; email: string; name: string; organisation: st
 
 export const PEOPLE = {
   operator: { id: "reg_operator", email: "operator@example.org", name: "Bank Operator", organisation: "The Bank", status: "approved", sid: "sid-operator-0123456789abcdef" },
+  banker: { id: "reg_banker", email: "banker@bank.example", name: "Bank Staff", organisation: "The Bank", status: "approved", sid: "sid-banker-0123456789abcdef0" },
   selfCustody: { id: "reg_self", email: "treasury@corp.example", name: "Treasury Lead", organisation: "Test Institution One", status: "approved", sid: "sid-self-custody-0123456789ab" },
-  holder: { id: "reg_holder", email: "officer@corp.example", name: "Officer", organisation: "Test Institution One", status: "approved", sid: "sid-holder-wallet-0123456789a" },
+  custodied: { id: "reg_custodied", email: "finance@held.example", name: "Finance Lead", organisation: "Browser Held Institution SA", status: "approved", sid: "sid-custodied-0123456789abcd" },
   applicant: { id: "reg_applicant", email: "applicant@newco.example", name: "New Applicant", organisation: "Newco", status: "pending", sid: "sid-applicant-0123456789abcd" },
   declined: { id: "reg_declined", email: "declined@newco.example", name: "Declined Applicant", organisation: "Newco", status: "pending", sid: "sid-declined-0123456789abcde" },
   unconfirmed: { id: "reg_unconfirmed", email: "unconfirmed@newco.example", name: "Unconfirmed Applicant", organisation: "Newco", status: "unverified", sid: "sid-unconfirmed-0123456789ab" },
 } satisfies Record<string, Person>;
+
+/** The self-custody client's wallet, the same key across the specs that act with it. */
+export const SELF_CUSTODY_SEED = "browser self-custody wallet";

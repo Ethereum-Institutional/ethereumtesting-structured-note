@@ -1,9 +1,23 @@
 import { test, expect, expectHealthy, signedIn, PEOPLE } from "./fixtures.ts";
-import { STANDINS_PORT } from "./people.ts";
+import { MAILBOX_PORT } from "./people.ts";
 
-test("an operator approves one registration and declines another", async ({ browser }) => {
+test("the bank approves one sign-up and declines another; each staff member sees only its own portals", async ({ browser }) => {
+  // The bank's staff see the bank's portal, and no other (ADR 0089).
+  const banker = await signedIn(browser, PEOPLE.banker);
+  await banker.goto("/bank");
+  await expect(banker.getByRole("heading", { name: "Sign-ups" })).toBeVisible();
+  const bar = banker.locator(".bar nav");
+  await expect(bar.getByRole("link", { name: "Bank" })).toBeVisible();
+  for (const other of ["Onboarding agent", "Custodians", "Agent"]) await expect(bar.getByRole("link", { name: other, exact: true })).toHaveCount(0);
+  for (const path of ["/agent", "/onboarding", "/custodian"]) {
+    const res = await banker.goto(path);
+    expect(res?.status(), `${path} is not the bank's`).toBe(404);
+  }
+
+  // The operator demonstrates every portal.
   const page = await signedIn(browser, PEOPLE.operator);
-  await page.goto("/operator");
+  await page.goto("/bank");
+  for (const name of ["Bank", "Onboarding agent", "Custodians", "Agent"]) await expect(page.locator(".bar nav").getByRole("link", { name, exact: true })).toBeVisible();
   const applicant = page.getByRole("row").filter({ hasText: PEOPLE.applicant.email });
   await applicant.getByRole("button", { name: "Approve" }).click();
   await expect(applicant.locator(".pill")).toHaveText("approved");
@@ -18,7 +32,7 @@ test("an operator approves one registration and declines another", async ({ brow
   await expect(unconfirmed).toContainText("Hasn't confirmed their email yet");
   await unconfirmed.getByRole("button", { name: "Resend link" }).click();
   await expect(unconfirmed.getByRole("status")).toHaveText(`Sent a fresh link to ${PEOPLE.unconfirmed.email}.`);
-  const mails = await (await fetch(`http://127.0.0.1:${STANDINS_PORT}/test/mails`)).json();
+  const mails = await (await fetch(`http://127.0.0.1:${MAILBOX_PORT}/test/mails`)).json();
   expect(mails.at(-1)).toMatchObject({ to: PEOPLE.unconfirmed.email, subject: "Confirm your email address" });
   expect(mails.at(-1).text).toContain("/access?token=");
   // Again at once: throttled, and said so.

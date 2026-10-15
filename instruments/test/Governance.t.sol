@@ -78,7 +78,7 @@ contract GovernanceTest is Stack {
         servicing = new MockWallet(2);
         checker = new MockVenueChecker(deployer);
         adapter = new MockVenueAdapter(deployer);
-        gate = new MockCredentialGate(deployer);
+        gate = new MockCredentialGate(deployer, address(d.poolRegistry));
         g = Governance.ceremony(
             d,
             l,
@@ -565,11 +565,23 @@ contract GovernanceTest is Stack {
         _via(cosigner, abi.encodeCall(GovernanceController.withdrawPoolAccess, (b, reason)));
         vm.expectRevert(GovernanceController.NoReason.selector);
         _via(agentGov, abi.encodeCall(GovernanceController.withdrawPoolAccess, (b, "")));
+
+        _via(agentGov, abi.encodeCall(GovernanceController.restorePoolAccess, (b, "Review closed with no finding")));
+        assertEq(gate.restoredFor(b), "Review closed with no finding");
+        vm.expectRevert(abi.encodeWithSelector(GovernanceController.NotAgentGovernance.selector, address(cosigner)));
+        _via(cosigner, abi.encodeCall(GovernanceController.restorePoolAccess, (b, "x")));
+    }
+
+    /// The ceremony hands the pool's identity registries to the controller, pool or no pool.
+    function test_ceremonyHandsOverThePoolRegistries() public view {
+        assertEq(d.poolRegistry.owner(), address(g), "registry");
+        assertEq(d.poolTopics.owner(), address(g), "topics");
+        assertEq(d.poolIssuers.owner(), address(g), "trusted issuers");
     }
 
     /// Repointing the credential gate is Tier 2, and later withdrawals go to the new gate.
     function test_repointingTheCredentialGateIsTier2() public {
-        MockCredentialGate next = new MockCredentialGate(address(g));
+        MockCredentialGate next = new MockCredentialGate(address(g), address(d.poolRegistry));
         bytes32 supervisor = next.SUPERVISOR_ROLE();
         vm.prank(address(g));
         next.grantRole(supervisor, address(g));
@@ -605,12 +617,14 @@ contract GovernanceTest is Stack {
         assertTrue(adapter.allowedHooks(hook));
     }
 
-    function test_poolAttesterIsTier2() public {
-        address attester = makeAddr("second attester");
-        _tier2(agentGov, abi.encodeCall(GovernanceController.proposeSetPoolAttester, (attester, true, "Second attester")));
-        assertTrue(gate.hasRole(gate.ATTESTER_ROLE(), attester));
-        _tier2(agentGov, abi.encodeCall(GovernanceController.proposeSetPoolAttester, (attester, false, "Key retired")));
-        assertFalse(gate.hasRole(gate.ATTESTER_ROLE(), attester));
+    /// Which claim issuers may vouch for pool access is Tier 2, on the gate's identity registry.
+    function test_poolIssuerIsTier2() public {
+        address bankIssuer = address(d.bankIssuer);
+        address onboarding = address(d.onboardingIssuer);
+        _tier2(agentGov, abi.encodeCall(GovernanceController.proposeSetPoolIssuer, (onboarding, true, "The onboarding agent admits too")));
+        assertTrue(d.poolIssuers.hasClaimTopic(onboarding, ClaimTopics.POOL_ACCESS), "trusted for pool access");
+        _tier2(agentGov, abi.encodeCall(GovernanceController.proposeSetPoolIssuer, (bankIssuer, false, "Mandate ended")));
+        assertFalse(d.poolIssuers.isTrustedIssuer(bankIssuer), "no longer trusted");
     }
 
     /// A controller with no venue refuses every venue act.

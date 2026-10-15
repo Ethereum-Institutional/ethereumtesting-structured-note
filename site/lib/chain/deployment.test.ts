@@ -15,7 +15,8 @@ import { Tape, readTape } from "./tape.ts";
 const m = loadManifest();
 const client = createPublicClient({ chain: { ...foundry, id: m.chainId }, transport: http(process.env.RPC_URL ?? "http://127.0.0.1:8545") });
 
-test("the pool id locates the deployed pool, and it opened at par", async () => {
+test("the pool id locates the deployed pool, and it opened at par", { skip: !m.venue && "no pool on this deployment (deployed with POOL=0)" }, async () => {
+  if (!m.venue || !m.pool) return;
   const [sqrtPriceX96] = await client.readContract({
     address: m.lens!.stateView,
     abi: parseAbi(["function getSlot0(bytes32) view returns (uint160, int24, uint24, uint24)"]),

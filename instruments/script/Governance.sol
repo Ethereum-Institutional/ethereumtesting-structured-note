@@ -35,8 +35,9 @@ interface IRoleAdmin {
  * - **Settlement contract:** the note's agent for freezing part of a holding while an offer is open.
  * - **Onboarding agent:** the agent of the note's identity registry.
  * - **The bank:** the deposit's eligibility and its pause, allowlist and freezing.
- * - **Venue** (ADR 0039), where there is one: the controller owns the checker and the deposit's
- *   permissions adapter and holds the pool credential gate's admin and supervisor roles.
+ * - **Venue** (ADRs 0039, 0090): the controller owns the pool's identity registries, its topics
+ *   and trusted issuers, always; where the pool is deployed it also owns the checker and the
+ *   deposit's permissions adapter and holds the pool gate's admin and supervisor roles.
  * - **Deployer and the interim Agent key:** nothing on the note or its lifecycle. The deployer, as
  *   the Issuer, keeps T-REX's factory, to issue further notes.
  */
@@ -116,16 +117,19 @@ library Governance {
         d.deposit.grantRole(d.deposit.FORCED_TRANSFER_ROLE(), address(l.payingAgent));
         d.gateway.grantRole(ADMIN, controller);
 
-        // Ownership, offered and accepted in the same sequence: the note and its registries, and
-        // the venue where there is one.
+        // Ownership, offered and accepted in the same sequence: the note and its registries, the
+        // pool's identity registries, and the venue where there is one.
         bool venue = c.venue.checker != address(0);
-        address[] memory owned = new address[](venue ? 7 : 5);
+        address[] memory owned = new address[](venue ? 10 : 8);
         owned[0] = address(l.note);
         owned[1] = address(l.identityRegistry);
         owned[2] = l.trustedIssuers;
         owned[3] = l.claimTopics;
         owned[4] = l.compliance;
-        if (venue) (owned[5], owned[6]) = (c.venue.checker, c.venue.adapter);
+        owned[5] = address(d.poolRegistry);
+        owned[6] = address(d.poolTopics);
+        owned[7] = address(d.poolIssuers);
+        if (venue) (owned[8], owned[9]) = (c.venue.checker, c.venue.adapter);
         for (uint256 k = 0; k < owned.length; ++k) {
             IOwnable2Step(owned[k]).transferOwnership(controller);
         }

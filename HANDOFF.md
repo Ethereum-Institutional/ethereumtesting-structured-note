@@ -393,7 +393,7 @@ clause, so a changed answer changes terms or one line, and the vector grid is re
 - **Deploying.** From the repository root, always with `--scope ethereuminstitutional`: another
   local session also uses the Vercel CLI and changes its default scope. From `site/` the build
   fails, because it copies from `docs/`. Environment variables are set through the REST API
-  (`ops/vercel-admission-env.sh`) because `vercel env add` hangs non-interactively. Run
+  (`ops/vercel-env.sh`) because `vercel env add` hangs non-interactively. Run
   `npm run test:local` in `site/` before every deploy (ADR 0059).
 - **Commits are GPG-signed** and need the passphrase at the keyboard.
 - **Payoff confirmations C1 to C10** (`docs/spikes/03-payoff-specification.md` section 10) are
@@ -596,7 +596,7 @@ to `main` 28 September 2026.** Decisions are ADRs 0027 to 0059.
   controller 0xbC224b2F963162a5bD5bB9aF27916f39BCBEcA5f. The pool holds about 20 of each token (the faucet's limit);
   the note carries the placeholder term sheet reference. The cast's own grants rest on reference
   identifiers, not issued credentials; real admissions go through the site.
-  `ops/vercel-admission-env.sh` sets the site's admission settings from these files.
+  `ops/vercel-env.sh` sets the site's chain settings and keys from these files.
 
 **For review, taken during the build.**
 

@@ -22,10 +22,10 @@ function client(m: Manifest): PublicClient {
   return createPublicClient({ chain, transport: http(rpc) }) as PublicClient;
 }
 
-/** The block the deployment began in: the first with code at the Identity Registry, by binary search. */
+/** The block the deployment began in: the first with code at its identity storage, by binary search. */
 async function deploymentBlock(c: PublicClient, m: Manifest): Promise<bigint> {
   if (firstBlock !== null) return firstBlock;
-  const probe = m.instruments?.registry ?? m.venue.credentialGate;
+  const probe = (m.identity?.identityStorage ?? m.instruments?.deposit ?? m.assets.deposit?.address) as Address;
   let lo = 0n;
   let hi = await c.getBlockNumber();
   while (lo < hi) {
@@ -62,7 +62,7 @@ function ownContracts(tape: Tape, m: Manifest): Address[] {
   if (m.network?.local !== false) return tape.watched();
   // The Safe factory is shared too; the deployment's own wallets stay, and each records its own setup.
   const shared = new Set(
-    [m.network.poolManager, m.network.weth, m.venue.permit2, m.venue.poolManager, m.assets.paymentToken?.address, m.governance?.walletFactory]
+    [m.network.poolManager, m.network.weth, m.venue?.permit2, m.venue?.poolManager, m.assets.paymentToken?.address, m.governance?.walletFactory]
       .filter(Boolean)
       .map((a) => String(a).toLowerCase()),
   );
@@ -71,12 +71,39 @@ function ownContracts(tape: Tape, m: Manifest): Address[] {
 
 /** The contracts of the notes the site issued, from its own record of them (ADR 0072). */
 async function noteContracts(): Promise<Array<{ address: string; key: string; label: string }>> {
-  const PARTS: Record<string, string> = { note: "", gate: "gate", determinations: "Determination Agent", recordDates: "record-date engine", payingAgent: "Paying Agent", settlement: "DvP settlement" };
+  const PARTS: Record<string, string> = {
+    note: "",
+    determinations: "Determination Agent",
+    recordDates: "record-date module",
+    identityRegistry: "identity registry",
+    noteIdentity: "identity",
+    payingAgent: "Paying Agent",
+    settlement: "locked settlement",
+  };
   return (await getStore().listNotes()).flatMap((n) =>
     Object.entries(n.addresses)
       .filter(([part]) => part in PARTS)
       .map(([part, address]) => ({ address, key: `notes.${n.symbol}.${part}`, label: PARTS[part] ? `${n.symbol} ${PARTS[part]}` : n.symbol })),
   );
+}
+
+/**
+ * The deployment's identities (ADR 0088), from the storage's own events: each named for the wallet
+ * it was registered for, so the keys and claims institutions add to it appear on the tape.
+ */
+async function identities(c: PublicClient, m: Manifest, from: bigint): Promise<Array<{ address: string; key: string; label: string }>> {
+  if (!m.identity) return [];
+  const stored = await c.getLogs({ address: m.identity.identityStorage, event: STORED, fromBlock: from, toBlock: "latest" }).catch(() => []);
+  const book = addressBook(m);
+  const seen = new Map<string, { address: string; key: string; label: string }>();
+  for (const l of stored) {
+    const wallet = l.args._investorAddress;
+    const identity = l.args._identity;
+    if (!wallet || !identity || seen.has(identity.toLowerCase())) continue;
+    const who = book.get(wallet.toLowerCase())?.label ?? `${wallet.slice(0, 10)}…`;
+    seen.set(identity.toLowerCase(), { address: identity, key: `identities.${wallet}`, label: `Identity of ${who}` });
+  }
+  return [...seen.values()];
 }
 
 export type LedgerRow = TapeRow & { at: string | null };
@@ -87,7 +114,7 @@ export async function readLedger(limit = 150): Promise<LedgerView> {
   const m = loadManifest();
   const c = client(m);
   const from = await deploymentBlock(c, m);
-  const tape = new Tape(await withCustodyAccounts(c, m, from), undefined, await noteContracts());
+  const tape = new Tape(await withCustodyAccounts(c, m, from), undefined, [...(await noteContracts()), ...(await identities(c, m, from))]);
   const rows = await readTape(c, tape, limit, from, ownContracts(tape, m));
   const blocks = [...new Set(rows.map((r) => r.block))];
   const times = new Map<number, string>();
@@ -106,10 +133,10 @@ export async function readLedger(limit = 150): Promise<LedgerView> {
 // The register reconciliation, for staff
 // ---------------------------------------------------------------------------------------------
 
-const GRANTED = parseAbiItem("event Granted(address indexed account, uint16 indexed registrar, uint32 flags, uint16 jurisdiction, uint40 expiresAt, bytes32 credentialRef, bytes32 commitment)");
+const STORED = parseAbiItem("event IdentityStored(address indexed _investorAddress, address indexed _identity)");
 const VIEWS = parseAbi([
-  "function liveFlags(address account) view returns (uint32 flags, uint16 jurisdiction)",
-  "function isAllowed(address account) view returns (bool)",
+  "function isVerified(address) view returns (bool)",
+  "function identity(address) view returns (address)",
   "function balanceOf(address) view returns (uint256)",
 ]);
 
@@ -119,8 +146,8 @@ export type RegisterRow = {
   label: string | null;
   /** Not a disagreement: why the site has no record of it. */
   note: string | null;
-  onChain: { pool: boolean; registryFlags: number; deposit: bigint; note: bigint };
-  site: { client: string; route: string; status: string; admission: string; revokedAtBank: boolean } | null;
+  onChain: { identity: Address | null; depositEligible: boolean; noteEligible: boolean; deposit: bigint; note: bigint };
+  site: { client: string; route: string; status: string; admission: string } | null;
   finding: string | null;
 };
 
@@ -128,47 +155,46 @@ export async function reconcile(): Promise<RegisterRow[]> {
   const m = loadManifest();
   const c = client(m);
   const from = await deploymentBlock(c, m);
-  const registry = m.instruments?.registry;
-  if (!registry) throw new Error("the manifest has no Identity Registry");
-  // Every account the chain has granted, and every account the site has onboarded or offboarded.
-  const granted = await c.getLogs({ address: registry, event: GRANTED, fromBlock: from, toBlock: "latest" });
+  if (!m.identity) throw new Error("the manifest has no identity storage");
+  // Every wallet the storage has held an identity for, and every wallet the site has onboarded or offboarded.
+  const stored = await c.getLogs({ address: m.identity.identityStorage, event: STORED, fromBlock: from, toBlock: "latest" });
   const accounts = new Map<string, Address>();
-  for (const l of granted) if (l.args.account) accounts.set(l.args.account.toLowerCase(), l.args.account);
+  for (const l of stored) if (l.args._investorAddress) accounts.set(l.args._investorAddress.toLowerCase(), l.args._investorAddress);
   const known = new Map<string, NonNullable<RegisterRow["site"]>>();
   for (const a of await getStore().listAdmissions(1000)) {
     const d = a.data as Record<string, any>;
-    const wallet: string | undefined = d.assessment?.summary?.wallet;
-    if (!wallet || !["admitted", "offboarded"].includes(a.status)) continue;
+    const wallet: string | undefined = d.wallet;
+    if (!wallet || !["onboarded", "offboarded"].includes(a.status)) continue;
     const key = wallet.toLowerCase();
-    // The newest admission of a wallet speaks for it.
-    if (!known.has(key)) {
-      known.set(key, { client: String(d.record?.legalName ?? d.assessment?.summary?.corporation ?? ""), route: a.route, status: a.status, admission: a.id, revokedAtBank: Boolean(d.bankRevocations?.length) });
-    }
+    // The newest onboarding of a wallet speaks for it.
+    if (!known.has(key)) known.set(key, { client: String(d.request?.organisation ?? ""), route: a.route, status: a.status, admission: a.id });
     accounts.set(key, wallet as Address);
   }
 
   const rows: RegisterRow[] = [];
   const book = addressBook(await withCustodyAccounts(c, m, from));
+  const noteRegistry = m.noteSuite?.identityRegistry;
   for (const account of accounts.values()) {
-    const [[flags], pool, deposit, noteBalance] = await Promise.all([
-      c.readContract({ address: registry, abi: VIEWS, functionName: "liveFlags", args: [account] }),
-      c.readContract({ address: m.venue.credentialGate, abi: VIEWS, functionName: "isAllowed", args: [account] }),
+    const [identity, depositEligible, noteEligible, deposit, noteBalance] = await Promise.all([
+      c.readContract({ address: m.identity.depositRegistry, abi: VIEWS, functionName: "identity", args: [account] }),
+      c.readContract({ address: m.identity.depositRegistry, abi: VIEWS, functionName: "isVerified", args: [account] }),
+      noteRegistry ? c.readContract({ address: noteRegistry, abi: VIEWS, functionName: "isVerified", args: [account] }) : Promise.resolve(false),
       c.readContract({ address: m.assets.deposit!.address as Address, abi: VIEWS, functionName: "balanceOf", args: [account] }),
       m.assets.note ? c.readContract({ address: m.assets.note.address as Address, abi: VIEWS, functionName: "balanceOf", args: [account] }) : Promise.resolve(0n),
     ]);
     const site = known.get(account.toLowerCase()) ?? null;
-    const live = Number(flags) !== 0;
+    const registered = !/^0x0{40}$/i.test(identity);
     const label = book.get(account.toLowerCase())?.label ?? null;
-    const note = !site && live ? (label ? "Granted by the deployment itself" : "Granted on-chain, not through this site") : null;
+    const note = !site && registered ? (label ? "Onboarded by the deployment itself" : "Registered on-chain, not through this site") : null;
     const finding =
       !site ? null
-      : site.status === "admitted" && !pool && site.revokedAtBank ? "Its credential was revoked at the bank and its pool grant voided on-chain; the site still records it admitted. Offboard it to close the record."
-      : site.status === "admitted" && (!pool || !live) ? `The site records it admitted, but on-chain ${!pool ? "the pool does not admit it" : "the registry holds no live grant"}`
-      : site.status === "offboarded" && (pool || live) ? `The site records it offboarded, but on-chain ${pool ? "the pool still admits it" : "the registry still grants it"}`
+      : site.status === "onboarded" && !registered ? "The site records it onboarded, but the identity storage holds no identity for it"
+      : site.status === "onboarded" && !depositEligible ? "The site records it onboarded, but the deposit does not accept it: the bank's claim was revoked or has lapsed. Renew or offboard it."
+      : site.status === "offboarded" && registered ? "The site records it offboarded, but the identity storage still holds its identity"
       : null;
-    rows.push({ account, label, note, onChain: { pool, registryFlags: Number(flags), deposit, note: noteBalance }, site, finding });
+    rows.push({ account, label, note, onChain: { identity: registered ? identity : null, depositEligible, noteEligible, deposit, note: noteBalance }, site, finding });
   }
-  // Disagreements first, then the site's own accounts, then what the deployment granted itself.
+  // Disagreements first, then the site's own accounts, then what the deployment onboarded itself.
   const rank = (r: RegisterRow) => (r.finding ? 0 : r.site ? 1 : 2);
   return rows.sort((x, y) => rank(x) - rank(y) || x.account.localeCompare(y.account));
 }

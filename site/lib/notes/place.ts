@@ -3,15 +3,16 @@ import { createPublicClient, decodeEventLog, defineChain, encodeFunctionData, ht
 import { loadManifest } from "../chain/manifest.ts";
 import { signers } from "../chain/signer.ts";
 import { getStore, type Admission, type DemoNote, type Registrant } from "../store.ts";
-import { isOperator } from "../operators.ts";
+import { hasRole } from "../operators.ts";
+import { custodianOf, walletOf } from "../identity/onboarding.ts";
+import { custodian } from "../identity/custody.ts";
 import { until } from "../chain/until.ts";
 
 /**
  * Selling restrictions, placement, transfers and buy-backs (ADRs 0075, 0081; S-08 to S-14).
  *
- * - **Approval for the note.** Staff confirm a client may take the note under Regulation S, and the
- *   Access Issuer rewrites the account's registry grant with the Reg S flag, keeping its expiry,
- *   credential reference and commitment.
+ * - **Eligibility for the note** is the onboarding agent's claim on the client's identity (ADR 0089),
+ *   which the note's identity registry verifies; the site asks the note, never decides itself.
  * - **Offers.** Every movement of units settles through the note's locked settlement contract: an
  *   offer locks its proposer's side (units frozen in the seller's own wallet, or the price held by
  *   the contract), and its acceptance moves both legs in one transaction, or neither.
@@ -23,24 +24,19 @@ import { until } from "../chain/until.ts";
  *   own wallet acts in MetaMask. When the bank arranges a trade between two client wallets, the
  *   seller's wallet proposes, and the arrangement waits for it.
  * - **The note's answer first.** Before anything is sent the site asks the note whether its leg
- *   could move, so a counterparty the gate would refuse (no Reg S flag, a revoked grant) is refused
- *   with its reason.
+ *   could move, so a counterparty the note would refuse (no note claim, a revoked or lapsed one, a
+ *   frozen wallet) is refused with its reason.
  *
  * The chain is the record of offers: the settlement contract's events and state. The site keeps
  * only which account is whose, and arrangements still awaiting a wallet.
  */
 
-const REGISTRY = parseAbi([
-  "function grant(address account, uint32 flags, uint16 jurisdiction, uint40 expiresAt, bytes32 credentialRef, bytes32 commitment)",
-  "function grantOf(address account) view returns ((uint32 flags, uint16 jurisdiction, uint16 registrar, uint40 grantedAt, uint40 expiresAt))",
-  "function credentialRefOf(address) view returns (bytes32)",
-  "function commitmentOf(address) view returns (bytes32)",
-  "function REG_S() view returns (uint32)",
-]);
+const REGISTRY = parseAbi(["function isVerified(address account) view returns (bool)"]);
 const NOTE = parseAbi([
   "function approve(address spender, uint256 value) returns (bool)",
-  "function canTransfer(address from, address to, uint256 value) view returns (bool)",
   "function balanceOf(address) view returns (uint256)",
+  "function isFrozen(address) view returns (bool)",
+  "function identityRegistry() view returns (address)",
   "function getFrozenTokens(address) view returns (uint256)",
   "function totalSupply() view returns (uint256)",
   "function burn(address account, uint256 value)",
@@ -51,6 +47,7 @@ const SETTLEMENT = parseAbi([
   "function accept(uint256 id)",
   "function cancel(uint256 id)",
   "function release(uint256 id)",
+  "function noteAccepts(address from, address to, uint256 units) view returns (bool)",
   "function offers(uint256) view returns (address proposer, address counterparty, uint8 side, uint64 units, uint48 deadline, uint8 state, uint256 price)",
   "error InvalidOffer()",
   "error NotOpen(uint256 id)",
@@ -88,45 +85,15 @@ function context() {
 }
 type Signers = ReturnType<typeof signers>;
 
-const walletOf = (a: Admission) => ((a.data as Record<string, any>).assessment?.summary?.wallet ?? "") as Address;
+
 const same = (a?: string | null, b?: string | null) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
 const euros = (cents: bigint) => `€${(Number(cents) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
 
-/** Whether the account's live registry grant carries the Reg S flag. */
-export async function hasRegS(account: Address): Promise<boolean> {
-  const { m, s } = context();
-  const r = m.instruments!.registry;
-  const [g, flag] = await Promise.all([
-    s.publicClient.readContract({ address: r, abi: REGISTRY, functionName: "grantOf", args: [account] }),
-    s.publicClient.readContract({ address: r, abi: REGISTRY, functionName: "REG_S" }),
-  ]);
-  return Number(g.expiresAt) > Date.now() / 1000 && (g.flags & flag) === flag;
-}
-
-/** Staff approve an onboarded account for the note under Regulation S (ADR 0075). */
-export async function approveForNote(staff: Registrant, admissionId: string): Promise<Hex> {
-  if (!isOperator(staff.email)) throw new Error("Not permitted.");
-  const store = getStore();
-  const a = await store.admissionById(admissionId);
-  if (!a || a.status !== "admitted") throw new Error("Only an admitted account can be approved for the note.");
-  const { m, s } = context();
-  const r = m.instruments!.registry;
-  const account = walletOf(a);
-  const [g, flag, ref, commitment] = await Promise.all([
-    s.publicClient.readContract({ address: r, abi: REGISTRY, functionName: "grantOf", args: [account] }),
-    s.publicClient.readContract({ address: r, abi: REGISTRY, functionName: "REG_S" }),
-    s.publicClient.readContract({ address: r, abi: REGISTRY, functionName: "credentialRefOf", args: [account] }),
-    s.publicClient.readContract({ address: r, abi: REGISTRY, functionName: "commitmentOf", args: [account] }),
-  ]);
-  if (Number(g.expiresAt) <= Date.now() / 1000) throw new Error("The account has no live registry grant to add the flag to.");
-  if ((g.flags & flag) === flag) throw new Error("The account is already approved for the note.");
-  const tx = await s.send("accessIssuer", { address: r, abi: REGISTRY, functionName: "grant", args: [account, g.flags | flag, g.jurisdiction, g.expiresAt, ref, commitment] });
-  await until(() => hasRegS(account), Boolean); // so what follows sees the approval
-  const latest = (await store.admissionById(a.id))!;
-  const d = latest.data as Record<string, any>;
-  await store.updateAdmission({ ...latest, data: { ...d, regS: { by: staff.email, at: now(), tx } } }, latest.status);
-  await store.audit({ at: now(), actor: staff.email, action: `approved ${account} for the note under Regulation S`, subject: a.id });
-  return tx;
+/** Whether the note's identity registry verifies the account: whether the note accepts it now. */
+export async function eligibleFor(n: DemoNote, account: Address): Promise<boolean> {
+  const { s } = context();
+  const registry = (n.addresses.identityRegistry as Address | undefined) ?? (await s.publicClient.readContract({ address: n.addresses.note as Address, abi: NOTE, functionName: "identityRegistry" }));
+  return s.publicClient.readContract({ address: registry, abi: REGISTRY, functionName: "isVerified", args: [account] });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -252,7 +219,7 @@ async function noteFor(noteId: string): Promise<DemoNote> {
 
 async function admitted(id: string): Promise<Admission> {
   const a = await getStore().admissionById(id);
-  if (!a || a.status !== "admitted") throw new Error("Choose an admitted account.");
+  if (!a || a.status !== "onboarded") throw new Error("Choose an onboarded account.");
   return a;
 }
 
@@ -265,19 +232,20 @@ async function noteWouldMove(s: Signers, n: DemoNote, seller: Address, buyer: Ad
   const value = lockedByTheOffer ? 0n : BigInt(units);
   const [open, could] = await Promise.all([
     s.publicClient.readContract({ address: n.addresses.determinations as Address, abi: DETERMINATIONS, functionName: "transfersOpen" }),
-    until(() => s.publicClient.readContract({ address: n.addresses.note as Address, abi: NOTE, functionName: "canTransfer", args: [seller, buyer, value] }), Boolean),
+    until(() => s.publicClient.readContract({ address: n.addresses.settlement as Address, abi: SETTLEMENT, functionName: "noteAccepts", args: [seller, buyer, value] }), Boolean),
   ]);
   if (!open) throw new Error("Transfers are stopped from a record time until its determination (ADR 0010); trade once it is determined.");
   if (!could) {
-    const { m } = context();
-    const live = async (x: Address) => Number((await s.publicClient.readContract({ address: m.instruments!.registry, abi: REGISTRY, functionName: "grantOf", args: [x] })).expiresAt) > Date.now() / 1000;
-    if (!(await live(buyer))) throw new Error("The buyer's registry grant is revoked or has lapsed: the note refuses to move units to it (S-12).");
-    if (!(await live(seller))) throw new Error("The seller's registry grant is revoked or has lapsed: the note refuses to move its units (S-12).");
-    throw new Error(
-      (await hasRegS(buyer))
-        ? "The note refuses this transfer: the units may be locked in another offer."
-        : "The account is not approved for the note: its registry grant lacks the Reg S flag (S-09). Approve it first, under Admissions.",
-    );
+    const note = n.addresses.note as Address;
+    if (!(await eligibleFor(n, buyer))) {
+      throw new Error("The buyer is not eligible for the note: its identity carries no valid claim from the onboarding agent, or it was revoked or has lapsed (S-09, S-12). The client asks for access to the note, and the onboarding agent approves it.");
+    }
+    const [sellerFrozen, buyerFrozen] = await Promise.all([
+      s.publicClient.readContract({ address: note, abi: NOTE, functionName: "isFrozen", args: [seller] }),
+      s.publicClient.readContract({ address: note, abi: NOTE, functionName: "isFrozen", args: [buyer] }),
+    ]);
+    if (sellerFrozen || buyerFrozen) throw new Error(`The note refuses this transfer: the ${sellerFrozen ? "seller's" : "buyer's"} wallet is frozen.`);
+    throw new Error("The note refuses this transfer: the note may be paused, or the units locked in another offer.");
   }
 }
 
@@ -298,10 +266,13 @@ async function deadlineOf(s: Signers): Promise<number> {
 }
 
 type Call = { target: Address; data: Hex };
-/** Calls a custody account makes through the custodian, in one transaction. */
-function asCustody(s: Signers, account: Address, calls: Call[]): Promise<Hex> {
-  return s.send("custodian", { address: account, abi: ACCOUNT, functionName: "execute", args: [calls.map((c) => ({ target: c.target, value: 0n, data: c.data }))] });
+/** Calls a custody account makes through its custodian, in one transaction. */
+function asCustody(s: Signers, a: Admission, calls: Call[]): Promise<Hex> {
+  const which = custodianOf(a);
+  if (!which) throw new Error("That account is not held by a custodian.");
+  return s.send(custodian(which).capacity, { address: walletOf(a), abi: ACCOUNT, functionName: "execute", args: [calls.map((c) => ({ target: c.target, value: 0n, data: c.data }))] });
 }
+const isCustody = (a: Admission | null | undefined) => Boolean(a && custodianOf(a));
 const approveUnits = (n: DemoNote, units: number): Call => ({ target: n.addresses.note as Address, data: encodeFunctionData({ abi: NOTE, functionName: "approve", args: [n.addresses.settlement as Address, BigInt(units)] }) });
 const approveCash = (deposit: Address, n: DemoNote, cents: bigint): Call => ({ target: deposit, data: encodeFunctionData({ abi: DEPOSIT, functionName: "approve", args: [n.addresses.settlement as Address, cents] }) });
 const offerCall = (n: DemoNote, side: number, counterparty: Address | null, units: number, cents: bigint, until: number): Call => ({
@@ -331,7 +302,7 @@ const audit = (actor: string, n: DemoNote, action: string) => getStore().audit({
  * locked until accepted. A custody account accepts through the custodian in the same action.
  */
 export async function placeUnits(staff: Registrant, noteId: string, admissionId: string, units: number, pricePerUnitCents: bigint): Promise<Offer> {
-  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
   const n = await noteFor(noteId);
   const a = await admitted(admissionId);
   if (!Number.isInteger(units) || units < 1) throw new Error("Place at least one unit.");
@@ -351,9 +322,9 @@ export async function placeUnits(staff: Registrant, noteId: string, admissionId:
   await waitForState(s, n, id, "offered");
   await audit(staff.email, n, `offered ${units} units of ${n.symbol} to ${buyer} for ${euros(price)}, offer ${id}`);
 
-  if (a.route === "custodied") {
+  if (isCustody(a)) {
     // On the client's instruction: the custodian accepts for the account, both calls in one transaction.
-    await asCustody(s, buyer, [approveCash(m.assets.deposit!.address as Address, n, price), acceptCall(n, id)]);
+    await asCustody(s, a, [approveCash(m.assets.deposit!.address as Address, n, price), acceptCall(n, id)]);
     await waitForState(s, n, id, "settled");
     await audit(staff.email, n, `the custodian accepted offer ${id} for ${buyer}: ${units} units of ${n.symbol} against ${euros(price)}`);
   }
@@ -365,7 +336,7 @@ export async function placeUnits(staff: Registrant, noteId: string, admissionId:
  * contract until the holder accepts; the units return to the inventory, pending.
  */
 export async function offerBuyback(staff: Registrant, noteId: string, admissionId: string, units: number, pricePerUnitCents: bigint): Promise<Offer> {
-  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
   const n = await noteFor(noteId);
   const a = await admitted(admissionId);
   if (!Number.isInteger(units) || units < 1) throw new Error("Buy back at least one unit.");
@@ -388,8 +359,8 @@ export async function offerBuyback(staff: Registrant, noteId: string, admissionI
   await waitForState(s, n, id, "offered");
   await audit(staff.email, n, `offered to buy back ${units} units of ${n.symbol} from ${holder} for ${euros(price)}, offer ${id}`);
 
-  if (a.route === "custodied") {
-    await asCustody(s, holder, [approveUnits(n, units), acceptCall(n, id)]);
+  if (isCustody(a)) {
+    await asCustody(s, a, [approveUnits(n, units), acceptCall(n, id)]);
     await waitForState(s, n, id, "settled");
     await audit(staff.email, n, `the custodian accepted buy-back ${id} for ${holder}: ${units} units of ${n.symbol} returned to the inventory`);
   }
@@ -401,7 +372,7 @@ export async function offerBuyback(staff: Registrant, noteId: string, admissionI
  * the inventory and not offered can be cancelled; asking for more is refused with what there is.
  */
 export async function cancelFromInventory(staff: Registrant, noteId: string, units: number): Promise<Hex> {
-  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
   const n = await noteFor(noteId);
   if (!Number.isInteger(units) || units < 1) throw new Error("Cancel at least one unit.");
   const { s } = context();
@@ -437,7 +408,7 @@ export async function arrangeTrade(
   noteId: string,
   input: { seller: string; buyer: string | null; units: number; pricePerUnitCents: bigint },
 ): Promise<{ offer?: Offer; arranged?: Arranged }> {
-  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
   const n = await noteFor(noteId);
   const seller = await admitted(input.seller);
   const buyer = input.buyer ? await admitted(input.buyer) : null;
@@ -453,20 +424,20 @@ export async function arrangeTrade(
   if (available < BigInt(input.units)) throw new Error(`The seller has ${available} units not already offered, not ${input.units}.`);
   if (to) await noteWouldMove(s, n, from, to, input.units);
 
-  if (seller.route === "custodied") {
+  if (isCustody(seller)) {
     // The custodian offers for the seller, its units locked; a custody buyer accepts at once.
-    const id = await offerIdFrom(s, await asCustody(s, from, [approveUnits(n, input.units), offerCall(n, SELL, to, input.units, price, await deadlineOf(s))]));
+    const id = await offerIdFrom(s, await asCustody(s, seller, [approveUnits(n, input.units), offerCall(n, SELL, to, input.units, price, await deadlineOf(s))]));
     await waitForState(s, n, id, "offered");
     await audit(staff.email, n, `arranged a sale of ${input.units} units of ${n.symbol} from ${from} ${to ? `to ${to}` : "as an open offer"} for ${euros(price)}, offer ${id}`);
-    if (buyer?.route === "custodied") {
-      await asCustody(s, to!, [approveCash(deposit, n, price), acceptCall(n, id)]);
+    if (isCustody(buyer)) {
+      await asCustody(s, buyer!, [approveCash(deposit, n, price), acceptCall(n, id)]);
       await waitForState(s, n, id, "settled");
     }
     return { offer: await offerById(n, id) };
   }
-  if (buyer?.route === "custodied") {
+  if (isCustody(buyer)) {
     // The custodian offers to buy for the buyer, its price held; the seller's wallet accepts.
-    const id = await offerIdFrom(s, await asCustody(s, to!, [approveCash(deposit, n, price), offerCall(n, BUY, from, input.units, price, await deadlineOf(s))]));
+    const id = await offerIdFrom(s, await asCustody(s, buyer!, [approveCash(deposit, n, price), offerCall(n, BUY, from, input.units, price, await deadlineOf(s))]));
     await waitForState(s, n, id, "offered");
     await audit(staff.email, n, `arranged a purchase of ${input.units} units of ${n.symbol} by ${to} from ${from} for ${euros(price)}, offer ${id}`);
     return { offer: await offerById(n, id) };
@@ -489,16 +460,16 @@ export async function arrangeTrade(
 
 /** Staff withdraw an arrangement still awaiting the seller's offer. */
 export async function withdrawArranged(staff: Registrant, noteId: string, ref: string): Promise<void> {
-  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
   await recordArranged(noteId, (list) => list.map((x) => (x.ref === ref && x.status === "awaiting-seller" ? { ...x, status: "withdrawn" as const } : x)));
 }
 
 /** Staff take an open offer for a custody account, through the custodian. */
 export async function takeForCustody(staff: Registrant, noteId: string, offerId: string, admissionId: string): Promise<Offer> {
-  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
   const n = await noteFor(noteId);
   const a = await admitted(admissionId);
-  if (a.route !== "custodied") throw new Error("Only a custody account is taken for through the custodian.");
+  if (!isCustody(a)) throw new Error("Only a custody account is taken for through its custodian.");
   const o = await offerById(n, offerId);
   if (o.status !== "offered") throw new Error("That offer is not open.");
   if (o.counterparty && !same(o.counterparty, walletOf(a))) throw new Error("That offer is for another account.");
@@ -506,10 +477,10 @@ export async function takeForCustody(staff: Registrant, noteId: string, offerId:
   const account = walletOf(a);
   if (o.side === "sell") {
     await noteWouldMove(s, n, o.proposer, account, o.units, true);
-    await asCustody(s, account, [approveCash(m.assets.deposit!.address as Address, n, BigInt(o.priceCents)), acceptCall(n, o.id)]);
+    await asCustody(s, a, [approveCash(m.assets.deposit!.address as Address, n, BigInt(o.priceCents)), acceptCall(n, o.id)]);
   } else {
     await noteWouldMove(s, n, account, o.proposer, o.units);
-    await asCustody(s, account, [approveUnits(n, o.units), acceptCall(n, o.id)]);
+    await asCustody(s, a, [approveUnits(n, o.units), acceptCall(n, o.id)]);
   }
   await waitForState(s, n, o.id, "settled");
   await audit(staff.email, n, `the custodian took offer ${o.id} of ${n.symbol} for ${account}`);
@@ -521,7 +492,7 @@ export async function takeForCustody(staff: Registrant, noteId: string, offerId:
  * account's (as proposer, or as the named counterparty declining it). Its lock ends.
  */
 export async function cancelOffer(staff: Registrant, noteId: string, offerId: string): Promise<Hex> {
-  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
   const n = await noteFor(noteId);
   const o = await offerById(n, offerId);
   if (o.status !== "offered") throw new Error("That offer is not open.");
@@ -529,7 +500,7 @@ export async function cancelOffer(staff: Registrant, noteId: string, offerId: st
   const store = getStore();
   const custody = async (admission: string | null) => {
     const a = admission && admission !== "issuer" ? await store.admissionById(admission) : null;
-    return a?.route === "custodied" ? a : null;
+    return isCustody(a) ? a : null;
   };
   let tx: Hex;
   if (o.proposerAdmission === "issuer" || o.counterpartyAdmission === "issuer") {
@@ -537,7 +508,7 @@ export async function cancelOffer(staff: Registrant, noteId: string, offerId: st
   } else {
     const a = (await custody(o.proposerAdmission)) ?? (o.counterparty ? await custody(o.counterpartyAdmission) : null);
     if (!a) throw new Error("Only the client's own wallet can withdraw that offer.");
-    tx = await asCustody(s, walletOf(a), [cancelCall(n, o.id)]);
+    tx = await asCustody(s, a, [cancelCall(n, o.id)]);
   }
   await waitForState(s, n, o.id, "cancelled");
   await audit(staff.email, n, `withdrew offer ${o.id} of ${n.symbol}`);
@@ -570,7 +541,7 @@ export type Tx = { to: Address; data: Hex; label: string };
 
 async function clientWallet(client: Registrant, address: string): Promise<{ admission: Admission; wallet: Address }> {
   const mine = await getStore().admissionsFor(client.id);
-  const own = mine.filter((x) => x.status === "admitted" && x.route !== "custodied");
+  const own = mine.filter((x) => x.status === "onboarded" && !custodianOf(x));
   const a = own.find((x) => same(walletOf(x), address));
   if (!a) throw new Error(own[0] ? `The wallet connected is ${address}; switch MetaMask to your onboarded wallet, ${walletOf(own[0])}.` : "Only an onboarded wallet can trade.");
   return { admission: a, wallet: walletOf(a) };
@@ -695,7 +666,7 @@ export async function offersFor(client: Registrant): Promise<{
   done: OnNote<{ offer: Offer }>;
 }> {
   const store = getStore();
-  const own = (await store.admissionsFor(client.id)).filter((x) => x.status === "admitted" || x.status === "offboarded");
+  const own = (await store.admissionsFor(client.id)).filter((x) => x.status === "onboarded" || x.status === "offboarded");
   const ids = new Set(own.map((x) => x.id));
   const wallets = own.map(walletOf).filter(Boolean);
   const isMine = (a: string | null) => wallets.some((w) => same(w, a));
@@ -761,10 +732,10 @@ export async function totalOf(n: DemoNote): Promise<number> {
   return Number(await s.publicClient.readContract({ address: n.addresses.note as Address, abi: NOTE, functionName: "totalSupply" }));
 }
 
-/** Units of the note each admitted account holds, for the note page's choices. */
+/** Units of the note each onboarded account holds, for the note page's choices. */
 export async function holdersOf(n: DemoNote): Promise<Map<string, bigint>> {
   const { s } = context();
-  const all = (await getStore().listAdmissions(500)).filter((a) => a.status === "admitted" && walletOf(a));
+  const all = (await getStore().listAdmissions(500)).filter((a) => a.status === "onboarded" && walletOf(a));
   const units = await Promise.all(all.map((a) => s.publicClient.readContract({ address: n.addresses.note as Address, abi: NOTE, functionName: "balanceOf", args: [walletOf(a)] }).catch(() => 0n)));
   return new Map(all.map((a, i) => [a.id, units[i]]));
 }

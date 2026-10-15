@@ -9,19 +9,6 @@
     "decimals": 6,
     "balanceSlot": 9
   },
-  "credentialProtocol": {
-    "issuers": "<the protocol's issuer registry proxy>",
-    "revocations": "<the protocol's revocation registry proxy>",
-    "issuerDid": "<the configured issuer's DID>",
-    "registrar": "<an account holding the protocol registrar role, for the fork tests only>"
-  },
-  "schemas": {
-    "corporateIdentity": "<corporate identity schema URI>",
-    "passport": "<passport schema URI>",
-    "screening": "<screening schema URI>",
-    "officer": "<officer-role schema URI>",
-    "walletControl": "<wallet-control schema URI>"
-  },
   "names": {
     "NOTE_NAME": "<from naming sign-off>",
     "NOTE_SYMBOL": "<from naming sign-off>",
@@ -29,14 +16,5 @@
     "DEPOSIT_SYMBOL": "<from naming sign-off>",
     "TERM_SHEET_URI": "<the term sheet's URI>",
     "TERM_SHEET_HASH": "<the term sheet's keccak256>"
-  },
-  "admission": {
-    "credentialVerifierUrl": "<the hosted verifier for the holder-wallet route>",
-    "corporateIssuers": {
-      "<corporation DID>": "<its issuer backend>"
-    },
-    "verifierDid": "did:web:structurednote-project.ethereumtesting.com",
-    "verifierName": "Access Issuer",
-    "bankIssuerKeyFile": "<file holding the issuer's ML-DSA-65 public key>"
   }
 }

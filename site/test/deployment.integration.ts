@@ -17,17 +17,17 @@ const { getStore, currentDeployment } = await import("../lib/store.ts");
 const LOCAL = JSON.parse(readFileSync(join(REPO, "ops", "addresses.json"), "utf8"));
 
 const admission = (id: string, data: Record<string, unknown> = {}) => ({
-  id, registrantId: "reg_x", route: "self-custody" as const, status: "admitted" as const, createdAt: new Date().toISOString(),
+  id, registrantId: "reg_x", route: "self-custody" as const, status: "onboarded" as const, createdAt: new Date().toISOString(),
   officerRequestId: null, walletRequestId: null, data,
 });
 
 test("an earlier deployment's admissions and notes are kept but not read; the current one's are stamped and read; clients carry over", async () => {
   const here = currentDeployment();
-  assert.equal(here, `${LOCAL.chainId}:${LOCAL.instruments.registry.toLowerCase()}`);
+  assert.equal(here, `${LOCAL.chainId}:${LOCAL.identity.identityStorage.toLowerCase()}`);
   const store = getStore();
 
   // Rows written before deployments were recorded, or by another deployment.
-  await store.putClient({ id: "cli_1", kycReference: "CLI-1", subjectDid: "did:x", claims: {}, credentialId: "c", issuanceId: "i", pickupUrl: "", issuedAt: new Date().toISOString(), issuedBy: "op", createdAt: new Date().toISOString(), previous: [] });
+  await store.putClient({ id: "cli_1", kycReference: "CLI-1", claims: {}, salt: `0x${"11".repeat(32)}`, recordHash: `0x${"22".repeat(32)}`, issuedAt: new Date().toISOString(), issuedBy: "op", createdAt: new Date().toISOString(), previous: [] });
   const file = join(dir, "store.json");
   const raw = JSON.parse(readFileSync(file, "utf8"));
   raw.admissions = [admission("adm_old"), admission("adm_other", { deployment: "84532:0xold" })];
@@ -48,7 +48,7 @@ test("an earlier deployment's admissions and notes are kept but not read; the cu
   assert.equal(a.data.deployment, here);
   assert.equal((await store.latestAdmissionFor("reg_x"))?.id, "adm_new");
   assert.deepEqual((await store.listAdmissions(10)).map((x) => x.id), ["adm_new"]);
-  assert.equal(await store.updateAdmission({ ...a, status: "offboarded", data: {} }, "admitted"), true);
+  assert.equal(await store.updateAdmission({ ...a, status: "offboarded", data: {} }, "onboarded"), true);
   assert.equal((await store.admissionById("adm_new"))?.data.deployment, here, "kept when the data is replaced");
 
   // The old rows are still there, as history.

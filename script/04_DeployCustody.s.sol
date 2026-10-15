@@ -4,23 +4,29 @@ pragma solidity 0.8.26;
 import {Script, console2} from "forge-std/Script.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-
 import {CustodyAccount} from "../contracts/CustodyAccount.sol";
 import {CustodyAccountFactory} from "../contracts/CustodyAccountFactory.sol";
-import {PoolCredentialRegistry} from "../contracts/PoolCredentialRegistry.sol";
 import {EuroPaymentToken} from "../test/fixtures/EuroPaymentToken.sol";
 import {Manifest} from "./Manifest.sol";
-import {Admission} from "./Admission.sol";
+import {PoolAccess} from "./PoolAccess.sol";
 
-interface IIdentityRegistryWriter {
-    function HOLD() external view returns (uint32);
-    function RECEIVE() external view returns (uint32);
-    function TRANSFER() external view returns (uint32);
-    function SANCTIONS_CLEAR() external view returns (uint32);
-    function CONTRACT_ACCOUNT() external view returns (uint32);
-    function REG_S() external view returns (uint32);
-    function grant(address account, uint32 flags, uint16 jurisdiction, uint40 expiresAt, bytes32 ref, bytes32 commitment)
-        external;
+/// ONCHAINID and ERC-3643, as far as onboarding a custody account needs them. The instruments
+/// are in the other compilation unit; this script reaches them over ABI.
+interface IIdFactory {
+    function createIdentityWithManagementKeys(address wallet, string memory salt, bytes32[] memory managementKeys)
+        external
+        returns (address);
+}
+
+interface IIdentity {
+    function addKey(bytes32 key, uint256 purpose, uint256 keyType) external returns (bool);
+    function addClaim(uint256 topic, uint256 scheme, address issuer, bytes memory signature, bytes memory data, string memory uri)
+        external
+        returns (bytes32);
+}
+
+interface IIdentityRegistry {
+    function registerIdentity(address wallet, address identity, uint16 country) external;
 }
 
 interface IDepositGateway {
@@ -28,82 +34,147 @@ interface IDepositGateway {
 }
 
 /**
- * Stands up the Custodian and its segregated client accounts, then onboards them. That ordering
- * is the real one: the Custodian opens the account, then the Access Issuer accepts it.
+ * Stands up two custodians and their segregated client accounts, then onboards the accounts by
+ * role (ADR 0089). That ordering is the real one: the custodian opens the account, then the
+ * institutions vouch for it.
  *
- * - SEG-0001 and SEG-0002: onboarded to the instruments and admitted to the pool, on the
- *   Custodian's entity credential and each account's own contract signature (ADR 0036).
- * - SEG-0003: onboarded to the deposit, not admitted to the pool: the pool's own perimeter.
+ * - **The bank's custody platform** (the Custodian's key) opens SEG-0001 to SEG-0004.
+ * - **A third-party custodian** opens TPC-0001.
+ *
+ * For each account, the bank creates its identity, managed by the account's custodian, since key
+ * custody follows custody. The custodian records the client's consent to the bank and the
+ * onboarding agent as claim keys. The bank then vouches for the deposit, and the onboarding agent
+ * for the note:
+ * - SEG-0001, SEG-0002 and TPC-0001: onboarded for the deposit and the note;
+ * - SEG-0003: the deposit only;
  * - SEG-0004: opened and funded with the payment token, onboarded nowhere: the control case.
  *
- * On the local node the Issuer mints the payment token stand-in to every account. Elsewhere the
- * accounts are funded before this script runs.
+ * Where the conversion pool is deployed (ADR 0090), the bank admits SEG-0001 and SEG-0002 to it, and each of the bank's accounts sets its trading approvals.
  */
 contract DeployCustody is Script {
-    uint40 constant GRANT_VALIDITY = 180 days;
+    uint256 constant CLAIM = 3;
+    uint256 constant ECDSA = 1;
+    uint48 constant CLAIM_VALIDITY = 180 days;
+    uint16 constant COUNTRY = 276;
+
+    struct Keys {
+        uint256 bankCustody;
+        uint256 thirdParty;
+        uint256 bank;
+        uint256 onboarding;
+    }
 
     function run() external {
-        uint256 custodianPk = vm.envUint("CUSTODIAN_PK");
-        address custodian = vm.addr(custodianPk);
+        Keys memory k = Keys(
+            vm.envUint("CUSTODIAN_PK"),
+            vm.envUint("THIRD_PARTY_CUSTODIAN_PK"),
+            vm.envUint("DEPOSIT_AGENT_PK"),
+            vm.envUint("ACCESS_ISSUER_PK")
+        );
         string memory j = Manifest.read();
 
-        string[4] memory refs = ["SEG-0001", "SEG-0002", "SEG-0003", "SEG-0004"];
+        string[4] memory segRefs = ["SEG-0001", "SEG-0002", "SEG-0003", "SEG-0004"];
+        (CustodyAccountFactory bankFactory, address[] memory seg) = _open(k.bankCustody, segRefs);
+        string[] memory tpc = new string[](1);
+        tpc[0] = "TPC-0001";
+        (CustodyAccountFactory thirdFactory, address[] memory third) = _openList(k.thirdParty, tpc);
+
+        _onboard(j, k, k.bankCustody, seg[0], true);
+        _onboard(j, k, k.bankCustody, seg[1], true);
+        _onboard(j, k, k.bankCustody, seg[2], false);
+        _onboard(j, k, k.thirdParty, third[0], true);
+
+        _fund(j, seg, third[0]);
+        if (vm.keyExistsJson(j, ".venue.permit2")) {
+            vm.startBroadcast(k.bank);
+            PoolAccess.admit(j, k.bank, seg[0]);
+            PoolAccess.admit(j, k.bank, seg[1]);
+            vm.stopBroadcast();
+            _approve(j, k.bankCustody, seg);
+        }
+
+        _record(vm.addr(k.bankCustody), address(bankFactory), segRefs, seg, vm.addr(k.thirdParty), address(thirdFactory), third[0]);
+    }
+
+    function _open(uint256 custodianPk, string[4] memory refs) internal returns (CustodyAccountFactory f, address[] memory accts) {
+        string[] memory list = new string[](refs.length);
+        for (uint256 i = 0; i < refs.length; ++i) list[i] = refs[i];
+        return _openList(custodianPk, list);
+    }
+
+    function _openList(uint256 custodianPk, string[] memory refs)
+        internal
+        returns (CustodyAccountFactory f, address[] memory accts)
+    {
+        vm.startBroadcast(custodianPk);
+        f = new CustodyAccountFactory(vm.addr(custodianPk));
+        accts = new address[](refs.length);
+        for (uint256 i = 0; i < refs.length; ++i) accts[i] = f.createAccount(refs[i]);
+        vm.stopBroadcast();
+    }
+
+    /// The bank creates the account's identity, managed by its custodian, and registers it; the
+    /// custodian consents for its client; the institutions vouch.
+    function _onboard(string memory j, Keys memory k, uint256 custodianPk, address account, bool forNote) internal {
+        address bank = vm.addr(k.bank);
+        address onboarding = vm.addr(k.onboarding);
+        bytes32[] memory managers = new bytes32[](1);
+        managers[0] = keccak256(abi.encode(vm.addr(custodianPk)));
+
+        vm.startBroadcast(k.bank);
+        IIdentity id = IIdentity(
+            IIdFactory(vm.parseJsonAddress(j, ".identity.idFactory")).createIdentityWithManagementKeys(
+                account, vm.toString(account), managers
+            )
+        );
+        IIdentityRegistry(vm.parseJsonAddress(j, ".identity.depositRegistry")).registerIdentity(account, address(id), COUNTRY);
+        vm.stopBroadcast();
 
         vm.startBroadcast(custodianPk);
-        CustodyAccountFactory factory = new CustodyAccountFactory(custodian);
-        address[] memory accts = new address[](refs.length);
-        for (uint256 i = 0; i < refs.length; ++i) {
-            accts[i] = factory.createAccount(refs[i]);
+        id.addKey(keccak256(abi.encode(bank)), CLAIM, ECDSA);
+        if (forNote) id.addKey(keccak256(abi.encode(onboarding)), CLAIM, ECDSA);
+        vm.stopBroadcast();
+
+        _vouch(k.bank, id, vm.parseJsonAddress(j, ".identity.bankIssuer"), vm.parseJsonUint(j, ".identity.depositEligibleTopic"), account);
+        if (forNote) {
+            _vouch(k.onboarding, id, vm.parseJsonAddress(j, ".identity.onboardingIssuer"), vm.parseJsonUint(j, ".identity.noteEligibleTopic"), account);
         }
-        vm.stopBroadcast();
-        console2.log("custodian      :", custodian);
-        console2.log("custody factory:", address(factory));
-
-        _onboard(j, accts);
-        _fund(j, accts);
-        _approve(j, custodianPk, accts);
-        _record(custodian, address(factory), refs, accts);
     }
 
-    function _onboard(string memory j, address[] memory accts) internal {
-        IIdentityRegistryWriter r = IIdentityRegistryWriter(vm.parseJsonAddress(j, ".instruments.registry"));
-        PoolCredentialRegistry gate = PoolCredentialRegistry(vm.parseJsonAddress(j, ".venue.credentialGate"));
-        bytes32 entity = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.corporateIdentitySchema")));
-
-        vm.startBroadcast(vm.envUint("ACCESS_ISSUER_PK"));
-        uint32 holder = r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT();
-        uint40 until = uint40(block.timestamp) + GRANT_VALIDITY;
-        // SEG-0001 and SEG-0002 are onboarded and admitted from one presentation each (ADR 0044).
-        PoolCredentialRegistry.Attestation memory a1 = Admission.entity(accts[0], entity, "DE", 2, "CRD-0011");
-        PoolCredentialRegistry.Attestation memory a2 = Admission.entity(accts[1], entity, "DE", 2, "CRD-0012");
-        r.grant(accts[0], holder | r.REG_S(), 276, until, a1.primaryCredential, a1.evidence);
-        r.grant(accts[1], holder | r.REG_S(), 276, until, a2.primaryCredential, a2.evidence);
-        r.grant(accts[2], holder, 276, until, "ONB-0013", bytes32(0));
-        gate.grant(a1);
-        gate.grant(a2);
+    /// The institution signs its claim over the identity, the topic and the data, and adds it.
+    function _vouch(uint256 pk, IIdentity id, address issuer, uint256 topic, address account) internal {
+        bytes memory data = abi.encode(
+            uint48(block.timestamp), uint48(block.timestamp) + CLAIM_VALIDITY, keccak256(abi.encode(account, topic, "verified record"))
+        );
+        bytes32 hash = keccak256(abi.encode(address(id), topic, data));
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(pk, keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash)));
+        vm.startBroadcast(pk);
+        id.addClaim(topic, 1, issuer, abi.encodePacked(r, s, v), data, "");
         vm.stopBroadcast();
     }
 
-    function _fund(string memory j, address[] memory accts) internal {
+    function _fund(string memory j, address[] memory seg, address third) internal {
         IDepositGateway gateway = IDepositGateway(vm.parseJsonAddress(j, ".instruments.gateway"));
         vm.startBroadcast(vm.envUint("DEPOSIT_AGENT_PK"));
-        gateway.credit(accts[0], 500_000_00, "CUS-0001");
-        gateway.credit(accts[1], 500_000_00, "CUS-0002");
-        gateway.credit(accts[2], 500_000_00, "CUS-0003");
+        gateway.credit(seg[0], 500_000_00, "CUS-0001");
+        gateway.credit(seg[1], 500_000_00, "CUS-0002");
+        gateway.credit(seg[2], 500_000_00, "CUS-0003");
+        gateway.credit(third, 500_000_00, "CUS-0011");
         vm.stopBroadcast();
 
         if (!Manifest.isLocal()) return;
         EuroPaymentToken token = EuroPaymentToken(vm.parseJsonAddress(j, ".assets.paymentToken.address"));
         vm.startBroadcast(vm.envUint("ISSUER_PK"));
-        for (uint256 i = 0; i < accts.length; ++i) {
-            token.mint(accts[i], 500_000e6);
+        for (uint256 i = 0; i < seg.length; ++i) {
+            token.mint(seg[i], 500_000e6);
         }
         vm.stopBroadcast();
     }
 
-    /// The Custodian sets each account's approvals, batched as one action per client. The
-    /// account onboarded nowhere cannot approve a spender on the deposit, so it approves the
-    /// payment token only.
+    /// With the pool deployed, the bank's custody platform sets each account's approvals, batched
+    /// as one action per client. The account onboarded nowhere cannot approve a spender on the
+    /// deposit, so it approves the payment token only.
     function _approve(string memory j, uint256 custodianPk, address[] memory accts) internal {
         address deposit = vm.parseJsonAddress(j, ".assets.deposit.address");
         address payment = vm.parseJsonAddress(j, ".assets.paymentToken.address");
@@ -134,7 +205,15 @@ contract DeployCustody is Script {
         );
     }
 
-    function _record(address custodian, address factory, string[4] memory refs, address[] memory accts) internal {
+    function _record(
+        address custodian,
+        address factory,
+        string[4] memory refs,
+        address[] memory accts,
+        address thirdParty,
+        address thirdFactory,
+        address thirdAccount
+    ) internal {
         string memory a = "accounts";
         for (uint256 i = 0; i < accts.length - 1; ++i) {
             console2.log(refs[i], accts[i]);
@@ -142,9 +221,16 @@ contract DeployCustody is Script {
         }
         string memory accounts = vm.serializeAddress(a, refs[accts.length - 1], accts[accts.length - 1]);
 
+        string memory t = "thirdParty";
+        vm.serializeAddress(t, "custodian", thirdParty);
+        vm.serializeAddress(t, "factory", thirdFactory);
+        string memory third = vm.serializeAddress(t, "TPC-0001", thirdAccount);
+        console2.log("TPC-0001", thirdAccount);
+
         string memory obj = "custody";
         vm.serializeAddress(obj, "custodian", custodian);
         vm.serializeAddress(obj, "factory", factory);
+        vm.serializeString(obj, "thirdParty", third);
         string memory out = vm.serializeString(obj, "accounts", accounts);
         vm.writeJson(out, Manifest.path(), ".custody");
     }

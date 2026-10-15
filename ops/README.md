@@ -23,11 +23,11 @@ two disagree, the script is right and this table is to be corrected.
 
 | Step | Script | Why it comes here |
 |---|---|---|
-| Permit2, wallets, credential protocol | `setup-permit2.sh`, `setup-multisig.sh`, `setup-credential-protocol.sh` | The router and position manager take Permit2 as a constructor argument; the ceremony creates wallets from the canonical factory; the protocol's registries embed their own addresses (ADR 0040) |
-| Base | `script/00_DeployBase.s.sol` | The payment token and the protocol's registries, which everything else refers to. Starts the manifest |
+| Permit2, wallets | `setup-permit2.sh`, `setup-multisig.sh` | The router and position manager take Permit2 as a constructor argument; the ceremony creates wallets from the canonical factory |
+| Base | `script/00_DeployBase.s.sol` | The parties and the payment token, which everything else refers to. Starts the manifest |
 | Instruments | `instruments/script/DeployInstruments.s.sol` | The venue wraps the deposit, so the deposit must exist first. Extends the manifest |
-| Venue | `script/01_DeployVenue.s.sol` | Creates the adapter around the deposit and the pool's credential gate; onboards the adapter and Permit2 to the registry |
-| Activation | `script/02_ActivateVenue.s.sol` | Verification needs the adapter to hold a balance. Opens the pool at par, admits the cast, and the Deposit Agent provides liquidity |
+| Venue | `script/01_DeployVenue.s.sol` | Creates the adapter around the deposit and the pool's gate on the pool's identity registry; the bank allowlists the adapter and Permit2 on the deposit. Deployed by default; `POOL=0` leaves the pool out (ADR 0090) |
+| Activation | `script/02_ActivateVenue.s.sol` | Verification needs the adapter to hold a balance. Opens the pool at par, the onboarding agent admits the cast by pool-access claim, and the Deposit Agent provides liquidity |
 | Lens | `script/03_DeployLens.s.sol` | Reads pool state; needs the pool manager |
 | Custody | `script/04_DeployCustody.s.sol` | Client accounts approve the router and position manager, and are onboarded and admitted |
 | Issuance | `instruments/script/IssueNote.s.sol` | Fixes illustrative terms, dated from the chain's own clock; attaches the lifecycle; places units by DvP |

@@ -19,8 +19,8 @@ import {Onboarding} from "./Onboarding.sol";
  *
  * Investor C is onboarded for the cash leg only, so it can hold the deposit but not the note.
  * Investor D is never onboarded. The Agent holds the deposit to fund distributions. The bank holds
- * the deposit as the pool's liquidity provider, allowlisted as its own account. Custody accounts
- * are onboarded when they are opened.
+ * the deposit as the pool's liquidity provider, allowlisted as its own account, and has an identity
+ * so that the pool's gate can admit it. Custody accounts are onboarded when they are opened.
  */
 contract DeployInstruments is Script {
     uint48 constant MAX_CLAIM_VALIDITY = 365 days;
@@ -63,6 +63,7 @@ contract DeployInstruments is Script {
         _onboard(d, k, investorB, true);
         _onboard(d, k, investorC, false);
         _onboard(d, k, vm.addr(vm.envUint("AGENT_PK")), false);
+        _onboardBank(d, k);
 
         // Opening balances on the cash leg, each against its own booking.
         vm.startBroadcast(k.bank);
@@ -78,8 +79,9 @@ contract DeployInstruments is Script {
         _record(d, vm.addr(k.onboarding), vm.addr(k.bank));
     }
 
-    /// The bank creates the identity, records the client's consent and vouches for the deposit;
-    /// for the note, the onboarding agent vouches too.
+    /// The bank creates the identity, records the client's consent and vouches for the deposit; for
+    /// the note, the onboarding agent vouches too. The bank admits clients to the pool where the pool
+    /// is deployed (script/02_ActivateVenue.s.sol).
     function _onboard(Scaffolding.Deployed memory d, Keys memory k, address wallet, bool forNote) private {
         address bank = vm.addr(k.bank);
         uint48 until = uint48(block.timestamp) + CLAIM_VALIDITY;
@@ -92,6 +94,17 @@ contract DeployInstruments is Script {
         if (!forNote) return;
         vm.startBroadcast(k.onboarding);
         Onboarding.vouch(d.onboardingIssuer, k.onboarding, id, ClaimTopics.NOTE_ELIGIBLE, until, _recordHash(wallet, "note"));
+        vm.stopBroadcast();
+    }
+
+    /// The bank, as the pool's liquidity provider, has an identity like any participant (ADR 0090),
+    /// managed by its own key, so that it can admit itself to the pool. Its deposit is its own
+    /// account, allowlisted, so it needs no deposit claim.
+    function _onboardBank(Scaffolding.Deployed memory d, Keys memory k) private {
+        address bank = vm.addr(k.bank);
+        vm.startBroadcast(k.bank);
+        IIdentity id = IIdentity(d.idFactory.createIdentity(bank, vm.toString(bank)));
+        d.depositRegistry.registerIdentity(bank, id, Scaffolding.COUNTRY);
         vm.stopBroadcast();
     }
 
@@ -126,6 +139,10 @@ contract DeployInstruments is Script {
         vm.serializeUint(o, "depositEligibleTopic", ClaimTopics.DEPOSIT_ELIGIBLE);
         vm.serializeUint(o, "noteEligibleTopic", ClaimTopics.NOTE_ELIGIBLE);
         vm.serializeUint(o, "termSheetTopic", ClaimTopics.TERM_SHEET);
+        vm.serializeUint(o, "poolAccessTopic", ClaimTopics.POOL_ACCESS);
+        vm.serializeAddress(o, "poolRegistry", address(d.poolRegistry));
+        vm.serializeAddress(o, "poolTopics", address(d.poolTopics));
+        vm.serializeAddress(o, "poolIssuers", address(d.poolIssuers));
         vm.writeJson(vm.serializeAddress(o, "depositIssuers", address(d.depositIssuers)), _manifest(), ".identity");
 
         string memory i = "instruments";

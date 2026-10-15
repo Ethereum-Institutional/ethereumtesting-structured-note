@@ -22,7 +22,7 @@ const what = (o: Offer) => (o.kind === "placement" ? "Placement by the Issuer" :
 export default async function Notes() {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  const { wallet, held } = await accountOf(who);
+  const { wallet, held, noteEligible } = await accountOf(who);
   const account = wallet ?? held;
   const chain = chainParams(loadManifest().chainId);
   const [offers, holdings, payments, notes] = await Promise.all([
@@ -32,7 +32,7 @@ export default async function Notes() {
     getStore().listNotes(),
   ]);
   const tradable = notes.filter((n) => n.status === "issued" && lockedSettlement(n));
-  const approved = Boolean((account?.data as Record<string, any> | undefined)?.regS);
+  const approved = noteEligible;
   const ownWallet = Boolean(wallet);
 
   /** One offer, with what this client does about it. */

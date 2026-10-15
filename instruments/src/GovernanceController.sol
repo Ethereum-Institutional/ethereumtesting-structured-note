@@ -37,10 +37,16 @@ interface IGovernedAdapter {
     function acceptOwnership() external;
 }
 
-interface IGovernedCredentials {
+/// @dev The pool's gate (ADR 0090): supervisory withdrawal over the pool's identity registry,
+///      whose trusted issuers decide who may vouch for pool access.
+interface IGovernedPoolGate {
     function withdraw(address account, string calldata reason) external;
-    function grantRole(bytes32 role, address account) external;
-    function revokeRole(bytes32 role, address account) external;
+    function restore(address account, string calldata reason) external;
+    function registry() external view returns (address);
+}
+
+interface IPoolRegistry {
+    function issuersRegistry() external view returns (address);
 }
 
 /**
@@ -73,9 +79,10 @@ interface IGovernedCredentials {
  * - **Recovery of an institution** (ADR 0019). Replacing an institution's wallet needs every other
  *   institution and the longer `RECOVERY_DELAY`, and the wallet being replaced can cancel it if it
  *   still works.
- * - **The venue** (ADR 0039). The controller owns the venue checker and the deposit's permissions
- *   adapter and administers the pool's credential gate. The servicing wallet switches swapping
- *   off and on; supervisory withdrawal of pool access is Tier 1; every other venue act is Tier 2.
+ * - **The venue** (ADRs 0039, 0090). The controller owns the venue checker, the deposit's
+ *   permissions adapter and the pool's identity registries, and supervises the pool's gate. The
+ *   servicing wallet switches swapping off and on; withdrawing and restoring pool access is
+ *   Tier 1; every other venue act, which issuers may vouch for pool access among them, is Tier 2.
  * - **Nothing is upgradeable.** The note's implementation is fixed by the T-REX implementation
  *   authority, which no one owns after deployment, and no act changes the thresholds or the delays.
  */
@@ -91,7 +98,7 @@ contract GovernanceController {
         SetLiquidityProvider,
         SetVenueWrapper,
         SetVenueHook,
-        SetPoolAttester
+        SetPoolIssuer
     }
 
     struct Proposal {
@@ -105,7 +112,8 @@ contract GovernanceController {
     }
 
     bytes32 private constant PAYER_ROLE = keccak256("PAYER_ROLE");
-    bytes32 private constant ATTESTER_ROLE = keccak256("ATTESTER_ROLE");
+    /// @dev The pool-access claim topic, keccak256("claim.pool-access") (ADR 0090).
+    uint256 private constant POOL_ACCESS = uint256(keccak256("claim.pool-access"));
 
     INote public immutable NOTE;
     /// @notice The deposit, as the venue's checker knows it.
@@ -132,7 +140,7 @@ contract GovernanceController {
     address public agentGovernance;
     /// @notice The Agent's servicing wallet (ADR 0025), replaceable only by Tier 2.
     address public servicingWallet;
-    /// @notice The pool's current credential gate, replaceable only by Tier 2.
+    /// @notice The pool's current gate (ADR 0090), replaceable only by Tier 2.
     address public credentialGate;
 
     uint256 public proposalCount;
@@ -300,8 +308,17 @@ contract GovernanceController {
     function withdrawPoolAccess(address account, string calldata reason) external withReason(reason) {
         _onlyAgentGovernance();
         _venue();
-        IGovernedCredentials(credentialGate).withdraw(account, reason);
+        IGovernedPoolGate(credentialGate).withdraw(account, reason);
         emit Tier1("withdrawPoolAccess", reason);
+    }
+
+    /// @notice Lifts a withdrawal of pool access (Tier 1). The account converts again only while
+    ///         its pool-access claim is still valid.
+    function restorePoolAccess(address account, string calldata reason) external withReason(reason) {
+        _onlyAgentGovernance();
+        _venue();
+        IGovernedPoolGate(credentialGate).restore(account, reason);
+        emit Tier1("restorePoolAccess", reason);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -386,7 +403,7 @@ contract GovernanceController {
         return _propose(Kind.ReplaceInstitution, abi.encode(oldWallet, newWallet), reason);
     }
 
-    /// @notice Points the venue checker at a new credential gate for the deposit.
+    /// @notice Points the venue checker at a new gate for the deposit.
     function proposeSetCredentialGate(address gate, string calldata reason)
         external
         withReason(reason)
@@ -430,15 +447,16 @@ contract GovernanceController {
         return _propose(Kind.SetVenueHook, abi.encode(hook, allowed), reason);
     }
 
-    /// @notice Appoints or removes an attester on the pool's current credential gate.
-    function proposeSetPoolAttester(address attester, bool appointed, string calldata reason)
+    /// @notice Trusts a claim issuer to vouch for pool access, or stops trusting it, on the
+    ///         identity registry of the pool's current gate (ADR 0090).
+    function proposeSetPoolIssuer(address issuer, bool trusted, string calldata reason)
         external
         withReason(reason)
         returns (uint256)
     {
         _venue();
-        if (attester == address(0)) revert InvalidArgument();
-        return _propose(Kind.SetPoolAttester, abi.encode(attester, appointed), reason);
+        if (issuer == address(0)) revert InvalidArgument();
+        return _propose(Kind.SetPoolIssuer, abi.encode(issuer, trusted), reason);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -601,9 +619,16 @@ contract GovernanceController {
             (address hook, bool allowed) = abi.decode(p.args, (address, bool));
             ADAPTER.updateAllowedHook(hook, allowed);
         } else {
-            (address attester, bool appointed) = abi.decode(p.args, (address, bool));
-            if (appointed) IGovernedCredentials(credentialGate).grantRole(ATTESTER_ROLE, attester);
-            else IGovernedCredentials(credentialGate).revokeRole(ATTESTER_ROLE, attester);
+            (address issuer, bool trusted) = abi.decode(p.args, (address, bool));
+            IGovernedIssuers issuers =
+                IGovernedIssuers(IPoolRegistry(IGovernedPoolGate(credentialGate).registry()).issuersRegistry());
+            if (!trusted) {
+                issuers.removeTrustedIssuer(issuer);
+            } else {
+                uint256[] memory topics = new uint256[](1);
+                topics[0] = POOL_ACCESS;
+                issuers.addTrustedIssuer(issuer, topics);
+            }
         }
     }
 

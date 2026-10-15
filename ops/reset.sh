@@ -30,13 +30,11 @@ KEY="$(key)"
 SNAP="$SNAPSHOTS/$KEY"
 
 printf '\n\033[1m── local chain\033[0m\n'
-./ops/anvil.sh
-
-if [ "${FRESH:-0}" != 1 ] && [ -s "$SNAP/state.hex" ] && [ -s "$SNAP/addresses.json" ]; then
-  printf '{"jsonrpc":"2.0","id":1,"method":"anvil_loadState","params":["%s"]}' "$(cat "$SNAP/state.hex")" > "$SNAP/load.json"
-  curl -sf -H 'content-type: application/json' --data @"$SNAP/load.json" "$RPC" | grep -q '"result":true' \
-    || { echo "restoring the snapshot failed; deploying afresh" >&2; rm -rf "$SNAP"; exec env FRESH=1 "$0"; }
-  rm -f "$SNAP/load.json"
+if [ "${FRESH:-0}" != 1 ] && [ -s "$SNAP/state.json" ] && [ -s "$SNAP/addresses.json" ]; then
+  # Loaded as the node starts: a deployment's state is too large for a single JSON-RPC request.
+  ANVIL_LOAD_STATE="$SNAP/state.json" ./ops/anvil.sh
+  [ "$(cast block-number --rpc-url "$RPC" 2>/dev/null || echo 0)" -gt 0 ] \
+    || { echo "restoring the snapshot failed; deploying afresh" >&2; rm -rf "$SNAP"; exec env FRESH=1 "$ROOT/ops/reset.sh"; }
   # The restored chain resumes from the snapshot's clock; bring it up to the present, as a fresh
   # deployment would be, so a time the site takes from the wall clock is not in the chain's future.
   rpc "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"evm_setNextBlockTimestamp\",\"params\":[$(date +%s)]}" >/dev/null
@@ -46,11 +44,13 @@ if [ "${FRESH:-0}" != 1 ] && [ -s "$SNAP/state.hex" ] && [ -s "$SNAP/addresses.j
   exit 0
 fi
 
+./ops/anvil.sh
 ./ops/deploy-stack.sh
 
 # Saved for the next reset; older snapshots are left for other branches, the newest few kept.
 mkdir -p "$SNAP"
-rpc '{"jsonrpc":"2.0","id":1,"method":"anvil_dumpState","params":[]}' | sed -E 's/.*"result":"(0x[0-9a-fA-F]*)".*/\1/' > "$SNAP/state.hex"
+# anvil_dumpState answers gzipped JSON, hex-encoded; the node loads the JSON as it starts.
+rpc '{"jsonrpc":"2.0","id":1,"method":"anvil_dumpState","params":[]}' | sed -E 's/.*"result":"0x([0-9a-fA-F]*)".*/\1/' | xxd -r -p | gunzip > "$SNAP/state.json"
 cp ops/addresses.json "$SNAP/addresses.json"
 ls -1t "$SNAPSHOTS" | tail -n +6 | while read -r old; do rm -rf "${SNAPSHOTS:?}/$old"; done
 

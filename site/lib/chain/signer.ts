@@ -24,9 +24,10 @@ export const LOCAL_CHAIN_ID = 31337;
 export const CAPACITY_LABEL: Record<string, string> = {
   issuer: "Issuer",
   agent: "Agent",
-  accessIssuer: "Access Issuer",
-  custodian: "Custodian",
-  depositAgent: "Deposit Agent",
+  accessIssuer: "Onboarding agent",
+  custodian: "Bank custody platform",
+  thirdPartyCustodian: "Third-party custodian",
+  depositAgent: "The bank (Deposit Agent)",
   calculationAgent: "Calculation Agent",
   servicing1: "Servicing wallet owner 1",
   servicing2: "Servicing wallet owner 2",
@@ -56,7 +57,7 @@ export class InsufficientFees extends Error {
   constructor(capacity: string, address: Address, balance: bigint, needed: bigint) {
     super(
       `The ${CAPACITY_LABEL[capacity] ?? capacity}'s key ${address} holds ${formatEther(balance)} ETH; this transaction needs about ` +
-        `${formatEther(needed)} ETH in fees, with a margin. Top it up under Operator → Keys.`,
+        `${formatEther(needed)} ETH in fees, with a margin. Top it up under Agent → Keys.`,
     );
     this.capacity = capacity;
     this.address = address;
@@ -79,6 +80,7 @@ const LOCAL_KEYS: Record<string, Hex> = {
   accessIssuer: "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a", // account 2
   calculationAgent: "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356", // account 7
   depositAgent: "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6", // account 9
+  thirdPartyCustodian: "0x224b7eb7449992aac96d631d9677f7bf5888245eef6d6eeda31e62d2f29a83e4", // account 22
   // Two of the three owners of the Agent's servicing wallet: mnemonic indices 19 and 20 (Ceremony).
   servicing1: "0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e",
   servicing2: "0xeaa861a9a01391ed3d587d8a5a84ca56ee277629a8b02c22093a419bf240e65d",
@@ -189,6 +191,11 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     return account(capacity).sign({ hash });
   }
 
+  /** Signs a 32-byte digest as an Ethereum signed message, as an ONCHAINID claim is signed (ADR 0088). */
+  async function signMessageHash(capacity: string, hash: Hex): Promise<Hex> {
+    return account(capacity).signMessage({ message: { raw: hash } });
+  }
+
   /** Sends ETH from a capacity, for topping up another key (ADR 0080). */
   async function transfer(capacity: string, to: Address, value: bigint): Promise<Hex> {
     return enqueue(capacity, async () => {
@@ -207,6 +214,7 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     transfer,
     signTypedData,
     signHash,
+    signMessageHash,
     resetNonces,
     address: (capacity: string) => account(capacity).address,
     /** The capacities this deployment holds keys for. */

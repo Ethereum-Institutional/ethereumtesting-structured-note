@@ -31,27 +31,22 @@ export type Registrant = {
 export type AuditEntry = { at: string; actor: string; action: string; subject: string };
 
 /**
- * An admission to the conversion pool (ADRs 0045 to 0048): the officer's presentation, then the
- * wallet-control presentation, then an operator's decision. `data` holds the signed requests, the
- * presentations and verdicts, the corporate identity and the assessment, whole, as evidence.
+ * A participant's onboarding (ADR 0089): its custody route, its wallet and identity, the claims
+ * each institution added, and its request for the note and the decision on it. The table keeps
+ * its earlier name, `admissions`, so placement and the Ledger read it as before.
  */
 export type AdmissionStatus =
-  | "awaiting-bank-review"
-  | "kyb-confirmed"
-  | "awaiting-signature"
-  | "awaiting-officer"
+  | "requested"
   | "awaiting-wallet"
-  | "ready"
-  | "awaiting-anchor"
-  | "refused"
-  | "admitted"
+  | "awaiting-custodian"
+  | "onboarded"
   | "declined"
   | "cancelled"
   | "offboarded"
   | "failed";
 
-/** How the participant came in (ADR 0054). */
-export type AdmissionRoute = "custodied" | "self-custody" | "holder-wallet";
+/** How the participant holds its wallet (ADR 0089). */
+export type AdmissionRoute = "bank-custody" | "third-party" | "self-custody" | "existing-identity";
 
 export type Admission = {
   id: string;
@@ -59,32 +54,31 @@ export type Admission = {
   route: AdmissionRoute;
   status: AdmissionStatus;
   createdAt: string;
-  /** The holder-wallet route's request identifiers; null on the bank's routes. */
+  /** Unused since 0.2.0; kept so the table's columns are unchanged. */
   officerRequestId: string | null;
   walletRequestId: string | null;
   data: Record<string, unknown>;
 };
 
 /**
- * A corporate client as the bank's onboarding records it (ADR 0066): the facts staff entered once,
- * and the corporate identity the bank's issuer server signed and anchored from them.
+ * A corporate client as the bank's onboarding records it (ADR 0089): the facts staff entered once,
+ * kept here in the bank's portal and nowhere else, with the salt and hash a claim carries.
  */
 export type Client = {
   id: string;
   /** The bank's own reference for the client. */
   kycReference: string;
-  subjectDid: string;
-  /** The claims sent for issuance, exactly as sent. */
+  /** The facts, as staff entered and the bank verified them. */
   claims: Record<string, unknown>;
-  credentialId: string;
-  issuanceId: string;
-  pickupUrl: string;
-  /** When the current credential was issued: the client's screening date (ADR 0033). */
+  /** The record's salt and its hash, which the bank's claim carries (ADR 0088, Q1). */
+  salt: `0x${string}`;
+  recordHash: `0x${string}`;
+  /** When the facts were last verified: the client's screening date. */
   issuedAt: string;
   issuedBy: string;
   createdAt: string;
-  /** Earlier credentials for the same client, superseded by a re-screen. */
-  previous: Array<{ credentialId: string; issuedAt: string }>;
+  /** Earlier records for the same client, superseded by a re-screen. */
+  previous: Array<{ recordHash: string; issuedAt: string }>;
   /** The client asked, from Onboard, for its account to be held in custody (ADR 0076). */
   custodyRequest?: { registrantId: string; email: string; at: string };
 };
@@ -596,13 +590,13 @@ export function getStore(): Store {
 // --------------------------------------------------------------------------------------------
 
 /**
- * The deployment the site runs against: its chain and its Identity Registry, which every
- * deployment has its own of. Null where no manifest is configured, when nothing is scoped.
+ * The deployment the site runs against: its chain and its identity storage, which every deployment
+ * has its own of (ADRs 0083, 0088). Null where no manifest is configured, when nothing is scoped.
  */
 export function currentDeployment(): string | null {
   try {
     const m = loadManifest();
-    const registry = m.instruments?.registry;
+    const registry = m.identity?.identityStorage;
     return registry ? `${m.chainId}:${registry.toLowerCase()}` : null;
   } catch {
     return null;

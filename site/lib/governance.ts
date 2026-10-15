@@ -6,23 +6,25 @@ import { execThroughWallet } from "./chain/safe.ts";
 import { until } from "./chain/until.ts";
 import { ledgerFrom } from "./ledger.ts";
 import { getStore, type Registrant } from "./store.ts";
-import { isOperator } from "./operators.ts";
+import { hasRole } from "./operators.ts";
 
 /**
- * The governance controller, from the site (ADR 0082). It governs the deployment's own note, the
- * deposit, the registry, the Paying Agent and the venue; notes issued from the site are the
- * Issuer's to administer (ADR 0072).
+ * The governance controller, from the site (ADRs 0082, 0088). It owns the deployment's own note and
+ * its registries, and governs the Paying Agent and, where there is one, the venue; notes issued
+ * from the site are the Issuer's to administer (ADR 0072).
  *
  * - **Tier 1** is the Agent's governance wallet alone, at once, with a written reason: correcting
- *   the register by forced transfer (S-25), and withdrawing a grant or pool access.
+ *   the register by forced transfer, recovering a lost wallet's units (S-25), freezing an account
+ *   whichever institution vouched for it, and withdrawing or restoring pool access (ADR 0090).
  * - **Tier 2** is proposed and approved by the institutions' governance wallets: queued once at
  *   least two institutions approve with four signatures between their wallets (S-22), executable
  *   after the delay and, on a controller from ADR 0082, only within the execution window (S-24).
  * - **Each institution acts as itself.** Every act is its own 2-of-3 wallet's transaction, signed
  *   by two of its owners' keys the site holds and sent by the Agent's key. Each is first simulated
  *   from that wallet, so a refusal is the controller's own reason.
- * - **Acts offered** are those that cannot break the deployment. Upgrades, gate and registrar
- *   changes, and replacing the servicing wallet or an institution are listed, not offered.
+ * - **Acts offered** are those that cannot break the deployment: amending the notional, and
+ *   trusting or ceasing to trust a claim issuer for the note. Replacing the servicing wallet or an
+ *   institution, and reversing a distribution, are listed, not offered.
  */
 
 const CONTROLLER = parseAbi([
@@ -39,10 +41,13 @@ const CONTROLLER = parseAbi([
   "function institutions() view returns (address[])",
   "function agentGovernance() view returns (address)",
   "function correctRegister(address from, address to, uint256 units, string reason)",
-  "function withdrawGrant(address account, string reason)",
+  "function freezeAccount(address account, bool frozen, string reason)",
+  "function recoverWallet(address lostWallet, address newWallet, address identity, string reason)",
   "function withdrawPoolAccess(address account, string reason)",
+  "function restorePoolAccess(address account, string reason)",
   "function proposeAmendNotional(bool increase, uint256 units, string reason) returns (uint256)",
-  "function proposeSetMaxValidity(uint40 maxValidity, string reason) returns (uint256)",
+  "function proposeSetTrustedIssuer(address issuer, uint256[] topics, string reason) returns (uint256)",
+  "function TRUSTED_ISSUERS() view returns (address)",
   "function proposeSetLiquidityProvider(address account, bool approved, string reason) returns (uint256)",
   "function approve(uint256 id)",
   "function execute(uint256 id)",
@@ -57,58 +62,63 @@ const CONTROLLER = parseAbi([
   "error ThresholdsNotMet(uint256 institutions, uint256 signatures)",
   "error NotReady(uint48 readyAt)",
   "error NotCancellable(address caller)",
-  "error NotGoverned(address token)",
+  "error TransfersClosed()",
   "error InvalidArgument()",
   "error NotServicingWallet(address caller)",
   "error NoVenue()",
+  // The pool gate's, reached through the controller (ADR 0090).
+  "error AlreadyWithdrawn(address account)",
+  "error NotWithdrawn(address account)",
   "error Expired(uint256 id, uint48 expiredAt)",
 ]);
 const TOKEN = parseAbi([
   "function balanceOf(address) view returns (uint256)",
   "function totalSupply() view returns (uint256)",
-  "function hasRole(bytes32 role, address account) view returns (bool)",
-  "function forcedTransfer(address from, address to, uint256 value, bytes data) returns (bool)",
-  "error AccessControlUnauthorizedAccount(address account, bytes32 neededRole)",
+  "function isAgent(address agent) view returns (bool)",
+  "function isFrozen(address account) view returns (bool)",
+  "function identityRegistry() view returns (address)",
+  "function getAgentRestrictions(address agent) view returns ((bool disableMint, bool disableBurn, bool disablePartialFreeze, bool disableAddressFreeze, bool disableRecovery, bool disableForceTransfer, bool disablePause))",
+  "function forcedTransfer(address from, address to, uint256 amount) returns (bool)",
+  "error AgentNotAuthorized(address agent, string reason)",
+  "error CallerDoesNotHaveAgentRole()",
+  "error UnverifiedIdentity()",
+  "error ComplianceNotFollowed()",
 ]);
-const REGISTRY = parseAbi(["function maxValidity() view returns (uint40)"]);
+const REGISTRY = parseAbi(["function identity(address wallet) view returns (address)"]);
+const ISSUERS = parseAbi(["function getTrustedIssuers() view returns (address[])"]);
 const TIER1 = parseAbiItem("event Tier1(string action, string reason)");
-const FORCED_TRANSFER_ROLE = keccak256(toBytes("FORCED_TRANSFER_ROLE"));
+/** The note-eligible claim topic (ADR 0088). */
+const NOTE_TOPIC = BigInt(keccak256(toBytes("claim.note-eligible")));
 
 /** The controller's kinds of Tier 2 proposal, in its enum's order. */
 export const KINDS = [
-  "Upgrade",
-  "ReplaceGate",
   "AmendNotional",
   "ReverseDistribution",
   "RestateDistribution",
-  "SetRegistrar",
-  "SetMaxValidity",
+  "SetTrustedIssuer",
   "ReplaceServicingWallet",
   "ReplaceInstitution",
   "SetCredentialGate",
   "SetLiquidityProvider",
   "SetVenueWrapper",
   "SetVenueHook",
-  "SetPoolAttester",
+  "SetPoolIssuer",
 ] as const;
 export type Kind = (typeof KINDS)[number];
 /** Offered from the site; the rest could break the deployment if misused (ADR 0082). */
-export const OFFERED: Kind[] = ["AmendNotional", "SetMaxValidity", "SetLiquidityProvider"];
+export const OFFERED: Kind[] = ["AmendNotional", "SetTrustedIssuer", "SetLiquidityProvider"];
 export const KIND_LABEL: Record<Kind, string> = {
-  Upgrade: "Upgrade an instrument",
-  ReplaceGate: "Replace an instrument's gate",
   AmendNotional: "Amend the notional in the Issuer's inventory",
   ReverseDistribution: "Reverse a distribution",
   RestateDistribution: "Restate a distribution",
-  SetRegistrar: "Appoint or remove a registrar",
-  SetMaxValidity: "Set the longest a grant may run",
+  SetTrustedIssuer: "Trust a claim issuer for the note, or cease to",
   ReplaceServicingWallet: "Replace the Agent's servicing wallet",
   ReplaceInstitution: "Replace an institution's wallet (recovery)",
-  SetCredentialGate: "Point the pool at a new credential gate",
+  SetCredentialGate: "Point the pool at a new gate",
   SetLiquidityProvider: "Approve or remove a liquidity provider",
   SetVenueWrapper: "Allow or refuse a router or position manager",
   SetVenueHook: "Allow or refuse a hook",
-  SetPoolAttester: "Appoint or remove a pool attester",
+  SetPoolIssuer: "Trust a claim issuer to vouch for pool access, or cease to",
 };
 
 export type InstitutionKey = "agent" | "issuer" | "cosigner";
@@ -148,7 +158,9 @@ function refusal(e: unknown): string {
         case "NotOpen": return "It is no longer open: executed or cancelled.";
         case "NoReason": return "A written reason is required.";
         case "NotAgentGovernance": return "Only the Agent's governance wallet acts at Tier 1.";
-        case "AccessControlUnauthorizedAccount": return `Refused by the note: ${a?.[0]} lacks the role this needs. Only the governance controller may force a transfer (S-26).`;
+        case "AgentNotAuthorized": return `Refused by the note: ${a?.[0]} is an agent, but ${a?.[1]} for it. Only the governance controller may force a transfer (S-26).`;
+        case "CallerDoesNotHaveAgentRole": return "Refused by the note: the caller is not one of its agents.";
+        case "TransfersClosed": return "Refused: transfers are stopped from a record time until its determination, so the holder of record stays the account paid.";
         default: return `${d.errorName}${a?.length ? `(${a.map(String).join(", ")})` : ""}`;
       }
     } catch {
@@ -200,7 +212,10 @@ export type GovernanceView = {
   proposals: ProposalView[];
   tier1: Array<{ action: string; reason: string; tx: string; block: number }>;
   note: { address: Address; total: string; inventory: string };
-  maxValidity: number;
+  /** The claim issuers the note trusts. */
+  trustedIssuers: Address[];
+  /** Whether the deployment has the optional conversion pool. */
+  pool: boolean;
 };
 
 function describe(kind: Kind, args: Hex, m: Manifest): string {
@@ -210,9 +225,9 @@ function describe(kind: Kind, args: Hex, m: Manifest): string {
         const [increase, units] = decodeAbiParameters([{ type: "bool" }, { type: "uint256" }], args);
         return `${increase ? "Increase" : "Reduce"} by ${units} units`;
       }
-      case "SetMaxValidity": {
-        const [v] = decodeAbiParameters([{ type: "uint40" }], args);
-        return `${Math.round(Number(v) / 86_400)} days`;
+      case "SetTrustedIssuer": {
+        const [issuer, topics] = decodeAbiParameters([{ type: "address" }, { type: "uint256[]" }], args);
+        return topics.length ? `Trust ${nameOf(m, issuer)} for the note` : `Cease to trust ${nameOf(m, issuer)}`;
       }
       case "SetLiquidityProvider": {
         const [a, approved] = decodeAbiParameters([{ type: "address" }, { type: "bool" }], args);
@@ -228,7 +243,8 @@ function describe(kind: Kind, args: Hex, m: Manifest): string {
 
 /** A party's name from the manifest, or its address. */
 export function nameOf(m: Manifest, a: string): string {
-  const parties = { ...(m.parties ?? {}), ...Object.fromEntries(Object.entries(m.custody?.accounts ?? {})) } as Record<string, string>;
+  const issuers = m.identity ? { "the bank's claim issuer": m.identity.bankIssuer, "the onboarding agent's claim issuer": m.identity.onboardingIssuer } : {};
+  const parties = { ...(m.parties ?? {}), ...Object.fromEntries(Object.entries(m.custody?.accounts ?? {})), ...issuers } as Record<string, string>;
   const hit = Object.entries(parties).find(([, v]) => String(v).toLowerCase() === a.toLowerCase());
   return hit ? hit[0] : a;
 }
@@ -238,7 +254,7 @@ export async function governanceView(): Promise<GovernanceView> {
   const pc = c.s.publicClient;
   const read = <T>(functionName: any, args: readonly unknown[] = []) => pc.readContract({ address: c.g.controller, abi: CONTROLLER, functionName, args } as any) as Promise<T>;
   const note = governedNote(c.m);
-  const [minI, minS, delay, recovery, window, count, block, total, inventory, maxValidity] = await Promise.all([
+  const [minI, minS, delay, recovery, window, count, block, total, inventory, trustedIssuers] = await Promise.all([
     read<bigint>("MIN_INSTITUTIONS"),
     read<bigint>("MIN_SIGNATURES"),
     read<number>("TIER2_DELAY"),
@@ -248,7 +264,7 @@ export async function governanceView(): Promise<GovernanceView> {
     pc.getBlock(),
     pc.readContract({ address: note, abi: TOKEN, functionName: "totalSupply" }),
     pc.readContract({ address: note, abi: TOKEN, functionName: "balanceOf", args: [c.m.parties.issuer as Address] }),
-    pc.readContract({ address: c.m.instruments!.registry, abi: REGISTRY, functionName: "maxValidity" }).catch(() => 0),
+    read<Address>("TRUSTED_ISSUERS").then((tir) => pc.readContract({ address: tir, abi: ISSUERS, functionName: "getTrustedIssuers" })).catch(() => [] as readonly Address[]),
   ]);
   const chainNow = Number(block.timestamp);
   const institutions = INSTITUTIONS.map((i) => ({ key: i.key, label: i.label, wallet: i.wallet(c.m) }));
@@ -294,7 +310,8 @@ export async function governanceView(): Promise<GovernanceView> {
     proposals,
     tier1: logs.map((l) => ({ action: l.args.action!, reason: l.args.reason!, tx: l.transactionHash, block: Number(l.blockNumber) })).reverse(),
     note: { address: note, total: String(total), inventory: String(inventory) },
-    maxValidity: Number(maxValidity),
+    trustedIssuers: [...trustedIssuers],
+    pool: Boolean(c.m.venue),
   };
 }
 
@@ -313,7 +330,7 @@ export async function parties(): Promise<Array<{ name: string; address: Address;
 // ---------------------------------------------------------------------------------------------
 
 function staffOnly(staff: Registrant) {
-  if (!isOperator(staff.email)) throw new Error("Not permitted.");
+  if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
 }
 function needReason(reason: string): string {
   const r = reason.trim();
@@ -336,23 +353,47 @@ export async function correctRegister(staff: Registrant, input: { from: Address;
   return tx;
 }
 
-/** Tier 1: the Agent's governance wallet withdraws a grant, or an account's pool access, at once. */
-export async function withdraw(staff: Registrant, input: { what: "grant" | "pool"; account: Address; reason: string }): Promise<Hex> {
+/**
+ * Tier 1: the Agent's governance wallet freezes or unfreezes an account on the note at once,
+ * whichever institution vouched for it (ADR 0088), or withdraws or restores its pool access (ADR 0090).
+ */
+export async function withdraw(staff: Registrant, input: { what: "freeze" | "unfreeze" | "pool" | "restore-pool"; account: Address; reason: string }): Promise<Hex> {
   staffOnly(staff);
   const reason = needReason(input.reason);
   const c = context();
-  const data = input.what === "grant"
-    ? encodeFunctionData({ abi: CONTROLLER, functionName: "withdrawGrant", args: [input.account, reason] })
-    : encodeFunctionData({ abi: CONTROLLER, functionName: "withdrawPoolAccess", args: [input.account, reason] });
+  const data = input.what === "pool"
+    ? encodeFunctionData({ abi: CONTROLLER, functionName: "withdrawPoolAccess", args: [input.account, reason] })
+    : input.what === "restore-pool"
+      ? encodeFunctionData({ abi: CONTROLLER, functionName: "restorePoolAccess", args: [input.account, reason] })
+      : encodeFunctionData({ abi: CONTROLLER, functionName: "freezeAccount", args: [input.account, input.what === "freeze", reason] });
   const tx = await asInstitution(c, "agent", data);
-  await audit(staff, `Tier 1: withdrew ${input.what === "grant" ? "the registry grant" : "pool access"} of ${nameOf(c.m, input.account)}: ${reason}`, tx);
+  const said = { pool: "withdrew pool access of", "restore-pool": "restored pool access of", freeze: "froze", unfreeze: "unfroze" }[input.what];
+  await audit(staff, `Tier 1: ${said} ${nameOf(c.m, input.account)}: ${reason}`, tx);
+  return tx;
+}
+
+/**
+ * Tier 1 (S-25): the Agent's governance wallet recovers a holder's units from a lost wallet to its
+ * new one; the identity moves with them. Refused while transfers are stopped at a Record Time.
+ */
+export async function recoverWallet(staff: Registrant, input: { lost: Address; replacement: Address; reason: string }): Promise<Hex> {
+  staffOnly(staff);
+  const reason = needReason(input.reason);
+  if (input.lost.toLowerCase() === input.replacement.toLowerCase()) throw new Error("Choose a new wallet.");
+  const c = context();
+  const note = governedNote(c.m);
+  const registry = await c.s.publicClient.readContract({ address: note, abi: TOKEN, functionName: "identityRegistry" });
+  const identity = await c.s.publicClient.readContract({ address: registry, abi: REGISTRY, functionName: "identity", args: [input.lost] });
+  if (/^0x0{40}$/i.test(identity)) throw new Error(`${nameOf(c.m, input.lost)} has no identity in the note's registry.`);
+  const tx = await asInstitution(c, "agent", encodeFunctionData({ abi: CONTROLLER, functionName: "recoverWallet", args: [input.lost, input.replacement, identity, reason] }));
+  await audit(staff, `Tier 1: recovered the units of ${nameOf(c.m, input.lost)} to ${input.replacement}: ${reason}`, tx);
   return tx;
 }
 
 /** Tier 2: an institution proposes one of the acts offered from the site (ADR 0082). */
 export async function propose(
   staff: Registrant,
-  input: { by: InstitutionKey; kind: Kind; reason: string; increase?: boolean; units?: number; days?: number; account?: Address; approved?: boolean },
+  input: { by: InstitutionKey; kind: Kind; reason: string; increase?: boolean; units?: number; account?: Address; approved?: boolean },
 ): Promise<{ tx: Hex; id: number }> {
   staffOnly(staff);
   const reason = needReason(input.reason);
@@ -362,10 +403,11 @@ export async function propose(
   if (input.kind === "AmendNotional") {
     if (!Number.isInteger(input.units) || (input.units ?? 0) < 1) throw new Error("Amend by at least one unit.");
     data = encodeFunctionData({ abi: CONTROLLER, functionName: "proposeAmendNotional", args: [Boolean(input.increase), BigInt(input.units!), reason] });
-  } else if (input.kind === "SetMaxValidity") {
-    if (!Number.isInteger(input.days) || (input.days ?? 0) < 1) throw new Error("Give the longest validity in whole days, at least one.");
-    data = encodeFunctionData({ abi: CONTROLLER, functionName: "proposeSetMaxValidity", args: [input.days! * 86_400, reason] });
+  } else if (input.kind === "SetTrustedIssuer") {
+    if (!input.account) throw new Error("Give the claim issuer's address.");
+    data = encodeFunctionData({ abi: CONTROLLER, functionName: "proposeSetTrustedIssuer", args: [input.account, input.approved ? [NOTE_TOPIC] : [], reason] });
   } else {
+    if (!c.m.venue) throw new Error("This deployment has no conversion pool.");
     if (!input.account) throw new Error("Choose the account.");
     data = encodeFunctionData({ abi: CONTROLLER, functionName: "proposeSetLiquidityProvider", args: [input.account, Boolean(input.approved), reason] });
   }
@@ -425,16 +467,20 @@ export async function attemptAgentForcedTransfer(staff: Registrant): Promise<str
   const note = governedNote(c.m);
   const from = c.m.parties.investorA as Address;
   const to = c.m.parties.investorB as Address;
-  const data = encodeFunctionData({ abi: TOKEN, functionName: "forcedTransfer", args: [from, to, 1n, "0x"] });
-  const [servicingHas, controllerHas] = await Promise.all([
-    c.s.publicClient.readContract({ address: note, abi: TOKEN, functionName: "hasRole", args: [FORCED_TRANSFER_ROLE, c.g.servicingWallet] }),
-    c.s.publicClient.readContract({ address: note, abi: TOKEN, functionName: "hasRole", args: [FORCED_TRANSFER_ROLE, c.g.controller] }),
-  ]);
+  const data = encodeFunctionData({ abi: TOKEN, functionName: "forcedTransfer", args: [from, to, 1n] });
+  const [servicing, controller] = await Promise.all(
+    [c.g.servicingWallet, c.g.controller].map(async (who) => {
+      const agent = await c.s.publicClient.readContract({ address: note, abi: TOKEN, functionName: "isAgent", args: [who] });
+      if (!agent) return false;
+      const r = await c.s.publicClient.readContract({ address: note, abi: TOKEN, functionName: "getAgentRestrictions", args: [who] });
+      return !r.disableForceTransfer;
+    }),
+  );
   try {
     await c.s.publicClient.call({ account: c.g.servicingWallet, to: note, data });
   } catch (e) {
     await audit(staff, "S-26: attempted a forced transfer as the Agent's servicing wallet, outside the control framework: refused", note);
-    return `${refusal(e)} The servicing wallet holds the forced-transfer right: ${servicingHas ? "yes" : "no"}; the controller: ${controllerHas ? "yes" : "no"}.`;
+    return `${refusal(e)} The servicing wallet may force a transfer: ${servicing ? "yes" : "no"}; the controller: ${controller ? "yes" : "no"}.`;
   }
   throw new Error("The note allowed the Agent's servicing wallet to force a transfer: the control framework is not in force.");
 }

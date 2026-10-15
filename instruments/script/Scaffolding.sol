@@ -40,6 +40,9 @@ import {IVerifies} from "../src/interfaces/INote.sol";
  * - **One identity storage** for the deployment, owned by T-REX's factory so that each note's
  *   registry binds to it, and the deposit's own identity registry on it, which trusts the bank
  *   alone. A client registered once is known to every registry.
+ * - **The pool's identity registry** on the same storage, which trusts the bank alone for the
+ *   pool-access claim (ADR 0090). It is never bound to the storage, so it only reads: a
+ *   client registered once is known to the pool too. The conversion pool's gate asks it.
  * - **The deposit** and its gateway. The bank administers the deposit's eligibility and mints and
  *   burns through the gateway; the deployer administers both contracts until the ceremony.
  *
@@ -70,6 +73,10 @@ library Scaffolding {
         IdentityRegistry depositRegistry;
         ClaimTopicsRegistry depositTopics;
         TrustedIssuersRegistry depositIssuers;
+        /// @dev The pool's identity registry, read-only, and its topics and trusted issuers.
+        IdentityRegistry poolRegistry;
+        ClaimTopicsRegistry poolTopics;
+        TrustedIssuersRegistry poolIssuers;
         DepositToken deposit;
         DepositGateway gateway;
     }
@@ -101,16 +108,8 @@ library Scaffolding {
         d.onboardingIssuer = new ExpiringClaimIssuer(c.onboardingAgent, c.maxClaimValidity);
 
         // The deposit's eligibility: the bank's claim, from the bank's issuer.
-        uint256[] memory topics = new uint256[](1);
-        topics[0] = ClaimTopics.DEPOSIT_ELIGIBLE;
-        address[] memory issuers = new address[](1);
-        issuers[0] = address(d.bankIssuer);
-        uint256[][] memory issuerTopics = new uint256[][](1);
-        issuerTopics[0] = topics;
-        d.depositTopics = ClaimTopicsRegistry(address(new ClaimTopicsRegistryProxy(address(d.trexAuthority), c.deployer, topics)));
-        d.depositIssuers = TrustedIssuersRegistry(
-            address(new TrustedIssuersRegistryProxy(address(d.trexAuthority), c.deployer, issuers, issuerTopics))
-        );
+        (d.depositTopics, d.depositIssuers) =
+            _topicsAndIssuers(d, c.deployer, ClaimTopics.DEPOSIT_ELIGIBLE, address(d.bankIssuer));
 
         // The deposit's registry is built first, against a placeholder, so that the storage can bind
         // it as it is built: the storage is owned by T-REX's factory, which cannot bind anything
@@ -135,6 +134,22 @@ library Scaffolding {
         );
         d.depositRegistry.setIdentityRegistryStorage(address(d.identities));
 
+        // The pool's access: the bank's claim, from the bank's issuer (ADR 0090).
+        (d.poolTopics, d.poolIssuers) = _topicsAndIssuers(d, c.deployer, ClaimTopics.POOL_ACCESS, address(d.bankIssuer));
+        d.poolRegistry = IdentityRegistry(
+            address(
+                new IdentityRegistryProxy(
+                    address(d.trexAuthority),
+                    address(d.poolIssuers),
+                    address(d.poolTopics),
+                    address(d.identities),
+                    c.deployer,
+                    new address[](0),
+                    c.bank
+                )
+            )
+        );
+
         // The deposit and its gateway.
         d.deposit = new DepositToken(c.depositName, c.depositSymbol, c.deployer, IVerifies(address(d.depositRegistry)));
         d.gateway = new DepositGateway(IMintBurn(address(d.deposit)), c.deployer, c.bank);
@@ -149,6 +164,23 @@ library Scaffolding {
         d.depositIssuers.transferOwnership(c.bank);
         d.depositRegistry.transferOwnership(c.bank);
         d.idFactory.transferOwnership(c.bank);
+    }
+
+    /// One required topic, and one issuer trusted for it.
+    function _topicsAndIssuers(Deployed memory d, address owner, uint256 topic, address issuer)
+        private
+        returns (ClaimTopicsRegistry topics, TrustedIssuersRegistry issuers)
+    {
+        uint256[] memory required = new uint256[](1);
+        required[0] = topic;
+        address[] memory trusted = new address[](1);
+        trusted[0] = issuer;
+        uint256[][] memory trustedFor = new uint256[][](1);
+        trustedFor[0] = required;
+        topics = ClaimTopicsRegistry(address(new ClaimTopicsRegistryProxy(address(d.trexAuthority), owner, required)));
+        issuers = TrustedIssuersRegistry(
+            address(new TrustedIssuersRegistryProxy(address(d.trexAuthority), owner, trusted, trustedFor))
+        );
     }
 
     /// The bank accepts the deposit's registries. Must be called by the bank.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The fork dry run (ADR 0041): forks the public test network, deploys the whole stack against
-# its real contracts (pool manager, Permit2, the multi-signature wallet, the euro payment token
-# and the credential protocol's registries), and runs the venue tests against the result.
+# its real contracts (pool manager, Permit2, the multi-signature wallet and the euro payment
+# token), and runs the venue tests against the result.
 #
 # Nothing is published: every transaction lands on the local fork. The names, symbols and term
 # sheet values the deploy guard requires (ADR 0027) come from the network file.
@@ -61,5 +61,5 @@ for ref in SEG-0001 SEG-0002 SEG-0003 SEG-0004; do fund "$(jq -er ".custody.acco
 printf '\n\033[1m── venue tests against the fork\033[0m\n'
 # Forge caches forked state by chain id and block number, which a previous dry run shares, so
 # the cache is off here.
-PROTOCOL_REGISTRAR="$(net .credentialProtocol.registrar)" forge test --fork-url "$RPC" --no-storage-caching \
+forge test --fork-url "$RPC" --no-storage-caching \
   --match-path 'test/{PermissionedTrading,CustodyTrading}.t.sol' "${@}"

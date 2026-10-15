@@ -35,6 +35,9 @@ library Manifest {
         d.depositRegistry = IdentityRegistry(vm.parseJsonAddress(j, ".identity.depositRegistry"));
         d.depositTopics = ClaimTopicsRegistry(vm.parseJsonAddress(j, ".identity.depositTopics"));
         d.depositIssuers = TrustedIssuersRegistry(vm.parseJsonAddress(j, ".identity.depositIssuers"));
+        d.poolRegistry = IdentityRegistry(vm.parseJsonAddress(j, ".identity.poolRegistry"));
+        d.poolTopics = ClaimTopicsRegistry(vm.parseJsonAddress(j, ".identity.poolTopics"));
+        d.poolIssuers = TrustedIssuersRegistry(vm.parseJsonAddress(j, ".identity.poolIssuers"));
         d.deposit = DepositToken(vm.parseJsonAddress(j, ".instruments.deposit"));
         d.gateway = DepositGateway(vm.parseJsonAddress(j, ".instruments.gateway"));
     }

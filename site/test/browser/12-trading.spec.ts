@@ -1,21 +1,18 @@
-import { test, expect, expectHealthy, chooseClient, fundWallet, installWallet, signedIn, PEOPLE } from "./fixtures.ts";
+import { test, expect, expectHealthy, fundWallet, installWallet, signedIn, PEOPLE } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
+import { SELF_CUSTODY_SEED } from "./people.ts";
 
-const SECOND = "Second Test Holdings SA";
+/** The bank custody client of spec 02, onboarded for the deposit and approved for the note. */
+const SECOND = "Browser Held Institution SA";
 
-/** Credits the deposit to an admitted account from its Admissions row. */
-async function credit(row: Locator, amount: string) {
+/** The bank credits its deposit to an onboarded account, from its row on the bank's Onboarding page. */
+async function credit(staff: Page, holder: string, amount: string) {
+  await staff.goto("/bank/onboarding");
+  const row = staff.locator("#onboarded + .table-wrap tbody tr").filter({ hasText: holder });
   await row.getByText("Credit deposit…").click();
-  await row.getByLabel("Amount of EURTD").fill(amount);
+  await row.getByLabel("Amount").fill(amount);
   await row.getByRole("button", { name: "Credit", exact: true }).click();
-  await expect(row).toContainText(new RegExp(`Last credit: ${amount.replace(".", "\\.")}\\.00 EURTD`), { timeout: 30_000 });
-}
-
-async function approve(row: Locator) {
-  await row.getByText("Approve for the note…").click();
-  await row.getByLabel(/not a U\.S\. person/).check();
-  await row.getByRole("button", { name: "Approve for the note" }).click();
-  await expect(row).toContainText("Approved for the note under Reg S", { timeout: 30_000 });
+  await expect(row.getByRole("status")).toContainText(new RegExp(`Credited ${amount}\\.00 EURTD`), { timeout: 30_000 });
 }
 
 /** Chooses, in a select, the option whose text contains `text`. */
@@ -32,7 +29,7 @@ test("transfers settle by locked offer: arranged by the bank, open offers taken,
   const staff = await signedIn(browser, PEOPLE.operator);
 
   // A note to trade, issued 30 minutes apart so that no date arrives meanwhile.
-  await staff.goto("/operator/notes");
+  await staff.goto("/agent/notes");
   const form = staff.locator("#notes + .panel form");
   await form.locator('select[name="scenario"]').selectOption((await form.locator('select[name="scenario"] option', { hasText: "redemption at €1000.00" }).last().getAttribute("value"))!);
   await form.getByLabel("Observations (coupon dates)").fill("4");
@@ -43,44 +40,17 @@ test("transfers settle by locked offer: arranged by the bank, open offers taken,
   const noteRow = staff.locator("#notes + .panel tbody tr").filter({ hasText: "EURWAN3" });
   await expect(noteRow.locator(".pill")).toHaveText("issued", { timeout: 150_000 });
 
-  // A second client, held in custody by the bank and approved for the note.
-  await staff.goto("/operator/clients");
-  const add = staff.locator("form").filter({ has: staff.getByLabel("Registration number") });
-  await add.getByLabel("Jurisdiction").selectOption("LU");
-  await add.getByLabel("Legal name").fill(SECOND);
-  await add.getByLabel("Legal form").selectOption("PLC");
-  await add.getByLabel("Registration number").fill("B 112 233");
-  await add.getByLabel("Incorporation date").fill("2010-01-02");
-  await add.getByRole("button", { name: "Add client and issue its corporate identity" }).click();
-  await expect(add.getByRole("status")).toContainText(`Added ${SECOND}`);
-  await staff.goto("/operator/custody/custodial");
-  const admit = staff.locator("#custodied + .panel form");
-  await chooseClient(admit.locator('select[name="kycReference"]'), SECOND);
-  await admit.getByRole("button", { name: "Admit" }).click();
-  await expect(admit.getByRole("status")).toHaveCount(0, { timeout: 60_000 });
-  await staff.goto("/operator/admissions");
-  const custodyRow = staff.locator("#admissions + .table-wrap tbody tr").filter({ hasText: SECOND }).first();
-  await expect(custodyRow.locator(".pill")).toHaveText("admitted", { timeout: 60_000 });
-  await approve(custodyRow);
-  await credit(custodyRow, "5000");
-
-  // The first client binds a wallet of its own again, in place of its custody account (spec 09).
+  // The custody account of spec 02 and the wallet of specs 03 and 09, both approved for the note.
+  await credit(staff, SECOND, "5000");
   const client = await signedIn(browser, PEOPLE.selfCustody);
-  const wallet = await installWallet(client, `browser trading wallet ${Date.now()}`);
+  const wallet = await installWallet(client, SELF_CUSTODY_SEED);
   await fundWallet(wallet as `0x${string}`, 1n);
-  await client.goto("/onboard");
-  await client.getByRole("button", { name: "Bind a wallet of your own instead" }).click();
-  await client.getByRole("button", { name: "Connect MetaMask and bind this wallet" }).click();
-  await expect(client.getByRole("region", { name: "Your wallet" })).toContainText(wallet, { timeout: 60_000 });
-  await staff.reload();
-  const walletRow = staff.locator("#admissions + .table-wrap tbody tr").filter({ hasText: wallet }).filter({ has: staff.locator(".pill", { hasText: /^admitted$/ }) });
-  await approve(walletRow);
-  await credit(walletRow, "5000");
+  await credit(staff, wallet, "5000");
 
   // Placement with both: the custody account accepts at once; the wallet in MetaMask.
-  await staff.goto("/operator/notes");
+  await staff.goto("/agent/notes");
   await noteRow.getByRole("link", { name: /Series 3/ }).click();
-  await expect(staff).toHaveURL(/\/operator\/notes\/note_/);
+  await expect(staff).toHaveURL(/\/agent\/notes\/note_/);
   const notePage = staff.url();
   const place = staff.locator("#place-3 + .panel");
   await pick(place.locator('select[name="admission"]'), SECOND);
@@ -128,12 +98,13 @@ test("transfers settle by locked offer: arranged by the bank, open offers taken,
   await expect(held.getByRole("cell").nth(1)).toHaveText("2");
   await expect(held.getByRole("cell").nth(2)).toHaveText("0");
 
-  // S-12 and S-09 in the arrangement form: a buyer without Reg S is refused before anything is sent.
+  // S-12 and S-09 in the arrangement form: a buyer the onboarding agent has not vouched for (the
+  // third-party custodian's account of spec 04) is refused before anything is sent.
   await staff.getByText("Arrange a transfer…").click();
   await pick(arrange.locator('select[name="seller"]'), SECOND);
-  await pick(arrange.locator('select[name="buyer"]'), "not approved under Reg S");
+  await pick(arrange.locator('select[name="buyer"]'), "not eligible for the note");
   await arrange.getByRole("button", { name: "Arrange" }).click();
-  await expect(arrange.getByRole("alert")).toContainText("lacks the Reg S flag (S-09)");
+  await expect(arrange.getByRole("alert")).toContainText("buyer is not eligible for the note");
 
   // S-13: the Issuer buys a unit back from the wallet; it returns to the inventory.
   const facts = staff.locator(".facts").first();

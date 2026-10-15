@@ -92,9 +92,10 @@ contract Ceremony is Script {
         });
     }
 
-    /// The venue, handed over in the same ceremony.
+    /// The venue, handed over in the same ceremony where the optional pool is deployed.
     function _venue() private view returns (Governance.Venue memory) {
         string memory j = vm.readFile(_manifest());
+        if (!vm.keyExistsJson(j, ".venue.allowlistChecker")) return Governance.Venue(address(0), address(0), address(0));
         return Governance.Venue({
             checker: vm.parseJsonAddress(j, ".venue.allowlistChecker"),
             adapter: vm.parseJsonAddress(j, ".venue.permissionsAdapter"),

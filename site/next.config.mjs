@@ -19,11 +19,16 @@ const csp = [
 /** @type {import('next').NextConfig} */
 export default {
   poweredByHeader: false,
-  // The client's page moved from /admit to /onboard; links already sent keep working.
+  // Pages that moved keep their old addresses: the client's from /admit to /onboard, and the staff
+  // console's from /operator into the portals (ADR 0089).
   async redirects() {
     return [
       { source: "/admit", destination: "/onboard", permanent: true },
-      { source: "/operator/custody/self-custody", destination: "/operator/custody/third-party", permanent: true },
+      { source: "/operator", destination: "/bank", permanent: false },
+      { source: "/operator/clients", destination: "/bank/clients", permanent: false },
+      { source: "/operator/admissions", destination: "/bank/onboarding", permanent: false },
+      { source: "/operator/custody/:path*", destination: "/custodian", permanent: false },
+      { source: "/operator/:path*", destination: "/agent/:path*", permanent: false },
     ];
   },
   outputFileTracingRoot: dirname(fileURLToPath(import.meta.url)),

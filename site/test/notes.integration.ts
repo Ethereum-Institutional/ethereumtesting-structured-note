@@ -18,7 +18,7 @@ const lagging = await startLaggingRpc(4031, RPC);
 after(() => lagging.close());
 
 process.chdir(mkdtempSync(join(tmpdir(), "notes-"))); // a fresh development store
-Object.assign(process.env, { NODE_ENV: "development", MANIFEST_PATH: join(REPO, "ops", "addresses.json"), RPC_URL: lagging.url, OPERATOR_EMAILS: "operator@example.org" });
+Object.assign(process.env, { NODE_ENV: "development", MANIFEST_PATH: join(REPO, "ops", "addresses.json"), RPC_URL: lagging.url, OPERATOR_EMAILS: "operator@example.org", BANK_EMAILS: "", ONBOARDING_EMAILS: "", AGENT_EMAILS: "", CUSTODIAN_EMAILS: "" });
 const notes = await import("../lib/notes/issue.ts");
 const { getStore } = await import("../lib/store.ts");
 const { loadManifest } = await import("../lib/chain/manifest.ts");
@@ -36,7 +36,7 @@ async function issued(id: string) {
   return (await store.noteById(id))!;
 }
 
-test("a note is issued from the site, step by step, on the live note's implementation", async () => {
+test("a note is issued from the site, step by step, as a T-REX suite on the deployment's fixed implementations", async () => {
   await assert.rejects(notes.startNote({ ...operator, email: "someone@corp.example" } as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 }), /Not permitted/);
   await assert.rejects(notes.startNote(operator as any, { scenario: "nope", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 }), /Choose a scenario/);
   const started = await notes.startNote(operator as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 });
@@ -54,18 +54,19 @@ test("a note is issued from the site, step by step, on the live note's implement
     "function symbol() view returns (string)",
     "function totalSupply() view returns (uint256)",
     "function balanceOf(address) view returns (uint256)",
-    "function hasRole(bytes32 role, address account) view returns (bool)",
-    "function BURNER_ROLE() view returns (bytes32)",
-    "function SNAPSHOOTER_ROLE() view returns (bytes32)",
+    "function isAgent(address) view returns (bool)",
+    "function paused() view returns (bool)",
+    "function getAgentRestrictions(address) view returns ((bool disableMint, bool disableBurn, bool disablePartialFreeze, bool disableAddressFreeze, bool disableRecovery, bool disableForceTransfer, bool disablePause))",
+    "function getImplementationAuthority() view returns (address)",
   ]);
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "symbol" }), "EURWAN2");
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "totalSupply" }), 20n);
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "balanceOf", args: [m.parties.issuer as Address] }), 20n, "the Issuer's inventory");
 
-  // The same implementation as the note under review.
-  const slot = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
-  const impl = async (a: Address) => `0x${(await client.getStorageAt({ address: a, slot }))!.slice(-40)}`.toLowerCase();
-  assert.equal(await impl(note), await impl(m.assets.note!.address as Address));
+  // The same fixed implementations as the note under review (ADR 0088), and open for transfers.
+  const authority = (a: Address) => client.readContract({ address: a, abi: NOTE, functionName: "getImplementationAuthority" });
+  assert.equal(await authority(note), await authority(m.assets.note!.address as Address));
+  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "paused" }), false);
 
   // The calendar is the one chosen: four observations five minutes apart, from the terms' block.
   const DET = parseAbi(["function observation(uint256) view returns ((uint48 date, uint48 recordTime, uint48 paymentDate, bool coupon, bool mer, bool barrier, bool isFinal, uint32 merTriggerBps))"]);
@@ -75,11 +76,13 @@ test("a note is issued from the site, step by step, on the live note's implement
   assert.equal(Number(first.recordTime) - Number(first.date), 60);
   assert.deepEqual(n.calendar?.map((c) => c.date), [0, 1, 2, 3].map((k) => Number(first.date) + k * 300));
 
-  // Roles as the issuance script leaves them: the Paying Agent burns; no one keeps the snapshot role.
-  const burner = await client.readContract({ address: note, abi: NOTE, functionName: "BURNER_ROLE" });
-  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "hasRole", args: [burner, n.addresses.payingAgent as Address] }), true);
-  const snap = await client.readContract({ address: note, abi: NOTE, functionName: "SNAPSHOOTER_ROLE" });
-  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "hasRole", args: [snap, m.parties.issuer as Address] }), false);
+  // Agents as the issuance script leaves them, each restricted to its own powers (ADR 0085).
+  const restricted = (a: Address) => client.readContract({ address: note, abi: NOTE, functionName: "getAgentRestrictions", args: [a] });
+  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "isAgent", args: [n.addresses.payingAgent as Address] }), true);
+  const pa = await restricted(n.addresses.payingAgent as Address);
+  assert.deepEqual([pa.disableBurn, pa.disablePause, pa.disableMint, pa.disableForceTransfer], [false, false, true, true], "the Paying Agent burns and pauses, nothing else");
+  const st = await restricted(n.addresses.settlement as Address);
+  assert.deepEqual([st.disablePartialFreeze, st.disableBurn, st.disableMint], [false, true, true], "the settlement contract only locks units");
   assert.ok(lagging.staleReads() > 0, "issued through a lagging RPC");
 });
 
@@ -110,13 +113,29 @@ const LOCAL = JSON.parse((await import("node:fs")).readFileSync(join(REPO, "ops"
 const GATEWAY = parseAbi(["function credit(address account, uint256 amount, bytes32 bookingRef)"]);
 const BAL = parseAbi(["function balanceOf(address) view returns (uint256)"]);
 
-/** An admitted account as the site records it, for an account the local deployment onboarded without Reg S. */
-async function admitted(id: string, route: "custodied" | "self-custody", wallet: Address, registrantId: string) {
+const onboarding = await import("../lib/identity/onboarding.ts");
+const identities = await import("../lib/identity/onchain.ts");
+
+/** An account the local deployment onboarded, as the site records it once it is onboarded here. */
+async function admitted(id: string, route: "bank-custody" | "self-custody", wallet: Address, registrantId: string) {
   await store.putAdmission({
-    id, registrantId, route, status: "admitted", createdAt: new Date().toISOString(), officerRequestId: null, walletRequestId: null,
-    data: { assessment: { ok: true, summary: { wallet, corporation: "Test Institution One" } } },
+    id, registrantId, route, status: "onboarded", createdAt: new Date().toISOString(), officerRequestId: null, walletRequestId: null,
+    data: { wallet, identity: await identities.identityOf(wallet), request: { organisation: "Test Institution One", requestedBy: "treasury@corp.example" } },
   });
   return id;
+}
+
+/**
+ * The onboarding agent approves an account the deployment onboarded for cash only: its identity's
+ * manager records the client's consent, the client asks, and the onboarding agent vouches (ADR 0089).
+ */
+async function approveForNote(id: string, manager: "depositAgent" | "custodian") {
+  const a = (await store.admissionById(id))!;
+  const identity = onboarding.dataOf(a).identity!;
+  await identities.consent(identity, manager, LOCAL.parties.onboardingAgent);
+  await store.updateAdmission({ ...a, data: { ...a.data, note: { status: "requested", requestedAt: new Date().toISOString(), answers: { notUsPerson: true, investorClass: "institutional", relyOnBankKyb: true } } } }, a.status);
+  await onboarding.decideNote(operator as any, id, "approve");
+  await new Promise((r) => setTimeout(r, 1600)); // past the lagging RPC's window
 }
 async function credit(account: Address, cents: bigint) {
   const agent = createWalletClient({ account: privateKeyToAccount("0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6"), transport: http(RPC) });
@@ -129,14 +148,15 @@ test("S-09, then S-08: an unapproved wallet is refused; once approved, it accept
   const n = (await store.listNotes()).find((x) => x.observations === 6 && x.status === "issued")!;
   const investorC = LOCAL.parties.investorC as Address;
   const id = await admitted("adm_test_c", "self-custody", investorC, client3p.id);
+  const note = (await store.noteById(n.id))!;
   await credit(investorC, 1_000_000n); // €10,000.00
   const before = await client.readContract({ address: LOCAL.assets.deposit.address, abi: BAL, functionName: "balanceOf", args: [investorC] });
 
-  await assert.rejects(place.placeUnits(operator as any, n.id, id, 2, 100_000n), /lacks the Reg S flag \(S-09\)/);
-  assert.equal(await place.hasRegS(investorC), false);
-  await place.approveForNote(operator as any, id);
-  assert.equal(await place.hasRegS(investorC), true);
-  await assert.rejects(place.approveForNote(operator as any, id), /already approved/);
+  await assert.rejects(place.placeUnits(operator as any, n.id, id, 2, 100_000n), /buyer is not eligible for the note.*\(S-09, S-12\)/);
+  assert.equal(await place.eligibleFor(note, investorC), false);
+  await approveForNote(id, "depositAgent");
+  assert.equal(await place.eligibleFor(note, investorC), true);
+  await assert.rejects(onboarding.decideNote(operator as any, id, "approve"), /no request for the note waiting/);
 
   const offered = await place.placeUnits(operator as any, n.id, id, 2, 100_000n);
   assert.equal(offered.status, "offered", "a client's own wallet accepts itself");
@@ -160,9 +180,9 @@ test("S-09, then S-08: an unapproved wallet is refused; once approved, it accept
 test("S-08 for a custody account: the custodian accepts in the same action, and both legs settle", async () => {
   const n = (await store.listNotes()).find((x) => x.observations === 6 && x.status === "issued")!;
   const account = LOCAL.custody.accounts["SEG-0003"] as Address;
-  const id = await admitted("adm_test_seg3", "custodied", account, operator.id);
+  const id = await admitted("adm_test_seg3", "bank-custody", account, operator.id);
   await credit(account, 200_000n);
-  await place.approveForNote(operator as any, id);
+  await approveForNote(id, "custodian");
   const p = await place.placeUnits(operator as any, n.id, id, 1, 100_000n);
   assert.equal(p.status, "settled");
   assert.ok(p.settledTx);
@@ -233,16 +253,11 @@ test("S-11: transfers the bank arranges settle with each side acting as itself, 
   assert.equal(await units(n, investorB), 1n);
   assert.equal(await locked(n, investorC), 0n);
 
-  // S-12: a buyer whose grant is revoked is refused before anything is sent.
-  const [g, ref, commitment] = await Promise.all([
-    client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grantOf", args: [seg3] }),
-    client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "credentialRefOf", args: [seg3] }),
-    client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "commitmentOf", args: [seg3] }),
-  ]);
-  await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "revoke", args: [seg3], chain: null }) });
+  // S-12: a buyer whose note claim is revoked is refused before anything is sent.
+  await onboarding.revokeNote(operator as any, "adm_test_seg3", "Investor class under review");
   await new Promise((r) => setTimeout(r, 1600));
-  await assert.rejects(place.arrangeTrade(operator as any, n.id, { seller: "adm_test_c", buyer: "adm_test_seg3", units: 1, pricePerUnitCents: 100_000n }), /buyer's registry grant is revoked or has lapsed.*\(S-12\)/);
-  await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grant", args: [seg3, g.flags, g.jurisdiction, g.expiresAt, ref, commitment], chain: null }) });
+  await assert.rejects(place.arrangeTrade(operator as any, n.id, { seller: "adm_test_c", buyer: "adm_test_seg3", units: 1, pricePerUnitCents: 100_000n }), /buyer is not eligible for the note.*\(S-09, S-12\)/);
+  await approveForNote("adm_test_seg3", "custodian");
 });
 
 test("open offers: a client offers to buy, another takes it; an offer to sell is locked until withdrawn", async () => {
@@ -294,15 +309,7 @@ test("S-13: the Issuer buys units back into its inventory; S-14: no more can be 
 
 const life = await import("../lib/notes/lifecycle.ts");
 const closeout = await import("../lib/notes/closeout.ts");
-const REGISTRY = parseAbi([
-  "function grantOf(address account) view returns ((uint32 flags, uint16 jurisdiction, uint16 registrar, uint40 grantedAt, uint40 expiresAt))",
-  "function credentialRefOf(address) view returns (bytes32)",
-  "function commitmentOf(address) view returns (bytes32)",
-  "function grant(address account, uint32 flags, uint16 jurisdiction, uint40 expiresAt, bytes32 credentialRef, bytes32 commitment)",
-  "function revoke(address account)",
-]);
 const SUPPLY = parseAbi(["function totalSupply() view returns (uint256)", "function paused() view returns (bool)"]);
-const accessIssuer = createWalletClient({ account: privateKeyToAccount("0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"), transport: http(RPC) });
 
 /** Moves the local chain's clock to just past `t`, and mines a block there. */
 async function warpTo(t: number) {
@@ -360,24 +367,20 @@ test("a four-date note through its life: each date determined from the scenario'
     await warpTo(d.paymentDate);
 
     if (k === 1) {
-      // A holder the deposit cannot credit (its grant revoked) is held for, not skipped (E3).
-      const [g, ref, commitment] = await Promise.all([
-        client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grantOf", args: [investorC] }),
-        client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "credentialRefOf", args: [investorC] }),
-        client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "commitmentOf", args: [investorC] }),
-      ]);
-      await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "revoke", args: [investorC], chain: null }) });
+      // A holder the deposit cannot credit (the bank's claim revoked) is held for, not skipped (E3).
+      await onboarding.revokeDeposit(operator as any, "adm_test_c", "Screening hit under review");
       await life.payEvent(operator as any, n.id, k, "coupon");
       view = await life.lifecycleOf((await store.noteById(n.id))!);
       const held = view.dates[k].events[0].payments.find((p) => p.holder.toLowerCase() === investorC.toLowerCase())!;
       assert.equal(held.held, true);
       assert.equal(view.dates[k].events[0].closed, true, "the event still closes for everyone else");
       await assert.rejects(life.claimHeld(operator as any, n.id, view.dates[k].events[0].id, investorC), /cannot yet receive/);
-      await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grant", args: [investorC, g.flags, g.jurisdiction, g.expiresAt, ref, commitment], chain: null }) });
+      // The deployment onboarded investor C itself, so the bank vouches again on the chain directly.
+      await identities.vouch(onboarding.dataOf((await store.admissionById("adm_test_c"))!).identity!, "deposit", keccak256(toBytes("investor C, re-screened")));
       await new Promise((r) => setTimeout(r, 1600));
       const before = await deposit(investorC);
       await life.claimHeld(operator as any, n.id, view.dates[k].events[0].id, investorC);
-      assert.equal(await deposit(investorC), before + 2_500n, "claimed once its grant is live again");
+      assert.equal(await deposit(investorC), before + 2_500n, "claimed once the bank's claim stands again");
       continue;
     }
 
@@ -452,11 +455,11 @@ test("a key that cannot pay its fees is refused before signing, named, warned ab
   const view = await keys.keyBalances(true);
   assert.equal(view.rows.find((r) => r.capacity === "calculationAgent")?.state, "empty");
   assert.equal(view.rows.find((r) => r.capacity === "servicing1")?.state, "signs-only");
-  assert.ok((await keys.lowKeys()).some((r) => r.capacity === "calculationAgent"), "every Operator page warns of it");
+  assert.ok((await keys.lowKeys()).some((r) => r.capacity === "calculationAgent"), "every staff portal warns of it");
 
   await assert.rejects(
-    s.send("calculationAgent", { address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "revoke", args: [LOCAL.parties.investorD] }),
-    /The Calculation Agent's key 0x[0-9a-fA-F]{40} holds 0\.000000000000001 ETH; this transaction needs about .* Top it up under Operator → Keys\./,
+    s.send("calculationAgent", { address: LOCAL.instruments.gateway, abi: GATEWAY, functionName: "credit", args: [LOCAL.parties.investorD, 1n, keccak256(toBytes("fees"))] }),
+    /The Calculation Agent's key 0x[0-9a-fA-F]{40} holds 0\.000000000000001 ETH; this transaction needs about .* Top it up under Agent → Keys\./,
   );
 
   await assert.rejects(keys.topUp({ ...operator, email: "someone@corp.example" } as any, "calculationAgent"), /Not permitted/);

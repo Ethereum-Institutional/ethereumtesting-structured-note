@@ -1,9 +1,9 @@
 /**
- * Exports what the site needs to issue a demonstration note (ADR 0072): the compiled lifecycle
- * contracts it deploys, from the instruments unit's build, and the scenarios it offers, from the
- * independent payoff model's vectors. Run after the instruments are built; the output is committed,
- * since the hosted build has neither. The note's own implementation is not exported: a
- * demonstration note reuses the live note's, so it runs the very code under review.
+ * Exports what the site needs to issue a demonstration note (ADRs 0072, 0088): the compiled
+ * lifecycle contracts it deploys, from the instruments unit's build, and the scenarios it offers,
+ * from the independent payoff model's vectors. Run after the instruments are built; the output is
+ * committed, since the hosted build has neither. The note's token is not exported: T-REX's factory
+ * issues it on the deployment's fixed implementations, so it runs the very code under review.
  *
  *   (cd ../instruments && forge build) && node scripts/export-note-contracts.mjs
  */
@@ -11,7 +11,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..", "..");
-const CONTRACTS = ["InstrumentGate", "ERC1967Proxy", "DeterminationAgent", "RecordDateEngine", "PayingAgent", "DvPSettlement", "LockedSettlement"];
+const CONTRACTS = ["DeterminationAgent", "RecordDateModule", "PayingAgent", "LockedSettlement"];
 const artifacts = {};
 for (const name of CONTRACTS) {
   const a = JSON.parse(readFileSync(join(root, "instruments", "out", `${name}.sol`, `${name}.json`), "utf8"));

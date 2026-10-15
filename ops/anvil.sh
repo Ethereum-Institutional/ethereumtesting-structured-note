@@ -10,11 +10,12 @@ LOG="${LOG:-/tmp/anvil-local.log}"
 pkill -f "anvil --chain-id 31337" 2>/dev/null || true
 sleep 1
 # 23 funded accounts: the ten capacities, twelve wallet signers from index 10 (Ceremony), and
-# the local credential issuer at index 22 (ADR 0040).
+# the third-party custodian at index 22 (ADR 0089).
 nohup anvil \
   --chain-id 31337 \
   --accounts 23 \
   --block-time 1 \
+  ${ANVIL_LOAD_STATE:+--load-state "$ANVIL_LOAD_STATE"} \
   --silent > "$LOG" 2>&1 &
 
 for _ in $(seq 1 30); do
