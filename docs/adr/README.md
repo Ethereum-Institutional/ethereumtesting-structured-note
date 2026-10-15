@@ -103,3 +103,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0093](0093-sign-in-by-code.md) | Sign-in by a six-digit code sent by email, in place of one-time links | Accepted |
 | [0094](0094-reconciliation-statement.md) | A reconciliation statement for every note, as at any day, now or a block | Accepted |
 | [0095](0095-term-sheet-as-data.md) | The term sheet as data: a typed record, the input to issuance, its hash on the note | Accepted |
+| [0096](0096-order-of-lifecycle-events.md) | The order of lifecycle events, written from the contracts and walked by a test | Accepted |
