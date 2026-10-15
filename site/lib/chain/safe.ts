@@ -1,6 +1,7 @@
 import "server-only";
 import { concat, parseAbi, zeroAddress, type Address, type Hex } from "viem";
 import type { signers } from "./signer.ts";
+import { until } from "./until.ts";
 
 /**
  * Acting through one of the deployment's multi-signature wallets (Safe 1.4.1, ADRs 0016, 0072).
@@ -20,7 +21,7 @@ type Signers = ReturnType<typeof signers>;
 
 /**
  * Has `wallet` call `to` with `data`, signed by `owners` (capacities whose keys the site holds) and
- * sent by `sender`. Returns the transaction hash once it is mined.
+ * sent by `sender`. Returns the transaction hash once it is mined and the wallet's new nonce reads back.
  */
 export async function execThroughWallet(s: Signers, wallet: Address, owners: string[], sender: string, to: Address, data: Hex): Promise<Hex> {
   const [nonce, threshold, onChain] = await Promise.all([
@@ -40,10 +41,14 @@ export async function execThroughWallet(s: Signers, wallet: Address, owners: str
   // Signatures in ascending order of owner, as the wallet requires.
   signing.sort((a, b) => (BigInt(a.address) < BigInt(b.address) ? -1 : 1));
   const signatures = concat(await Promise.all(signing.slice(0, Number(threshold)).map((o) => s.signHash(o.capacity, hash))));
-  return s.send(sender, {
+  const tx = await s.send(sender, {
     address: wallet,
     abi: SAFE,
     functionName: "execTransaction",
     args: [to, 0n, data, 0, 0n, 0n, 0n, zeroAddress, zeroAddress, signatures],
   });
+  // The wallet's next act signs over its next nonce: wait until reads show this one used, or a
+  // node a block behind would hand the next act the same nonce, and the wallet refuse it (GS026).
+  await until(() => s.publicClient.readContract({ address: wallet, abi: SAFE, functionName: "nonce" }), (n) => n > nonce);
+  return tx;
 }

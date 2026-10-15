@@ -1,6 +1,6 @@
 import { test, expect, expectHealthy, signedIn, warpTo, PEOPLE } from "./fixtures.ts";
 
-test("governance: Tier 1 corrects the register with its reason; the Agent alone cannot force a transfer; Tier 2 needs two institutions and the delay", async ({ browser }) => {
+test("governance: Tier 1 corrects the register, recovers a lost wallet and freezes an account, each with its reason; the Agent alone cannot force a transfer; Tier 2 needs two institutions and the delay", async ({ browser }) => {
   test.setTimeout(240_000);
   const staff = await signedIn(browser, PEOPLE.operator);
   await staff.goto("/agent");
@@ -17,6 +17,36 @@ test("governance: Tier 1 corrects the register with its reason; the Agent alone 
   await expect(correct.getByRole("status").filter({ hasText: "Corrected: 1 unit moved" })).toBeVisible({ timeout: 60_000 });
   await staff.reload();
   await expect(staff.getByRole("table").filter({ hasText: "Written reason" }).getByRole("row").filter({ hasText: "lost key reported" }).first()).toContainText("correctRegister");
+
+  // S-25 by ERC-3643's own recovery: a holder's units, and its identity, move to its new wallet.
+  await staff.getByText("Recover a lost wallet…").click();
+  const recover = staff.locator("form").filter({ has: staff.getByRole("button", { name: "Recover the units" }) });
+  const lost = recover.locator('select[name="lost"] option', { hasText: "investorB" });
+  await recover.locator('select[name="lost"]').selectOption((await lost.getAttribute("value"))!);
+  await recover.locator('input[name="replacement"]').fill("0x00000000000000000000000000000000000b0b0b");
+  await recover.getByLabel("Written reason").fill("Browser test: investor B reported its key lost");
+  await recover.getByRole("button", { name: "Recover the units" }).click();
+  await expect(recover.getByRole("status").filter({ hasText: "Recovered: the units and the identity are on the new wallet" })).toBeVisible({ timeout: 60_000 });
+
+  // The supervisory stop: frozen at once, whichever institution vouched for the account, then lifted.
+  await staff.getByText(/^Freeze an account/).click();
+  const stop = staff.locator("form").filter({ has: staff.getByRole("button", { name: "Act", exact: true }) });
+  const account = (await stop.locator('select[name="account"] option', { hasText: "investorA" }).getAttribute("value"))!;
+  await stop.locator('select[name="what"]').selectOption("freeze");
+  await stop.locator('select[name="account"]').selectOption(account);
+  await stop.getByLabel("Written reason").fill("Browser test: sanctions screening hit under review");
+  await stop.getByRole("button", { name: "Act", exact: true }).click();
+  await expect(stop.getByRole("status").filter({ hasText: "Frozen: the account can neither send nor receive the note." })).toBeVisible({ timeout: 60_000 });
+  // The form clears once it has acted, so the account is chosen again.
+  await stop.locator('select[name="what"]').selectOption("unfreeze");
+  await stop.locator('select[name="account"]').selectOption(account);
+  await stop.getByLabel("Written reason").fill("Browser test: screening cleared");
+  await stop.getByRole("button", { name: "Act", exact: true }).click();
+  await expect(stop.getByRole("status").filter({ hasText: "Unfrozen." })).toBeVisible({ timeout: 60_000 });
+  await staff.reload();
+  const reasons = staff.getByRole("table").filter({ hasText: "Written reason" });
+  await expect(reasons.getByRole("row").filter({ hasText: "investor B reported its key lost" }).first()).toContainText("recoverWallet");
+  await expect(reasons.getByRole("row").filter({ hasText: "screening cleared" }).first()).toContainText("unfreezeAccount");
 
   // S-26: the Agent's servicing wallet forcing a transfer directly is refused.
   await staff.getByText("Outside the control framework (S-26)…").click();
