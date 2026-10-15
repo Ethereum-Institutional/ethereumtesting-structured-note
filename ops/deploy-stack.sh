@@ -21,8 +21,12 @@ cd "$ROOT"
 source "${KEYS:-./ops/keys.env}"
 
 RPC="${RPC:-http://127.0.0.1:8545}"
-# On a live network, broadcast one transaction at a time and wait for each (FORGE_FLAGS="--slow").
 FS="--rpc-url $RPC --broadcast ${FORGE_FLAGS:-}"
+# Ethereum Sepolia runs Amsterdam, which prices state creation far above what forge simulates (the
+# foundry.toml EVM version): a 10 KB contract costs some 15M gas, not 2.1M. So on a public network
+# forge skips its own simulation and takes each transaction's gas from the chain's estimate, one
+# transaction at a time so each is estimated on the state the one before it left (ADR 0098).
+[ "${PUBLIC_NETWORK:-0}" = 1 ] && FS="$FS --skip-simulation --slow"
 
 step() { printf '\n\033[1m── %s\033[0m\n' "$1"; }
 

@@ -37,3 +37,9 @@ ops/attestations/*.json
 
 # Generated documents, such as a PDF of the solution overview: shared by hand, never committed.
 docs/*.pdf
+
+# The bank VM bundle's settings, keys and manifest (ops/vm/vm-env.sh)
+ops/vm/site.env
+ops/vm/.env
+ops/vm/manifest.json
+ops/__pycache__/

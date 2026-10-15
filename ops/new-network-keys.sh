@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Generates a fresh key set for a deployment on a public network (ADR 0051): one new mnemonic,
 # with every capacity at the same index as on the local node (keys.env) and the ceremony's wallet
-# signers at indices 10 to 21. The local node's published keys are never used off it: on the
-# test network they carry EIP-7702 delegations set by whoever holds them (ADR 0041).
+# signers at indices 10 to 21, and the third-party custodian at 22 (ADR 0089). The local node's
+# published keys are never used off it: on the test network they carry EIP-7702 delegations set by whoever holds them (ADR 0041).
 #
 #   ./ops/new-network-keys.sh base-sepolia-integration
 #
@@ -27,11 +27,12 @@ umask 077
     echo "export ${cap}_PK=$(key $i)  # account $i"
     i=$((i + 1))
   done
+  echo "export THIRD_PARTY_CUSTODIAN_PK=$(key 22)  # account 22"
 } > "$OUT"
 chmod 600 "$OUT"
 
 echo "Wrote $OUT. Addresses to fund:"
 set -a; source "$OUT"; set +a
-for cap in ISSUER AGENT ACCESS_ISSUER INVESTOR_A INVESTOR_B INVESTOR_C INVESTOR_D CALCULATION_AGENT CUSTODIAN DEPOSIT_AGENT; do
-  v="${cap}_PK"; printf '  %-18s %s\n' "$cap" "$(cast wallet address "${!v}")"
+for cap in ISSUER AGENT ACCESS_ISSUER INVESTOR_A INVESTOR_B INVESTOR_C INVESTOR_D CALCULATION_AGENT CUSTODIAN DEPOSIT_AGENT THIRD_PARTY_CUSTODIAN; do
+  v="${cap}_PK"; printf '  %-22s %s\n' "$cap" "$(cast wallet address "${!v}")"
 done

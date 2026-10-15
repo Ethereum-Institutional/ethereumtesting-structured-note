@@ -19,6 +19,8 @@ const csp = [
 /** @type {import('next').NextConfig} */
 export default {
   poweredByHeader: false,
+  // The bank's container image runs the self-contained server (ops/vm, ADR 0098); Vercel builds as before.
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" } : {}),
   // Pages that moved keep their old addresses: the client's from /admit to /onboard, and the staff
   // console's from /operator into the portals (ADR 0089).
   async redirects() {

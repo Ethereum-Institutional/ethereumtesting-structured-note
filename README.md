@@ -9,7 +9,7 @@ factory, the conversion pool, and reconciliation at any block.
   `docs/solution-overview.pdf`, generated from it. The gated site in `site/` serves the overview.
 - **The order of a note's life,** step by step, as the contracts enforce it:
   `docs/lifecycle-sequence.md`.
-- **Why each design decision went the way it did:** `docs/adr/`. 0.2.0's are ADRs 0085 to 0097.
+- **Why each design decision went the way it did:** `docs/adr/`. 0.2.0's are ADRs 0085 to 0098.
 - **The 0.2.0 plan and its workstreams:** `docs/plan/0.2.0.md`.
 - **Where things stand, hazards and open items:** `HANDOFF.md`.
 - **Spikes:** `docs/spikes/`, with their harnesses under `spikes/`.
@@ -28,8 +28,8 @@ compiler.
 | `instruments/` | solc 0.8.30, T-REX 5.0.0-beta2 and ONCHAINID 2.2 by Soldeer | The note (ERC-3643), the record-date module, the claim issuers, the tokenized deposit and its gateway, the Determination Agent, the Paying Agent, locked settlement, the note factory and the governance controller, with their deploy scripts and tests |
 | `contracts/`, `script/`, `test/` | solc 0.8.26, IR pipeline | The venue (hook, checker, router, pool gate) and custody accounts, with their deploy scripts and tests |
 | `site/` | Next.js | The site: five portals behind sign-in by emailed code, the Ledger, reconciliation, and the chain library |
-| `ops/` | | The local chain, the deploy sequence, snapshots and keys |
-| `docs/` | | The overview and its PDF, the lifecycle sequence, ADRs, the plan and spikes |
+| `ops/` | | The local chain, the deploy sequence, snapshots and keys; `ops/vm/` is the site's container bundle for the bank's virtual machine (ADR 0098) |
+| `docs/` | | The overview and its PDF, the lifecycle sequence, the IT hand-over guide, the AI build brief, ADRs, the plan and spikes |
 
 T-REX and ONCHAINID are GPL-3.0; only the files that compile them in carry that licence (ADR 0087).
 

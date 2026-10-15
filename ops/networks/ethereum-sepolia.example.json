@@ -1,0 +1,19 @@
+{
+  "chainId": 11155111,
+  "rpcUrl": "<an Ethereum Sepolia RPC URL, such as Alchemy's https://eth-sepolia.g.alchemy.com/v2/<key>>",
+  "poolManager": "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
+  "weth": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+  "paymentToken": {
+    "address": "0x08210F9170F89Ab7658F0B5E3fF39b0E03C594D4",
+    "symbol": "EURC",
+    "decimals": 6,
+    "balanceSlot": 9
+  },
+  "names": {
+    "NOTE_NAME": "<from naming sign-off>",
+    "NOTE_SYMBOL": "<from naming sign-off>",
+    "DEPOSIT_NAME": "<from naming sign-off>",
+    "DEPOSIT_SYMBOL": "<from naming sign-off>",
+    "TERM_SHEET_BASE": "<the site's origin, where each term sheet is published at /term-sheets/<hash>>"
+  }
+}

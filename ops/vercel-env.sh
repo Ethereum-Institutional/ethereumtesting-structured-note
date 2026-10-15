@@ -18,18 +18,8 @@ TEAM="${VERCEL_TEAM:-team_ZL9r7lekuStIElkLskhD8X3t}"
 AUTH="$HOME/Library/Application Support/com.vercel.cli/auth.json"
 
 set -a; source "$KEYS"; set +a
-# Two owners of the Agent's 2-of-3 servicing wallet, which pays (ADR 0072): mnemonic indices 19 and 20 (Ceremony).
-export SERVICING1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 19)"
-export SERVICING2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 20)"
-# Two owners of each institution's 2-of-3 governance wallet (ADR 0082): the Agent's (10, 11), the
-# Issuer's (13, 14) and the co-signing institution's (16, 17).
-export AGENT_GOV1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 10)"
-export AGENT_GOV2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 11)"
-export ISSUER_GOV1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 13)"
-export ISSUER_GOV2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 14)"
-export COSIGNER1_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 16)"
-export COSIGNER2_PK="$(cast wallet private-key "$WALLET_MNEMONIC" 17)"
 export MANIFEST NETWORK
+export ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The CLI's saved login expires after some hours; any CLI command renews it before it is read.
 npx --yes vercel whoami >/dev/null 2>&1 || { echo "Vercel CLI login failed: run 'npx vercel login'" >&2; exit 1; }
 export VERCEL_TOKEN="$(python3 -c "import json;print(json.load(open('$AUTH'))['token'])")"
@@ -37,27 +27,9 @@ export VERCEL_TOKEN="$(python3 -c "import json;print(json.load(open('$AUTH'))['t
 python3 - "$PROJECT" "$TEAM" <<'PY'
 import json, os, sys, urllib.request
 project, team = sys.argv[1], sys.argv[2]
-net = json.load(open(os.environ["NETWORK"]))
-env = {
-    "MANIFEST_JSON": json.dumps(json.load(open(os.environ["MANIFEST"])), separators=(",", ":")),
-    "RPC_URL": net["rpcUrl"],
-    "SIGNER_KEYS": json.dumps({
-        # The onboarding agent, the bank (as Deposit Agent), its custody platform, and a third-party custodian (ADR 0089).
-        "accessIssuer": os.environ["ACCESS_ISSUER_PK"], "depositAgent": os.environ["DEPOSIT_AGENT_PK"],
-        "custodian": os.environ["CUSTODIAN_PK"], "thirdPartyCustodian": os.environ["THIRD_PARTY_CUSTODIAN_PK"],
-        # The demonstration notes' roles (ADR 0072).
-        "issuer": os.environ["ISSUER_PK"], "agent": os.environ["AGENT_PK"], "calculationAgent": os.environ["CALCULATION_AGENT_PK"],
-        "servicing1": os.environ["SERVICING1_PK"], "servicing2": os.environ["SERVICING2_PK"],
-        "agentGov1": os.environ["AGENT_GOV1_PK"], "agentGov2": os.environ["AGENT_GOV2_PK"],
-        "issuerGov1": os.environ["ISSUER_GOV1_PK"], "issuerGov2": os.environ["ISSUER_GOV2_PK"],
-        "cosigner1": os.environ["COSIGNER1_PK"], "cosigner2": os.environ["COSIGNER2_PK"],
-    }),
-}
-# The Ledger reads history through Alchemy, whose log queries take the whole range (ADR 0071).
-ALCHEMY_NETWORKS = {84532: "base-sepolia", 8453: "base-mainnet", 11155111: "eth-sepolia"}
-chain_id = json.load(open(os.environ["MANIFEST"]))["chainId"]
-if os.environ.get("ALCHEMY_API_KEY") and chain_id in ALCHEMY_NETWORKS:
-    env["LEDGER_RPC_URL"] = f"https://{ALCHEMY_NETWORKS[chain_id]}.g.alchemy.com/v2/{os.environ['ALCHEMY_API_KEY']}"
+sys.path.insert(0, os.path.join(os.environ["ROOT"], "ops"))
+from site_env import site_env
+env = site_env(os.environ["MANIFEST"], os.environ["NETWORK"], embed_manifest=True)
 for key, value in env.items():
     body = json.dumps({"key": key, "value": value, "type": "sensitive", "target": ["production"]}).encode()
     req = urllib.request.Request(

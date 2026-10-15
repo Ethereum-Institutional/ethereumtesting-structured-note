@@ -255,7 +255,7 @@ const toAdmission = (r: Row): Admission => ({
 });
 
 function postgresStore(url: string): Store {
-  const sql = postgres(url, { max: 3, prepare: false });
+  const sql = postgres(url, { max: 3, prepare: false, onnotice: () => {} }); // "already exists" on every start is not news
   let ready: Promise<unknown> | null = null;
   const q = async () => {
     ready ??= sql.unsafe(DDL);
