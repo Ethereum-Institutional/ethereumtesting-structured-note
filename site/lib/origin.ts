@@ -2,9 +2,9 @@ import "server-only";
 import { headers } from "next/headers";
 
 /**
- * The origin written into emailed links. In production it comes only from SITE_URL: taking it
- * from the request's Host header would let anyone have a genuine token mailed out inside a link
- * to a domain of their choosing.
+ * The origin written into the site's emails, such as the notice of approval. In production it
+ * comes only from SITE_URL: taking it from the request's Host header would let anyone have a
+ * genuine mail from the site point to a domain of their choosing.
  */
 export async function siteOrigin(): Promise<string> {
   const configured = process.env.SITE_URL?.replace(/\/+$/, "");

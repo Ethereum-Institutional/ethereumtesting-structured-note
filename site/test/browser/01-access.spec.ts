@@ -27,16 +27,17 @@ test("the bank approves one sign-up and declines another; each staff member sees
   await expect(declined.locator(".pill")).toHaveText("revoked");
 
   // A registration that has not confirmed its address (ADR 0077): the page says so, and staff can
-  // send a fresh link, or approve ahead of the confirmation.
+  // send a fresh code, or approve ahead of the confirmation.
   const unconfirmed = page.getByRole("row").filter({ hasText: PEOPLE.unconfirmed.email });
   await expect(unconfirmed).toContainText("Hasn't confirmed their email yet");
-  await unconfirmed.getByRole("button", { name: "Resend link" }).click();
-  await expect(unconfirmed.getByRole("status")).toHaveText(`Sent a fresh link to ${PEOPLE.unconfirmed.email}.`);
+  await unconfirmed.getByRole("button", { name: "Resend code" }).click();
+  await expect(unconfirmed.getByRole("status")).toHaveText(`Sent a fresh code to ${PEOPLE.unconfirmed.email}.`);
   const mails = await (await fetch(`http://127.0.0.1:${MAILBOX_PORT}/test/mails`)).json();
-  expect(mails.at(-1)).toMatchObject({ to: PEOPLE.unconfirmed.email, subject: "Confirm your email address" });
-  expect(mails.at(-1).text).toContain("/access?token=");
+  expect(mails.at(-1)).toMatchObject({ to: PEOPLE.unconfirmed.email, subject: "Your code to confirm your email address" });
+  expect(mails.at(-1).text).toMatch(/\b\d{6}\b/);
+  expect(mails.at(-1).text).not.toContain("http");
   // Again at once: throttled, and said so.
-  await unconfirmed.getByRole("button", { name: "Resend link" }).click();
+  await unconfirmed.getByRole("button", { name: "Resend code" }).click();
   await expect(unconfirmed.getByRole("alert")).toContainText("try again shortly");
   await unconfirmed.getByRole("button", { name: "Approve" }).click();
   await expect(unconfirmed.locator(".pill")).toHaveText("approved");

@@ -100,3 +100,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0090](0090-pool-on-identities.md) | The conversion pool, on by default, gated on the same ONCHAINID identities | Accepted |
 | [0091](0091-note-factory.md) | The note factory: a note issued whole in one transaction, owned by the factory for the Issuer | Accepted |
 | [0092](0092-the-banks-deposit-acts.md) | The bank's acts on its deposit: debit, hold, pause and a move by order, on a Deposit page | Accepted |
+| [0093](0093-sign-in-by-code.md) | Sign-in by a six-digit code sent by email, in place of one-time links | Accepted |

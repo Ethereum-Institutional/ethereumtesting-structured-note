@@ -3,8 +3,8 @@ import "server-only";
 /**
  * Outbound mail through Resend.
  *
- * In production, a missing configuration is an error: a link that cannot be delivered must never
- * be shown on screen instead, since that would let anyone sign in as any address. In development
+ * In production, a missing configuration is an error: a sign-in code that cannot be delivered must
+ * never be shown on screen instead, since that would let anyone sign in as any address. In development
  * the message is written to the server log.
  */
 

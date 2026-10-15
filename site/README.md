@@ -6,26 +6,27 @@ overview, and the overview itself.
 
 ## Access flow
 
-1. A visitor registers with name, organisation and work email, and is sent a one-time link.
-2. Opening the link shows a **Continue** step. The link is consumed only when that is submitted,
-   so a mail scanner that fetches links in advance cannot use it up.
-3. The first confirmation verifies the address. An address on a domain in `AUTO_APPROVE_DOMAINS`
-   is approved at once; any other joins the approval queue and operators are emailed.
-4. An operator approves at `/operator`. The registrant is emailed and signs in with a new link.
+1. A visitor registers with name, organisation and work email, and is sent a six-digit code,
+   which it types into the same page (ADR 0093). A code cannot be used up by a mail scanner.
+2. The code lasts ten minutes and works once; five wrong tries spend it, and asking for a new one
+   retires the one before.
+3. The first code verifies the address. An address on a domain in `AUTO_APPROVE_DOMAINS` is
+   approved at once; any other joins the approval queue and staff are emailed.
+4. The bank's staff approve at `/bank`. The registrant is emailed, and signs in with a new code.
 5. Revocation deletes the registrant's sessions; access ends on their next request.
 
-Every link request returns the same response whether or not the address is known. Links are
-throttled to one a minute per address. Only hashes of link tokens and session identifiers are
-stored. Every registration, verification, sign-in and decision is in the audit log on the operator
-page.
+Every request for a code returns the same response whether or not the address is known, and a
+wrong code reads the same as an unknown address. Codes are throttled to one a minute per address.
+Only salted hashes of codes, and hashes of session identifiers, are stored. Every registration,
+verification, sign-in and decision is in the audit log.
 
 ## Configuration
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `SITE_URL` | production | Origin written into emailed links. Never taken from the request |
+| `SITE_URL` | production | Origin written into the site's emails, such as the notice of approval. Never taken from the request |
 | `POSTGRES_URL` | production | Store. Without it, production refuses to start |
-| `RESEND_API_KEY`, `MAIL_FROM` | production | Mail. Without them, no link is issued; links are never shown on screen |
+| `RESEND_API_KEY`, `MAIL_FROM` | production | Mail. Without them, no code is issued; codes are never shown on screen |
 | `OPERATOR_EMAILS` | yes | Comma-separated. Who may approve and revoke. Explicit list; no default, no domain rule |
 | `AUTO_APPROVE_DOMAINS` | no | Comma-separated domains whose addresses are approved on verification. Reading access only; exact match, subdomains excluded |
 

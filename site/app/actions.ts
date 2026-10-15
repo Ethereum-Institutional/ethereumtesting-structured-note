@@ -9,7 +9,7 @@ import { addClient, rescreenClient } from "@/lib/identity/clients";
 import { MailUnavailable } from "@/lib/mail";
 import { siteOrigin } from "@/lib/origin";
 
-export type FormState = { sent?: boolean; error?: string };
+export type FormState = { sent?: boolean; error?: string; email?: string };
 
 /**
  * An admission step that fails has already recorded why in the admission itself, where the page
@@ -28,10 +28,10 @@ async function recorded(run: () => Promise<unknown>, path: string) {
 
 const field = (f: FormData, k: string) => String(f.get(k) ?? "");
 
-async function guarded(run: (origin: string) => Promise<{ ok: boolean; error?: string }>): Promise<FormState> {
+async function guarded(run: (origin: string) => Promise<{ ok: boolean; error?: string; email?: string }>): Promise<FormState> {
   try {
     const r = await run(await siteOrigin());
-    return r.ok ? { sent: true } : { error: r.error };
+    return r.ok ? { sent: true, email: r.email } : { error: r.error };
   } catch (e) {
     console.error(e);
     if (e instanceof MailUnavailable) return { error: "Email delivery is unavailable. Please try again later." };
@@ -49,9 +49,18 @@ export async function signInAction(_: FormState, f: FormData): Promise<FormState
   return guarded((origin) => requestSignIn(field(f, "email"), origin));
 }
 
-export async function confirmAction(f: FormData) {
-  const outcome = await confirm(field(f, "token"), await siteOrigin());
-  redirect(outcome === "signed-in" ? "/" : outcome === "pending" ? "/pending" : "/access?invalid=1");
+/** The code the visitor types (ADR 0093): signed in, waiting for approval, or refused in words. */
+export async function confirmCodeAction(_: FormState, f: FormData): Promise<FormState> {
+  const email = field(f, "email");
+  let outcome: Awaited<ReturnType<typeof confirm>>;
+  try {
+    outcome = await confirm(email, field(f, "code"), await siteOrigin());
+  } catch (e) {
+    console.error(e);
+    return { sent: true, email, error: "Something went wrong. Please try again later." };
+  }
+  if (outcome === "invalid") return { sent: true, email, error: "That code is not right, or it has expired. Check it, or ask for a new one." };
+  redirect(outcome === "signed-in" ? "/" : "/pending");
 }
 
 export async function signOutAction() {
@@ -67,7 +76,7 @@ export async function decideAction(f: FormData) {
   revalidatePath("/bank", "layout");
 }
 
-/** Staff resend the confirmation link; whether the mail went is said on the row. */
+/** Staff resend the confirmation code; whether the mail went is said on the row. */
 export async function resendLinkAction(_prev: FormState, f: FormData): Promise<FormState> {
   if (!(await currentStaff("bank"))) return { error: "Not permitted." };
   try {
@@ -75,7 +84,7 @@ export async function resendLinkAction(_prev: FormState, f: FormData): Promise<F
     return { sent: true };
   } catch (e) {
     console.error(e);
-    return { error: e instanceof MailUnavailable ? "Email delivery is unavailable: the link was not sent." : (e as Error).message };
+    return { error: e instanceof MailUnavailable ? "Email delivery is unavailable: the code was not sent." : (e as Error).message };
   } finally {
     revalidatePath("/bank", "layout");
   }

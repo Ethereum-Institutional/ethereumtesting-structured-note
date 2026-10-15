@@ -26,7 +26,7 @@ writeFileSync(
   join(STORE_DIR, "store.json"),
   JSON.stringify({
     registrants: Object.values(PEOPLE).map(({ sid: _sid, ...p }) => ({ ...p, createdAt: created, verifiedAt: p.status === "unverified" ? null : created, decidedAt: null, decidedBy: null })),
-    links: [],
+    codes: [],
     sessions: Object.values(PEOPLE).map((p) => ({ hash: sha256(p.sid), registrantId: p.id, expiresAt: expires })),
     audit: [],
     admissions: [],

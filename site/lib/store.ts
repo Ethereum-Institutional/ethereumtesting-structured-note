@@ -5,13 +5,13 @@ import postgres from "postgres";
 import { loadManifest } from "./chain/manifest.ts";
 
 /**
- * Registrations, one-time links, sessions and the audit log.
+ * Registrations, one-time sign-in codes, sessions and the audit log.
  *
  * Postgres when POSTGRES_URL or DATABASE_URL is set. Otherwise a JSON file under .data/, which
  * exists for local development only: in production the store refuses to start without Postgres,
  * so a misconfigured deployment fails closed rather than keeping access state in ephemeral disk.
  *
- * Only hashes of link tokens and session identifiers are stored.
+ * Only salted hashes of sign-in codes, and hashes of session identifiers, are stored.
  */
 
 export type Status = "unverified" | "pending" | "approved" | "revoked";
@@ -115,12 +115,14 @@ export interface Store {
   setStatus(id: string, status: Status, fields: Partial<Pick<Registrant, "verifiedAt" | "decidedAt" | "decidedBy">>): Promise<void>;
   listRegistrants(): Promise<Registrant[]>;
 
-  putLink(hash: string, registrantId: string, expiresAt: string): Promise<void>;
-  latestLinkAt(registrantId: string): Promise<string | null>;
-  /** Marks the link used and returns its registrant, or null if absent, used or expired. Atomic. */
-  consumeLink(hash: string, now: string): Promise<string | null>;
-  /** Whether the link exists and is still usable, without consuming it. */
-  linkUsable(hash: string, now: string): Promise<boolean>;
+  putCode(c: { id: string; registrantId: string; salt: string; hash: string; expiresAt: string }): Promise<void>;
+  latestCodeAt(registrantId: string): Promise<string | null>;
+  /** The registrant's newest code, if it is neither used, spent nor expired. */
+  activeCode(registrantId: string, now: string): Promise<{ id: string; salt: string; hash: string; attempts: number } | null>;
+  /** Marks a still-active code used; true when this call used it, so a code works once. Atomic. */
+  useCode(id: string, now: string): Promise<boolean>;
+  /** Counts a wrong attempt on a code, and spends it once the attempts reach `max`. */
+  failCode(id: string, max: number, now: string): Promise<void>;
 
   putSession(hash: string, registrantId: string, expiresAt: string): Promise<void>;
   sessionRegistrant(hash: string, now: string): Promise<string | null>;
@@ -171,14 +173,17 @@ create table if not exists registrants (
   decided_at timestamptz,
   decided_by text
 );
-create table if not exists links (
-  hash text primary key,
+create table if not exists codes (
+  id text primary key,
   registrant_id text not null references registrants(id),
+  salt text not null,
+  hash text not null,
+  attempts integer not null default 0,
   created_at timestamptz not null default now(),
   expires_at timestamptz not null,
   used_at timestamptz
 );
-create index if not exists links_registrant on links(registrant_id, created_at desc);
+create index if not exists codes_registrant on codes(registrant_id, created_at desc);
 create table if not exists sessions (
   hash text primary key,
   registrant_id text not null references registrants(id),
@@ -277,26 +282,33 @@ function postgresStore(url: string): Store {
       const s = await q();
       return (await s`select * from registrants order by created_at desc`).map(toRegistrant);
     },
-    async putLink(hash, registrantId, expiresAt) {
+    async putCode(c) {
       const s = await q();
-      await s`insert into links (hash, registrant_id, expires_at) values (${hash}, ${registrantId}, ${expiresAt})`;
+      await s`insert into codes (id, registrant_id, salt, hash, expires_at) values (${c.id}, ${c.registrantId}, ${c.salt}, ${c.hash}, ${c.expiresAt})`;
     },
-    async latestLinkAt(registrantId) {
+    async latestCodeAt(registrantId) {
       const s = await q();
-      const [r] = await s`select created_at from links where registrant_id = ${registrantId} order by created_at desc limit 1`;
+      const [r] = await s`select created_at from codes where registrant_id = ${registrantId} order by created_at desc limit 1`;
       return r ? iso(r.created_at) : null;
     },
-    async consumeLink(hash, now) {
+    async activeCode(registrantId, now) {
       const s = await q();
-      const [r] = await s`update links set used_at = ${now}
-                          where hash = ${hash} and used_at is null and expires_at > ${now}
-                          returning registrant_id`;
-      return r ? (r.registrant_id as string) : null;
+      // Only the newest code counts: asking for a new one retires the one before.
+      const [r] = await s`select id, salt, hash, attempts, used_at, expires_at from codes
+                          where registrant_id = ${registrantId} order by created_at desc limit 1`;
+      if (!r || r.used_at || iso(r.expires_at)! <= now) return null;
+      return { id: r.id as string, salt: r.salt as string, hash: r.hash as string, attempts: Number(r.attempts) };
     },
-    async linkUsable(hash, now) {
+    async useCode(id, now) {
       const s = await q();
-      const [r] = await s`select 1 from links where hash = ${hash} and used_at is null and expires_at > ${now}`;
+      const [r] = await s`update codes set used_at = ${now} where id = ${id} and used_at is null and expires_at > ${now} returning id`;
       return Boolean(r);
+    },
+    async failCode(id, max, now) {
+      const s = await q();
+      await s`update codes set attempts = attempts + 1,
+                               used_at = case when attempts + 1 >= ${max} then ${now}::timestamptz else used_at end
+              where id = ${id} and used_at is null`;
     },
     async putSession(hash, registrantId, expiresAt) {
       const s = await q();
@@ -415,7 +427,7 @@ const toJson = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v);
 
 type FileData = {
   registrants: Registrant[];
-  links: { hash: string; registrantId: string; createdAt: string; expiresAt: string; usedAt: string | null }[];
+  codes?: { id: string; registrantId: string; salt: string; hash: string; attempts: number; createdAt: string; expiresAt: string; usedAt: string | null }[];
   sessions: { hash: string; registrantId: string; expiresAt: string }[];
   audit: AuditEntry[];
   admissions?: Admission[];
@@ -429,7 +441,7 @@ function fileStore(dir: string): Store {
     try {
       return JSON.parse(readFileSync(path, "utf8"));
     } catch {
-      return { registrants: [], links: [], sessions: [], audit: [] };
+      return { registrants: [], codes: [], sessions: [], audit: [] };
     }
   };
   const save = (d: FileData) => {
@@ -464,23 +476,34 @@ function fileStore(dir: string): Store {
     async listRegistrants() {
       return [...load().registrants].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
-    async putLink(hash, registrantId, expiresAt) {
-      edit((d) => void d.links.push({ hash, registrantId, createdAt: new Date().toISOString(), expiresAt, usedAt: null }));
+    async putCode(c) {
+      edit((d) => void (d.codes ??= []).push({ ...c, attempts: 0, createdAt: new Date().toISOString(), usedAt: null }));
     },
-    async latestLinkAt(registrantId) {
-      const l = load().links.filter((x) => x.registrantId === registrantId).map((x) => x.createdAt).sort();
+    async latestCodeAt(registrantId) {
+      const l = (load().codes ?? []).filter((x) => x.registrantId === registrantId).map((x) => x.createdAt).sort();
       return l.at(-1) ?? null;
     },
-    async consumeLink(hash, now) {
+    async activeCode(registrantId, now) {
+      // Only the newest code counts: asking for a new one retires the one before.
+      const c = (load().codes ?? []).filter((x) => x.registrantId === registrantId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
+      if (!c || c.usedAt || c.expiresAt <= now) return null;
+      return { id: c.id, salt: c.salt, hash: c.hash, attempts: c.attempts };
+    },
+    async useCode(id, now) {
       return edit((d) => {
-        const l = d.links.find((x) => x.hash === hash && !x.usedAt && x.expiresAt > now);
-        if (!l) return null;
-        l.usedAt = now;
-        return l.registrantId;
+        const c = (d.codes ?? []).find((x) => x.id === id && !x.usedAt && x.expiresAt > now);
+        if (!c) return false;
+        c.usedAt = now;
+        return true;
       });
     },
-    async linkUsable(hash, now) {
-      return load().links.some((x) => x.hash === hash && !x.usedAt && x.expiresAt > now);
+    async failCode(id, max, now) {
+      edit((d) => {
+        const c = (d.codes ?? []).find((x) => x.id === id && !x.usedAt);
+        if (!c) return;
+        c.attempts += 1;
+        if (c.attempts >= max) c.usedAt = now;
+      });
     },
     async putSession(hash, registrantId, expiresAt) {
       edit((d) => void d.sessions.push({ hash, registrantId, expiresAt }));

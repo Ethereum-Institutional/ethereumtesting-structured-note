@@ -1,19 +1,30 @@
 "use client";
 
 import { useActionState } from "react";
-import { registerAction, signInAction, type FormState } from "./actions";
+import { confirmCodeAction, registerAction, signInAction, type FormState } from "./actions";
 
-const SENT =
-  "If the address can be used, a link has been sent to it. It is valid for 30 minutes and can be used once.";
+const SENT = "If the address can be used, a six-digit code has been sent to it. It is valid for 10 minutes and can be used once.";
 
-function Result({ state }: { state: FormState }) {
-  if (state.error) return <p className="notice err" role="alert">{state.error}</p>;
-  if (state.sent) return <p className="notice ok" role="status">{SENT}</p>;
-  return null;
+/** The code the visitor was sent, typed here (ADR 0093). */
+function CodeForm({ email }: { email: string }) {
+  const [state, action, pending] = useActionState(confirmCodeAction, { sent: true, email });
+  return (
+    <form action={action} className="stack">
+      <p className="notice ok" role="status">{SENT}</p>
+      <input type="hidden" name="email" value={email} />
+      <label>
+        Code
+        <input type="text" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="\s*\d{3}\s*\d{3}\s*" maxLength={9} required autoFocus />
+      </label>
+      <button type="submit" disabled={pending}>{pending ? "Checking" : "Continue"}</button>
+      {state.error && <p className="notice err" role="alert">{state.error}</p>}
+    </form>
+  );
 }
 
 export function RegisterForm() {
   const [state, action, pending] = useActionState(registerAction, {});
+  if (state.sent && state.email) return <CodeForm email={state.email} />;
   return (
     <form action={action} className="stack">
       <label>
@@ -29,21 +40,22 @@ export function RegisterForm() {
         <input type="email" name="email" autoComplete="email" required maxLength={254} />
       </label>
       <button type="submit" disabled={pending}>{pending ? "Sending" : "Register"}</button>
-      <Result state={state} />
+      {state.error && <p className="notice err" role="alert">{state.error}</p>}
     </form>
   );
 }
 
 export function SignInForm() {
   const [state, action, pending] = useActionState(signInAction, {});
+  if (state.sent && state.email) return <CodeForm email={state.email} />;
   return (
     <form action={action} className="stack">
       <label>
         Email
         <input type="email" name="email" autoComplete="email" required maxLength={254} />
       </label>
-      <button type="submit" disabled={pending}>{pending ? "Sending" : "Send sign-in link"}</button>
-      <Result state={state} />
+      <button type="submit" disabled={pending}>{pending ? "Sending" : "Send me a code"}</button>
+      {state.error && <p className="notice err" role="alert">{state.error}</p>}
     </form>
   );
 }
