@@ -47,7 +47,6 @@ export type ArgSpec =
   | "reason"
   | "plan"
   | "poolKey"
-  | "grantFlags"
   | "time"
   | "ref"
   | "role"
@@ -501,7 +500,6 @@ export class Tape {
       const t = this.manifest.assets[spec.amountIn];
       return t ? this.amount(value as bigint, t.address) : `${(value as bigint).toString()} base units`;
     }
-    if (spec === "grantFlags") return grantFlags(Number(value));
     if (spec === "restrictions") return restrictions(value as Record<string, boolean>);
     if (spec === "topics") return (Array.isArray(value) ? (value as bigint[]) : [value as bigint]).map(topicName).join(", ") || "none";
     if (spec === "claimData") return claimData(value as Hex);
@@ -609,21 +607,6 @@ function claimData(data: Hex): string {
   const word = (i: number) => BigInt(`0x${data.slice(2 + i * 64, 2 + (i + 1) * 64)}`);
   const at = (v: bigint) => new Date(Number(v) * 1000).toISOString().slice(0, 10);
   return `issued ${at(word(0))}, lapses ${at(word(1))}, record hash 0x${data.slice(2 + 128, 2 + 192)}`;
-}
-
-/** The Identity Registry's flag bits, by name. Unknown bits are shown, not dropped. */
-const GRANT_FLAGS: Array<[number, string]> = [
-  [1 << 0, "HOLD"], [1 << 1, "RECEIVE"], [1 << 2, "TRANSFER"], [1 << 3, "SWAP"], [1 << 4, "PROVIDE_LIQUIDITY"],
-  [1 << 8, "REG_S"], [1 << 9, "RULE_144A"], [1 << 10, "PROFESSIONAL"], [1 << 11, "ACCREDITED"], [1 << 12, "QIB"],
-  [1 << 13, "SANCTIONS_CLEAR"], [1 << 14, "CONTRACT_ACCOUNT"], [1 << 15, "SETTLEMENT"],
-];
-
-export function grantFlags(flags: number): string {
-  const names = GRANT_FLAGS.filter(([bit]) => flags & bit).map(([, n]) => n);
-  const known = GRANT_FLAGS.reduce((m, [bit]) => m | bit, 0);
-  const rest = flags & ~known;
-  if (rest) names.push(`0x${rest.toString(16)}`);
-  return names.length ? names.join("|") : "none";
 }
 
 const ROLE_NAMES = new Map<string, string>([

@@ -1,7 +1,8 @@
-# Structured note PoC: phase handoff
+# Structured note PoC: handoff
 
-Status at the close of the first phase. Written so a later session can pick this up with no
-prior context.
+Written so a later session can pick this up with no prior context. Section 1 is the state at
+release 0.2.0. Sections 2 to 7 are the record of how the first release was built, kept as history:
+where 0.2.0 replaced something, the section says so, and the 0.2.0 decisions are ADRs 0085 to 0097.
 
 **Naming discipline applies to this file and to everything in this repository.** Parties are
 referred to by capacity. No client, counterparty or vendor is named here, in the code, in
@@ -10,36 +11,61 @@ private working documents, not in this tree.
 
 ---
 
-## 1. Where things stand
+## 1. Where things stand: release 0.2.0
 
-**Phase 0a is complete.** The deliverable is `docs/solution-overview.html`: a self-contained,
-navigable solution overview covering roles, instrument, lifecycle, identity, controls, standards,
-success criteria, programme, test scenarios, responsibilities, approvals and next steps. It was
-reviewed and signed off.
+**0.2.0 follows the bank's call,** which settled that the note moves to ERC-3643, that one template
+and a factory issue each deal, that the cash leg is the bank's tokenized deposit, and that the
+success criteria are the bank's nine. The plan, its decisions and its workstreams are in
+`docs/plan/0.2.0.md`.
 
-**Phase 0b is deployed** from `site/` to the Vercel project `structurednote` (team scope, Hobby
-plan, research use): registration with email verification, then approval by an operator or by
-the domain rule, everything gated, the architecture as the signed-in home page with each
-component linked into the overview. Postgres is Neon in Frankfurt. Mail is Resend, sending from
-`noreply@ethereumtesting.com`. The domain rule's list and the operator list live only in the
-Vercel environment, not in this repository. See `site/README.md`. Since Wave 5 the site also
-admits participants to the conversion pool (`/onboard`, `/operator`), against an integration
-deployment on the public test network (section 5).
-The repository is a clone of the source demo with history preserved. **Wave 1 has stripped it to
-the venue** (section 5); nothing of the retired identity stack, the source console or the source
-hosting remains in the tree, only in history.
+**Built and tested on a local chain:**
+
+| Workstream | What | ADR |
+|---|---|---|
+| 0 | T-REX 5.0.0-beta2 with scoped agents; a JPMD-style deposit; a narrow GPL boundary | 0085 to 0087 |
+| 1 | The note as an ERC-3643 token; identities and claims by role; record dates as a compliance module; restricted agents | 0088 |
+| 2 | Onboarding by role: five portals, custody routes on identities, no external credential platform | 0089 |
+| 6 | The conversion pool, on by default, gated on the same identities | 0090 |
+| 3 | The note factory: a note issued whole in one transaction | 0091 |
+| 4 | The lifecycle on ERC-3643, proven end to end | (in 0088) |
+| 5 | The bank's acts on its deposit, on a Deposit page | 0092 |
+| — | Sign-in by a six-digit code sent by email | 0093 |
+| 7 | A reconciliation statement for every note, as at any day | 0094 |
+| 8 | The term sheet as data, the input to issuance | 0095 |
+| 9 | The order of lifecycle events, walked by a test | 0096 |
+| 11 | The overview rewritten for 0.2.0, and its PDF generated from it | 0097 |
+
+**Still to do:** workstream 10, deployment to Ethereum Sepolia, with the bank's virtual machine
+image, the hand-over guide and the brief for the bank's AI-led build; and workstream 12, the
+release. **Waiting on the bank:** its term-sheet field list, fitted to the record's field catalogue,
+and its detailed order of lifecycle events, mapped to `docs/lifecycle-sequence.md`.
+
+**Tests.** `cd site && npm run test:local` runs everything on the local chain: it resets the chain
+(a snapshot restored in seconds, or a fresh deployment when the deployment's sources changed), then
+the site's unit, integration and browser tests. Contracts: `cd instruments && forge test`, and the
+venue's `forge test --fork-url http://127.0.0.1:8545` against the deployed stack. Tests never run
+against a public network.
+
+**The site** is deployed from the repository root to the Vercel project, on the ethereumtesting.com
+domain only, with deployment protection on. Sign-in is by emailed code; the portals are given by
+role lists in its environment (`BANK_EMAILS`, `ONBOARDING_EMAILS`, `AGENT_EMAILS`,
+`CUSTODIAN_EMAILS`; `OPERATOR_EMAILS` holds every role). Postgres is Neon; mail is Resend. See
+`site/README.md`. It still points at the first release's integration deployment until workstream 10
+deploys 0.2.0 to Ethereum Sepolia.
+
+**Hazards worth knowing:**
+- **The T-REX 5.0.0-beta2 implementation authority** lets anyone switch versions. We deploy our own fixed authority in its place (ADR 0088). Never deploy T-REX's.
+- **A load-balanced RPC answers a block behind** for a moment after a receipt. Every site write that a later read depends on waits for the read to show it; the integration tests run through a proxy that lags on purpose.
+- **Two compilation units.** No file may import both the position manager and the pool manager (section 3). After changing a contract the deployment embeds, the deploy script forces a build of both units.
 
 `origin` is a **private** repository in the organisation's GitHub account
-(`Ethereum-Institutional/ethereumtesting-structured-note`). It was created under the owner's
-personal account on 24 September 2026 and transferred, under that new name, on 1 October 2026;
-GitHub redirects the old address. `upstream` still points at
-the source demo for reference, with its push URL set to `DISABLED` in the local clone, so nothing
-can be pushed there by accident. That setting is local: repeat it in any new clone that adds
-`upstream`.
+(`Ethereum-Institutional/ethereumtesting-structured-note`). `upstream` still points at the source
+demo for reference, with its push URL set to `DISABLED` in the local clone, so nothing can be pushed
+there by accident. That setting is local: repeat it in any new clone that adds `upstream`.
 
-**Decision records.** Every design decision since Wave 1 is an ADR in `docs/adr/`, with the
-options considered and why the choice won (ADR 0001). Record each new decision there, in the same
-change as the work it governs. The W and L items below are ADRs 0003 to 0012.
+**Decision records.** Every design decision is an ADR in `docs/adr/`, with the options considered
+and why the choice won (ADR 0001). Record each new decision there, in the same change as the work
+it governs.
 
 ---
 
@@ -95,7 +121,7 @@ These took real investigation. Do not re-derive them.
 - `tokenAddress` is a parameter, so **one checker serves every instrument**.
 - Per-pool gate addresses are the intended model.
 
-### Debt standard
+### Debt standard (the first release; replaced by T-REX in 0.2.0, ADR 0088)
 
 - Pin at the **release candidate**, not the latest stable. Snapshots, the holder list and full
   enforcement exist only from the RC. The stable release ships the snapshot *interface* but
@@ -125,7 +151,7 @@ These took real investigation. Do not re-derive them.
   with the same payload. **That payload carries the written intervention reason**, so the
   justification travels in the enforcement call rather than only in the controller's log.
 
-### Credential platform evaluated
+### Credential platform evaluated (the first release; removed in 0.2.0, ADR 0089)
 
 - Its on-chain layer holds issuer registration, revocation and root freshness. **Cryptographic
   verification is off-chain by design.** The composite on-chain check is documented by its own

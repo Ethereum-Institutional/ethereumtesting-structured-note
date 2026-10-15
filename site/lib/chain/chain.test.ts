@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { encodeAbiParameters, encodeFunctionData, keccak256, parseAbiItem, stringToHex, toBytes, type Address, type Hex } from "viem";
 import { parseManifest, poolKey, ManifestError, type Manifest } from "./manifest.ts";
 import { price } from "./price.ts";
-import { Tape, reason, grantFlags, ref } from "./tape.ts";
+import { Tape, reason, ref } from "./tape.ts";
 import { signerQueues } from "./queue.ts";
 
 const A = (n: number) => `0x${n.toString(16).padStart(40, "0")}` as Address;
@@ -237,8 +237,7 @@ test("a wallet transaction is shown as the governance act it carried", () => {
   assert.deepEqual(row.args, ["Investor A", "Bank custody platform", "2 EURWAN", '"Register correction"']);
 });
 
-test("flag and reference renderings", () => {
-  assert.equal(grantFlags(0), "none");
+test("reference renderings", () => {
   assert.equal(ref(stringToHex("opening/investorA", { size: 32 })), '"opening/investorA"');
 });
 

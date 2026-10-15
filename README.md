@@ -1,13 +1,17 @@
 # Structured note PoC
 
 A proof of concept for native issuance of a structured note on a public test network, with the
-Agent acting as issuing and paying agent, registrar and transfer agent.
+Agent acting as issuing and paying agent, registrar and transfer agent. Release 0.2.0: the note as
+an ERC-3643 token, onboarding by role on ONCHAINID identities, the bank's tokenized deposit, a note
+factory, the conversion pool, and reconciliation at any block.
 
-- **What is being built and why:** `docs/solution-overview.html`, the signed-off phase 0a
-  deliverable. The gated site in `site/` serves it.
-- **Where things stand, decisions taken, hazards and open items:** `HANDOFF.md`. Read it
-  before changing anything.
-- **Why each design decision went the way it did:** `docs/adr/`.
+- **What is being built and why:** `docs/solution-overview.html`, and its PDF,
+  `docs/solution-overview.pdf`, generated from it. The gated site in `site/` serves the overview.
+- **The order of a note's life,** step by step, as the contracts enforce it:
+  `docs/lifecycle-sequence.md`.
+- **Why each design decision went the way it did:** `docs/adr/`. 0.2.0's are ADRs 0085 to 0097.
+- **The 0.2.0 plan and its workstreams:** `docs/plan/0.2.0.md`.
+- **Where things stand, hazards and open items:** `HANDOFF.md`.
 - **Spikes:** `docs/spikes/`, with their harnesses under `spikes/`.
 
 Parties are referred to by capacity throughout. No client, counterparty or vendor is named in
@@ -16,40 +20,51 @@ this repository.
 ## Layout
 
 The contracts build in two compilation units, because no single compiler configuration fits
-both under EIP-170 (spike 1).
+both: the venue's pool library needs the IR pipeline at high optimizer runs, and T-REX pins its own
+compiler.
 
 | Directory | Unit | Holds |
 |---|---|---|
-| `contracts/`, `script/`, `test/` | solc 0.8.26, IR pipeline | The venue: compliance hook, checker, router, custody accounts, and their deploy scripts and tests |
-| `instruments/` | solc 0.8.34, legacy pipeline | The note and the tokenized deposit, on the debt standard pinned at its release candidate |
-| `site/` | Next.js | The registration-gated site, and the chain library the operations console will use |
-| `ops/` | | Local chain and deploy scripts |
+| `instruments/` | solc 0.8.30, T-REX 5.0.0-beta2 and ONCHAINID 2.2 by Soldeer | The note (ERC-3643), the record-date module, the claim issuers, the tokenized deposit and its gateway, the Determination Agent, the Paying Agent, locked settlement, the note factory and the governance controller, with their deploy scripts and tests |
+| `contracts/`, `script/`, `test/` | solc 0.8.26, IR pipeline | The venue (hook, checker, router, pool gate) and custody accounts, with their deploy scripts and tests |
+| `site/` | Next.js | The site: five portals behind sign-in by emailed code, the Ledger, reconciliation, and the chain library |
+| `ops/` | | The local chain, the deploy sequence, snapshots and keys |
+| `docs/` | | The overview and its PDF, the lifecycle sequence, ADRs, the plan and spikes |
+
+T-REX and ONCHAINID are GPL-3.0; only the files that compile them in carry that licence (ADR 0087).
 
 The venue is the conversion pool, deployed by default: the euro payment token against the
 tokenized deposit, gated by the deposit's own eligibility and by the pool's gate on the same
 ONCHAINID identities (ADR 0090). The gate reads the pool's own ERC-3643 identity registry, which
-requires the onboarding agent's pool-access claim, and admits a wallet whose country is one the
-pool serves and whom supervision has not withdrawn. Locally the payment token is a stand-in in
-`test/fixtures/`; on the test network it is the real deployment, named in the network file
-(`ops/networks/`).
+requires the bank's pool-access claim, and admits a wallet whose country is one the pool serves and
+whom supervision has not withdrawn. Locally the payment token is a stand-in in `test/fixtures/`; on
+the test network it is EURC, named in the network file (`ops/networks/`).
 
 ## Running it locally
 
-You need Foundry and Node 20 or later.
+You need Foundry, Node 24 or later (the scripts and tests are TypeScript, run directly), and `jq`.
 
 ```bash
-git submodule update --init --recursive   # nothing compiles without them
-./ops/reset.sh                            # fresh local chain, whole stack deployed
-forge test --fork-url http://127.0.0.1:8545 -vv
-./ops/build.sh                            # both units, with the EIP-170 check
-./ops/dry-run-fork.sh                     # the whole stack against a fork of the test network
+git submodule update --init --recursive   # the venue's dependencies
+(cd instruments && forge soldeer install) # T-REX, ONCHAINID, OpenZeppelin
+(cd site && npm install)
+./ops/reset.sh                            # fresh local chain, whole stack deployed, or a snapshot restored
+cd site && npm run test:local             # unit, integration and browser tests, on the local chain only
 ```
 
-The dry run needs `ops/networks/base-sepolia.json`, which is not committed; copy the template
-beside it and fill it from the private working documents.
+`ops/reset.sh` deploys afresh only when what the deployment is made from has changed, and otherwise
+restores a snapshot in seconds; `FRESH=1` forces a deployment. The deploy sequence and why it is
+ordered as it is are in `ops/README.md`.
 
-The deploy sequence and why it is ordered as it is are in `ops/README.md`. With Claude Code,
-`/demo` does all of the above.
+| Suite | Command | Runs |
+|---|---|---|
+| Instruments | `cd instruments && forge test` | 95, including the lifecycle walked in order and the 25 payoff scenarios to the cent |
+| Venue | `forge test --fork-url http://127.0.0.1:8545` | 31, against the deployed stack after the ceremony |
+| Site, unit | `cd site && npm test` | 44 |
+| Site, integration | `cd site && npm run test:admission` | 32, through a proxy that answers a block behind, as a load-balanced public RPC does |
+| Site, browser | `cd site && npm run test:browser` | 16 specs, every portal clicked through in Chromium |
+
+The overview's PDF is regenerated from the HTML with `cd site && node scripts/overview-pdf.ts`.
 
 ## What the venue tests show
 
@@ -86,29 +101,14 @@ the configuration checked. The venue tests run against a fork of the test networ
 
 ## What the instruments tests show
 
-`cd instruments && forge test --force` runs 115. Spike 2's conformance suite runs against both the note
-and the deposit: views that never revert under any gate failure, forced transfer only under its
-own role and never to an ineligible account, the written reason carried whole, and an admin that
-holds no role it was not granted. Against the registry: grants lapse at expiry, revocation is
-immediate, a registrar cannot act on another's participant, and a check is one storage read.
-Against the deployed wiring: decimals zero and two, one registry behind both gates, the note
-refusing an account onboarded for the cash leg only, and a lapsed holder still redeemable.
-
-Against the lifecycle: all 25 scenarios of spike 3's independent payoff model, reproduced to the
-cent from signed determination through distribution and burn, closing at zero positions. Seven
-deliberate errors in the payoff (an inclusive barrier, a strict coupon, a reversed tie-break and
-so on) were each caught by that test. Also: a disagreeing or wrongly signed determination
-refused, the Record Time inclusive, transfers stopped at a possible redemption until it is
-determined, an event that closes only when every unit is paid, a held payment claimed after
-re-onboarding, and DvP refusing an ineligible counterparty with nothing moved.
-
-Against governance: Tier 1 only by the Agent's governance wallet, with its reason; Tier 2 refusing
-one institution, four signatures in one firm, and two institutions with weak wallets; thresholds
-checked again at execution; recovery needing every other institution and the longer delay, and
-vetoed by a wallet that still works; the worked example of the wrong Record Time reversed and
-restated; and the deployer holding nothing after the ceremony. Four deliberate errors in the
-controller, and four in its venue acts, were each caught. `FOUNDRY_PROFILE=fork forge test --fork-url http://127.0.0.1:8545` (from `instruments/`) repeats Tier 1 and Tier 2 through
-the real multi-signature wallets on the local stack.
+`cd instruments && forge test` runs 95:
+- **The lifecycle, in order.** `Sequence.t.sol` walks one note through every step of
+  `docs/lifecycle-sequence.md`, trying each too early or out of turn first.
+- **The payoff.** All 25 scenarios of spike 3's independent payoff model, reproduced to the cent from signed determination through distribution and burn, closing at zero positions.
+- **Identities and claims.** Claims lapse and are revoked at once by their issuer, an institution cannot vouch without consent, an untrusted issuer does not verify, and the note refuses an account onboarded for the cash leg only.
+- **The deposit.** Eligibility by the bank's registry or its allowlist, the spender checked, holds, pause, a forced transfer, and the bank's move by order with its reason.
+- **The note factory.** A whole note in one transaction, administration limited to the note's own contracts, the hand-over, and no note issued around it.
+- **Governance.** Tier 1 only by the Agent's governance wallet, with its reason; Tier 2 refusing one institution, or weak wallets; recovery needing every other institution and the longer delay; the worked example of the wrong Record Time reversed and restated; and the deployer holding nothing after the ceremony.
 
 ## Contract size
 

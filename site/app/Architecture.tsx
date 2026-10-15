@@ -12,22 +12,22 @@ const B = (x: number, y: number, w: number, h: number, t: string, sub: string[],
 const BOXES: Box[] = [
   B(16, 54, 268, 52, "Agency and trust operations", ["instructs issuance, coupons, corrections"], "d-box", "lifecycle"),
   B(16, 122, 268, 52, "Issuer and Calculation Agent", ["term sheet, determinations, guarantee"], "d-box", "parties"),
-  B(16, 190, 268, 66, "Core banking and books of record", ["KYC identity register, personal data", "the authoritative Register"], "d-box", "identity"),
-  B(16, 272, 268, 52, "Digital asset platform", ["smart contract deployment, key custody"], "d-box", "responsibilities"),
+  B(16, 190, 268, 66, "Core banking and books of record", ["KYB records, personal data", "the authoritative Register"], "d-box", "identity"),
+  B(16, 272, 268, 52, "Digital asset platform", ["deployment, key custody"], "d-box", "responsibilities"),
 
-  B(332, 54, 236, 48, "Instruction adapter", ["event to transaction to record"], "d-box-a", "architecture"),
-  B(332, 118, 236, 48, "Credential bridge", ["KYC outcome to whitelist flags"], "d-box-a", "identity"),
-  B(332, 182, 236, 48, "Commitment writer", ["salted hash, never the file"], "d-box-a", "identity"),
-  B(332, 246, 236, 48, "Reconciliation", ["Register against on-chain balances"], "d-box-a", "success"),
+  B(332, 54, 236, 48, "Portals, by role", ["bank, onboarding agent, Agent, custodians"], "d-box-a", "architecture"),
+  B(332, 118, 236, 48, "Claims writer", ["KYB outcome to a signed claim"], "d-box-a", "identity"),
+  B(332, 182, 236, 48, "Record hashes", ["salted hash, never the file"], "d-box-a", "identity"),
+  B(332, 246, 236, 48, "Reconciliation", ["a statement at any block"], "d-box-a", "success"),
 
-  B(616, 54, 204, 58, "Structured Note token", ["restricted transfer, snapshots", "decimals = 0, 1 unit = €1,000"], "d-box", "instrument"),
-  B(840, 54, 204, 58, "Digital monies", ["simulated tokenized deposit", "decimals = 2"], "d-box", "cash-leg"),
+  B(616, 54, 204, 58, "Structured Note token", ["ERC-3643, record dates", "decimals = 0, 1 unit = €1,000"], "d-box", "instrument"),
+  B(840, 54, 204, 58, "Tokenized deposit", ["the bank's, allowlist, ERC-7943", "decimals = 2"], "d-box", "cash-leg"),
   B(616, 128, 204, 52, "Paying Agent contract", ["coupon, MER, redemption"], "d-box", "lifecycle"),
-  B(840, 128, 204, 52, "DvP settlement", ["both legs, atomic"], "d-box", "lifecycle"),
-  B(616, 196, 428, 52, "Identity Registry contract", ["whitelist, selling restrictions, multi-signature managed"], "d-box-k", "identity"),
+  B(840, 128, 204, 52, "Locked settlement", ["DvP, both legs, atomic"], "d-box", "lifecycle"),
+  B(616, 196, 428, 52, "Identities and claims", ["one ONCHAINID identity per client; each asset's registry trusts its issuers"], "d-box-k", "identity"),
   B(616, 264, 204, 52, "Governance controls", ["two tiers, quorum, timelock"], "d-box-s", "governance"),
   B(840, 264, 204, 52, "Determination Agent", ["signed levels and triggers"], "d-box", "instrument"),
-  B(616, 332, 428, 52, "Permissioned conversion pool: euro payment token to deposit", ["whitelist checked at the wallet, before the pool, not at the asset"], "d-box", "cash-leg"),
+  B(616, 332, 428, 52, "Permissioned conversion pool: euro payment token to deposit", ["the bank's pool-access claim, checked at the wallet, not at the asset"], "d-box", "cash-leg"),
 ];
 
 const FLOWS: [string, boolean][] = [
@@ -51,7 +51,7 @@ export function Architecture() {
           width="1060"
           height="470"
           role="img"
-          aria-label="Three-lane architecture. Institution systems on the left, an integration layer in the middle, and the shared ledger on the right. The Identity Registry sits at the centre of the ledger lane. A dashed boundary marks the limit of personal data. Each component links to its section of the solution overview."
+          aria-label="Three-lane architecture. Institution systems on the left, an integration layer in the middle, and the shared ledger on the right. Identities and claims sit at the centre of the ledger lane. A dashed boundary marks the limit of personal data. Each component links to its section of the solution overview."
         >
           <defs>
             <marker id="h1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -92,8 +92,8 @@ export function Architecture() {
       <figcaption>
         Left to right is the flow of an instruction. The dashed line marks the limit of personal data. Legal names,
         registered addresses, entity identifiers and account numbers remain in core banking. On-chain data is limited to
-        a wallet address, whitelist flags, and a salted commitment to the off-chain record. Select any component to open
-        its section of the solution overview.
+        a wallet address, its identity contract, a country code, and the claims institutions add to the identity, each
+        carrying a salted hash of the record behind it. Select any component to open its section of the solution overview.
       </figcaption>
     </figure>
   );
