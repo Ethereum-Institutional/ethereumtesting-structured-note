@@ -255,6 +255,79 @@ export async function creditDepositAction(_prev: Result, f: FormData): Promise<R
   });
 }
 
+// --- the bank's deposit (ADR 0092) ---
+
+const depositAccount = (f: FormData) => {
+  const a = field(f, "account").trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(a)) throw new Error("Choose the account.");
+  return a as `0x${string}`;
+};
+
+export async function debitDepositAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank/deposit", async (staff) => {
+    const { debitDeposit, depositToken } = await import("@/lib/identity/deposit");
+    const t = depositToken();
+    const account = depositAccount(f);
+    const amount = units(field(f, "amount"), t.decimals);
+    const done = await debitDeposit(account, amount);
+    await getStore().audit({ at: new Date().toISOString(), actor: staff.email, action: `debited ${human(amount, t.decimals)} ${t.symbol} from ${account} to its account at the bank, booking ${done.bookingRef}`, subject: account });
+    return `Debited ${human(amount, t.decimals)} ${t.symbol}, booking ${done.bookingRef}.`;
+  });
+}
+
+export async function creditAccountAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank/deposit", async (staff) => {
+    const { creditDeposit, depositToken } = await import("@/lib/identity/deposit");
+    const t = depositToken();
+    const account = depositAccount(f);
+    const amount = units(field(f, "amount"), t.decimals);
+    const done = await creditDeposit(account, amount);
+    await getStore().audit({ at: new Date().toISOString(), actor: staff.email, action: `credited ${human(amount, t.decimals)} ${t.symbol} to ${account}, booking ${done.bookingRef}`, subject: account });
+    return `Credited ${human(amount, t.decimals)} ${t.symbol}, booking ${done.bookingRef}.`;
+  });
+}
+
+export async function holdDepositAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank/deposit", async (staff) => {
+    const { holdDeposit, depositToken } = await import("@/lib/identity/deposit");
+    const t = depositToken();
+    const account = depositAccount(f);
+    const reason = field(f, "reason").trim();
+    if (!reason) throw new Error("Give the reason.");
+    const amount = units(field(f, "amount") || "0", t.decimals);
+    await holdDeposit(account, amount);
+    await getStore().audit({ at: new Date().toISOString(), actor: staff.email, action: amount ? `held ${human(amount, t.decimals)} ${t.symbol} of ${account}: ${reason}` : `released the hold on ${account}: ${reason}`, subject: account });
+    return amount ? `Held ${human(amount, t.decimals)} ${t.symbol}: it cannot move or be debited until released.` : "Released: the whole balance is free.";
+  });
+}
+
+export async function pauseDepositAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank/deposit", async (staff) => {
+    const { setPaused, depositToken } = await import("@/lib/identity/deposit");
+    const pause = field(f, "pause") === "1";
+    const reason = field(f, "reason").trim();
+    if (!reason) throw new Error("Give the reason.");
+    await setPaused(pause);
+    await getStore().audit({ at: new Date().toISOString(), actor: staff.email, action: `${pause ? "paused" : "resumed"} the ${depositToken().symbol} deposit: ${reason}`, subject: "deposit" });
+    return pause ? "Paused: no transfer, credit or debit moves until it resumes." : "Resumed.";
+  });
+}
+
+export async function enforceDepositAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank/deposit", async (staff) => {
+    const { enforce, depositToken } = await import("@/lib/identity/deposit");
+    const t = depositToken();
+    const from = depositAccount(f);
+    const to = field(f, "to").trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error("Choose the receiving account.");
+    const amount = units(field(f, "amount"), t.decimals);
+    const reason = field(f, "reason");
+    await enforce(from, to as `0x${string}`, amount, reason);
+    await getStore().audit({ at: new Date().toISOString(), actor: staff.email, action: `moved ${human(amount, t.decimals)} ${t.symbol} from ${from} to ${to} by order: ${reason.trim()}`, subject: from });
+    return `Moved ${human(amount, t.decimals)} ${t.symbol} by order, the reason recorded on-chain.`;
+  });
+}
+
 // --- the custodians ---
 
 export async function openAccountAction(_prev: Result, f: FormData): Promise<Result> {

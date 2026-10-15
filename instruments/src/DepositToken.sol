@@ -39,6 +39,8 @@ interface IERC7943Fungible is IERC165 {
  *   an allowance must itself be eligible, as with any allowlisted deposit token.
  * - **Roles.** Mint and burn for the deposit gateway alone; pause, allowlist, freeze and forced
  *   transfer each a role of its own; the admin assigns them and points the token at its registry.
+ *   The bank's own forced transfer is a role apart, `ENFORCER_ROLE`, and always carries a written
+ *   reason; ERC-7943's `forcedTransfer` is for the Paying Agent's reversals (ADR 0092).
  * - **Freezing and forced transfer** follow ERC-7943. A forced transfer never delivers to an
  *   account that cannot receive, and takes from the frozen part only what the free part lacks.
  * - **Pausing** stops transfers, credits and debits. A forced transfer still proceeds.
@@ -53,6 +55,8 @@ contract DepositToken is ERC20, AccessControl, Pausable, IERC7943Fungible {
     bytes32 public constant ALLOWLIST_ROLE = keccak256("ALLOWLIST_ROLE");
     bytes32 public constant FREEZER_ROLE = keccak256("FREEZER_ROLE");
     bytes32 public constant FORCED_TRANSFER_ROLE = keccak256("FORCED_TRANSFER_ROLE");
+    /// @notice The bank's own forced transfer, by order and with its written reason (ADR 0092).
+    bytes32 public constant ENFORCER_ROLE = keccak256("ENFORCER_ROLE");
 
     /// @notice The bank's identity registry for the deposit.
     IVerifies public identityRegistry;
@@ -63,8 +67,12 @@ contract DepositToken is ERC20, AccessControl, Pausable, IERC7943Fungible {
 
     event IdentityRegistrySet(address indexed registry);
     event Allowlisted(address indexed account, bool allowed);
+    /// @notice The bank moved its deposit by order, for the reason given in full.
+    event Enforced(address indexed from, address indexed to, uint256 amount, string reason);
 
     error NotEligible(address account);
+    error NoReason();
+    error InvalidAccount();
 
     constructor(string memory name_, string memory symbol_, address admin, IVerifies registry)
         ERC20(name_, symbol_)
@@ -126,16 +134,25 @@ contract DepositToken is ERC20, AccessControl, Pausable, IERC7943Fungible {
         onlyRole(FORCED_TRANSFER_ROLE)
         returns (bool)
     {
-        if (to != address(0) && !canReceive(to)) revert ERC7943CannotReceive(to);
-        uint256 free = _unfrozen(from);
-        if (amount > free) {
-            _frozen[from] -= amount - free;
-            emit Frozen(from, _frozen[from]);
-        }
-        _forcing = true;
-        _update(from, to, amount);
-        _forcing = false;
-        emit ForcedTransfer(from, to, amount);
+        _forced(from, to, amount);
+        return true;
+    }
+
+    /**
+     * @notice The bank moves its deposit from one account to another by order, a court's or a
+     *         regulator's, with its written reason, emitted in full. Paused or frozen, it proceeds,
+     *         as a forced transfer does; it never delivers to an account that cannot receive, and
+     *         never extinguishes: a debit does that, against its booking (ADR 0092).
+     */
+    function enforce(address from, address to, uint256 amount, string calldata reason)
+        external
+        onlyRole(ENFORCER_ROLE)
+        returns (bool)
+    {
+        if (bytes(reason).length == 0) revert NoReason();
+        if (to == address(0) || to == from) revert InvalidAccount();
+        _forced(from, to, amount);
+        emit Enforced(from, to, amount, reason);
         return true;
     }
 
@@ -179,6 +196,21 @@ contract DepositToken is ERC20, AccessControl, Pausable, IERC7943Fungible {
     }
 
     // --- internal ---
+
+    /// @dev A forced transfer: to an account that can receive, taking from the frozen part only
+    ///      what the free part lacks.
+    function _forced(address from, address to, uint256 amount) private {
+        if (to != address(0) && !canReceive(to)) revert ERC7943CannotReceive(to);
+        uint256 free = _unfrozen(from);
+        if (amount > free) {
+            _frozen[from] -= amount - free;
+            emit Frozen(from, _frozen[from]);
+        }
+        _forcing = true;
+        _update(from, to, amount);
+        _forcing = false;
+        emit ForcedTransfer(from, to, amount);
+    }
 
     /// @dev Every movement of balance passes here. A forced transfer has checked its own terms.
     function _update(address from, address to, uint256 amount) internal override {

@@ -120,6 +120,7 @@ const DEPOSIT_TOKEN: Entry[] = [
   { signature: "function setAllowlisted(address account, bool allowed)", meaning: "Allowlisted a contract to hold and move the deposit, or removed it", tone: "onboard", args: ["account", "flag"] },
   { signature: "function setAllowlistedMany(address[] accounts, bool allowed)", meaning: "Allowlisted several accounts for the deposit, or removed them, in one call", tone: "onboard", args: ["accounts", "flag"] },
   { signature: "function setFrozenTokens(address account, uint256 amount)", meaning: "Set the frozen part of a holding", tone: "control", args: ["account", "amount"] },
+  { signature: "function enforce(address from, address to, uint256 amount, string reason)", meaning: "The bank moved its deposit by order, with its written reason", tone: "control", args: ["account", "account", "amount", "text"] },
   { signature: "function forcedTransfer(address from, address to, uint256 amount)", meaning: "Forced a transfer without the holder's signature", tone: "control", args: ["account", "account", "amount"] },
   { signature: "function setIdentityRegistry(address registry)", meaning: "Pointed the deposit at a new identity registry", tone: "control", args: ["account"] },
 ];

@@ -15,7 +15,7 @@ const CACHE_MS = 60_000;
 let cache: { at: number; head: bigint; value: LedgerView } | null = null;
 let firstBlock: bigint | null = null;
 
-function client(m: Manifest): PublicClient {
+export function client(m: Manifest): PublicClient {
   const rpc = (process.env.LEDGER_RPC_URL ?? process.env.RPC_URL ?? "").trim();
   if (!rpc) throw new Error("LEDGER_RPC_URL and RPC_URL are not set");
   const chain = defineChain({ id: m.chainId, name: `chain ${m.chainId}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
@@ -23,7 +23,7 @@ function client(m: Manifest): PublicClient {
 }
 
 /** The block the deployment began in: the first with code at its identity storage, by binary search. */
-async function deploymentBlock(c: PublicClient, m: Manifest): Promise<bigint> {
+export async function deploymentBlock(c: PublicClient, m: Manifest): Promise<bigint> {
   if (firstBlock !== null) return firstBlock;
   const probe = (m.identity?.identityStorage ?? m.instruments?.deposit ?? m.assets.deposit?.address) as Address;
   let lo = 0n;
@@ -45,7 +45,7 @@ const CREATED = parseAbiItem("event CustodyAccountCreated(address indexed accoun
  * The deployment as the chain knows it: the manifest's custody accounts, plus every account the
  * factory has opened since, from its own events. Accounts opened by the site are then decoded too.
  */
-async function withCustodyAccounts(c: PublicClient, m: Manifest, from: bigint): Promise<Manifest> {
+export async function withCustodyAccounts(c: PublicClient, m: Manifest, from: bigint): Promise<Manifest> {
   if (!m.custody?.factory) return m;
   const opened = await c.getLogs({ address: m.custody.factory, event: CREATED, fromBlock: from, toBlock: "latest" });
   const accounts = { ...m.custody.accounts };
@@ -70,7 +70,7 @@ function ownContracts(tape: Tape, m: Manifest): Address[] {
 }
 
 /** The contracts of the notes the site issued, from its own record of them (ADR 0072). */
-async function noteContracts(): Promise<Array<{ address: string; key: string; label: string }>> {
+export async function noteContracts(): Promise<Array<{ address: string; key: string; label: string }>> {
   const PARTS: Record<string, string> = {
     note: "",
     determinations: "Determination Agent",

@@ -16,6 +16,7 @@ export default async function BankLayout({ children }: { children: React.ReactNo
         { href: "/bank", label: "Sign-ups", badge: pending },
         { href: "/bank/clients", label: "Clients" },
         { href: "/bank/onboarding", label: "Onboarding", badge: waiting },
+        { href: "/bank/deposit", label: "Deposit" },
         { href: "/bank/pool", label: "Conversion pool" },
       ]}
     >

@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 import {IIdentity} from "@onchain-id/solidity/contracts/interface/IIdentity.sol";
 import {Errors} from "@onchain-id/solidity/contracts/libraries/Errors.sol";
 import {Token} from "t-rex/token/Token.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {IDepositGateway} from "../src/interfaces/IDepositGateway.sol";
 import {IERC7943Fungible, DepositToken} from "../src/DepositToken.sol";
 import {PayingAgent} from "../src/PayingAgent.sol";
@@ -283,6 +284,33 @@ contract InstrumentsTest is Stack {
         d.deposit.forcedTransfer(b, a, 70);
         assertEq(d.deposit.balanceOf(b), 30);
         assertEq(d.deposit.getFrozenTokens(b), 30, "ten taken from the frozen part");
+    }
+
+    /// The bank moves its deposit by order, with its written reason: paused or frozen, to an
+    /// account that can receive, never to nowhere, and only the bank (ADR 0092).
+    function test_theBankEnforcesWithItsReason() public {
+        vm.prank(bank);
+        d.gateway.credit(b, 100, "booking-e1");
+        vm.startPrank(bank);
+        d.deposit.setFrozenTokens(b, 100);
+        d.deposit.pause();
+        vm.expectEmit(address(d.deposit));
+        emit DepositToken.Enforced(b, a, 40, "Court order 2026/117: attachment in favour of A");
+        d.deposit.enforce(b, a, 40, "Court order 2026/117: attachment in favour of A");
+        vm.expectRevert(DepositToken.NoReason.selector);
+        d.deposit.enforce(b, a, 1, "");
+        vm.expectRevert(DepositToken.InvalidAccount.selector);
+        d.deposit.enforce(b, address(0), 1, "extinguish");
+        vm.expectRevert(abi.encodeWithSelector(IERC7943Fungible.ERC7943CannotReceive.selector, nobody));
+        d.deposit.enforce(b, nobody, 1, "to an account the bank does not know");
+        vm.stopPrank();
+        assertEq(d.deposit.balanceOf(a), 1_000_000_00 + 40);
+        assertEq(d.deposit.getFrozenTokens(b), 60, "taken from the frozen part, as the order requires");
+
+        bytes32 role = d.deposit.ENFORCER_ROLE();
+        vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, a, role));
+        vm.prank(a);
+        d.deposit.enforce(b, a, 1, "not the bank");
     }
 
     function test_pausingStopsTransfers() public {

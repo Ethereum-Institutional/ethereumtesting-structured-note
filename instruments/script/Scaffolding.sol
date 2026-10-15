@@ -164,6 +164,7 @@ library Scaffolding {
         d.deposit.grantRole(d.deposit.PAUSER_ROLE(), c.bank);
         d.deposit.grantRole(d.deposit.ALLOWLIST_ROLE(), c.bank);
         d.deposit.grantRole(d.deposit.FREEZER_ROLE(), c.bank);
+        d.deposit.grantRole(d.deposit.ENFORCER_ROLE(), c.bank);
 
         // The note factory, owned by the Issuer, and T-REX's factory handed to it.
         d.noteFactory = new NoteFactory(
