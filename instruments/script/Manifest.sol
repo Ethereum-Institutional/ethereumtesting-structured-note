@@ -18,6 +18,7 @@ import {DeterminationAgent} from "../src/DeterminationAgent.sol";
 import {RecordDateModule} from "../src/compliance/RecordDateModule.sol";
 import {PayingAgent} from "../src/PayingAgent.sol";
 import {LockedSettlement} from "../src/LockedSettlement.sol";
+import {NoteFactory} from "../src/factory/NoteFactory.sol";
 import {Scaffolding} from "./Scaffolding.sol";
 import {Issuance} from "./Issuance.sol";
 
@@ -40,6 +41,7 @@ library Manifest {
         d.poolIssuers = TrustedIssuersRegistry(vm.parseJsonAddress(j, ".identity.poolIssuers"));
         d.deposit = DepositToken(vm.parseJsonAddress(j, ".instruments.deposit"));
         d.gateway = DepositGateway(vm.parseJsonAddress(j, ".instruments.gateway"));
+        d.noteFactory = NoteFactory(vm.parseJsonAddress(j, ".identity.noteFactory"));
     }
 
     function issued(string memory j) internal pure returns (Issuance.Issued memory l) {

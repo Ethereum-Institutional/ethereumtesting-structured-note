@@ -46,6 +46,8 @@ export type Manifest = {
   identity?: {
     idFactory: Address;
     trexFactory: Address;
+    /** Issues each note in one transaction, and owns it for the Issuer (ADR 0091). */
+    noteFactory?: Address;
     trexAuthority: Address;
     identityStorage: Address;
     bankIssuer: Address;
@@ -194,6 +196,7 @@ export function addressBook(m: Manifest): Map<string, { key: string; label: stri
   if (m.identity) {
     put(m.identity.idFactory, "identity.idFactory", "Identity factory");
     put(m.identity.trexFactory, "identity.trexFactory", "T-REX factory");
+    put(m.identity.noteFactory, "identity.noteFactory", "Note factory");
     put(m.identity.trexAuthority, "identity.trexAuthority", "T-REX implementations (fixed)");
     put(m.identity.identityStorage, "identity.identityStorage", "Identity storage");
     put(m.identity.bankIssuer, "identity.bankIssuer", "The bank's claim issuer");

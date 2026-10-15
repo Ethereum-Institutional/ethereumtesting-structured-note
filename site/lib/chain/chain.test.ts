@@ -23,7 +23,7 @@ const manifest: Manifest = {
   pool: { currency0: A(0x11), currency1: A(0x27), fee: 3000, tickSpacing: 60, tickLower: -60, tickUpper: 60, hook: A(0x24) },
   custody: { custodian: A(4), factory: A(0x30), accounts: { "SEG-0001": A(0x31) } },
   identity: {
-    idFactory: A(0x70), trexFactory: A(0x71), trexAuthority: A(0x72), identityStorage: A(0x73), bankIssuer: A(0x74), onboardingIssuer: A(0x75),
+    idFactory: A(0x70), trexFactory: A(0x71), noteFactory: A(0x7a), trexAuthority: A(0x72), identityStorage: A(0x73), bankIssuer: A(0x74), onboardingIssuer: A(0x75),
     depositRegistry: A(0x76), depositTopics: A(0x77), depositIssuers: A(0x78), depositEligibleTopic: "0", noteEligibleTopic: "0", termSheetTopic: "0",
   },
   noteSuite: { identityRegistry: A(0x42), compliance: A(0x43), trustedIssuers: A(0x44), claimTopics: A(0x46) },
@@ -258,6 +258,12 @@ test("a failed task does not stop the queue", async () => {
   const enqueue = signerQueues<string>();
   await assert.rejects(enqueue("issuer", async () => { throw new Error("reverted"); }));
   assert.equal(await enqueue("issuer", async () => "next"), "next");
+});
+
+test("handing a note over through the factory reads as such", () => {
+  const [row] = tape.describe(tx(A(0x7a), call("function handOver(address,address)", [A(0x40), A(0x60)])));
+  assert.equal(row.target, "Note factory");
+  assert.equal(row.meaning, "Offered a note's contracts to a new owner, and moved its identity's management");
 });
 
 test("the pool gate's supervisory acts read with their reasons", () => {

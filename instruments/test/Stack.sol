@@ -72,17 +72,17 @@ abstract contract Stack is Test {
             d,
             terms,
             Issuance.Config({
-                owner: address(this),
                 issuer: inventory,
                 calculationAgent: vm.addr(CA_KEY),
                 payer: agent,
                 funder: agent,
-                onboardingAgent: onboardingAgent,
                 name: "N",
                 symbol: "N",
                 salt: salt,
                 termSheetHash: keccak256("term sheet"),
-                termSheetUri: "ipfs://term-sheet"
+                termSheetUri: "ipfs://term-sheet",
+                units: 0,
+                open: false
             })
         );
         vm.startPrank(bank);
@@ -136,6 +136,12 @@ abstract contract Stack is Test {
     function _credit(address wallet, uint256 cents) internal {
         vm.prank(bank);
         d.gateway.credit(wallet, cents, keccak256(abi.encode(wallet, cents, block.timestamp, gasleft())));
+    }
+
+    /// Adds an agent with every power, as the note's owner, through the factory that owns the note
+    /// for the Issuer until the ceremony (ADR 0091).
+    function _addAgent(address who) internal {
+        d.noteFactory.administer(address(l.note), address(l.note), abi.encodeCall(INote.addAgent, (who)));
     }
 
     /// Mints into the inventory and opens the note for transfers, as issuance does.

@@ -30,7 +30,7 @@ two disagree, the script is right and this table is to be corrected.
 | Activation | `script/02_ActivateVenue.s.sol` | Verification needs the adapter to hold a balance. Opens the pool at par, the onboarding agent admits the cast by pool-access claim, and the Deposit Agent provides liquidity |
 | Lens | `script/03_DeployLens.s.sol` | Reads pool state; needs the pool manager |
 | Custody | `script/04_DeployCustody.s.sol` | Client accounts approve the router and position manager, and are onboarded and admitted |
-| Issuance | `instruments/script/IssueNote.s.sol` | Fixes illustrative terms, dated from the chain's own clock; attaches the lifecycle; places units by DvP |
+| Issuance | `instruments/script/IssueNote.s.sol` | Issues the note through the note factory in one transaction (ADR 0091), its terms dated from the chain's own clock; the bank allowlists its lifecycle and funds the Agent; places units by DvP |
 | Ceremony | `instruments/script/Ceremony.s.sol` | Creates the four wallets, deploys the controller, moves every role and hands the venue over, and ends with the deployer's renunciation, so it must come last |
 
 On a public network nothing is installed and nothing is deployed in the base step: the pool

@@ -178,7 +178,7 @@ contract LockedSettlementTest is Stack {
     /// release every open offer, and the redemption pays.
     function test_anyoneReleases_onceTheNoteIsPaused() public {
         uint256 id = _sell(a, b, 2);
-        l.note.addAgent(address(this)); // the test is the note's owner until the ceremony
+        _addAgent(address(this)); // the Issuer owns the note through the factory until the ceremony
         l.note.pause();
         vm.prank(stranger);
         s.release(id);
@@ -188,7 +188,7 @@ contract LockedSettlementTest is Stack {
     /// The note's enforcer unfreezing the account meanwhile does not trap the offer.
     function test_unlock_neverUnfreezesMoreThanIsFrozen() public {
         uint256 id = _sell(a, b, 2);
-        l.note.addAgent(address(this));
+        _addAgent(address(this));
         l.note.unfreezePartialTokens(a, 2);
         vm.prank(a);
         s.cancel(id);

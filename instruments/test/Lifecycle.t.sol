@@ -185,7 +185,7 @@ contract LifecycleTest is Stack {
     function test_forcedTransferStoppedAtARecordTime() public {
         _place(a, 10);
         address forcer = makeAddr("forcing agent");
-        l.note.addAgent(forcer); // the test is the note's owner until the ceremony
+        _addAgent(forcer); // the Issuer owns the note through the factory until the ceremony
         vm.warp(_obs(0).recordTime + 1);
         vm.prank(forcer);
         vm.expectRevert(RecordDateModule.TransfersClosed.selector);

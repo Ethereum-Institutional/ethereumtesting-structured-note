@@ -1,5 +1,5 @@
 import "server-only";
-import { createPublicClient, createWalletClient, encodeDeployData, formatEther, http, parseEther, type Address, type Chain, type Hex } from "viem";
+import { createPublicClient, createWalletClient, formatEther, http, parseEther, type Address, type Chain, type Hex } from "viem";
 import { createNonceManager, privateKeyToAccount } from "viem/accounts";
 import { jsonRpc } from "viem/nonce";
 import { signerQueues } from "./queue.ts";
@@ -67,7 +67,7 @@ export class InsufficientFees extends Error {
 }
 
 /** Gas assumed when a transaction cannot be estimated beforehand (its estimate is the network's). */
-const GAS_CEILING = { call: 1_500_000n, deploy: 8_000_000n };
+const GAS_CEILING = { call: 1_500_000n };
 
 const LOCAL_KEYS: Record<string, Hex> = {
   issuer: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
@@ -167,19 +167,6 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     });
   }
 
-  /** Deploys a contract as a capacity and waits for it (ADR 0072): returns its address. */
-  async function deploy(capacity: string, params: { abi: readonly unknown[]; bytecode: Hex; args: readonly unknown[] }): Promise<{ address: Address; hash: Hex }> {
-    return enqueue(capacity, async () => {
-      const data = encodeDeployData({ abi: params.abi as any, bytecode: params.bytecode, args: params.args as any });
-      await ensureFees(capacity, () => publicClient.estimateGas({ account: account(capacity), data }), GAS_CEILING.deploy);
-      const wallet = createWalletClient({ account: account(capacity), chain, transport: http(rpcUrl) });
-      const hash = await (wallet.deployContract as any)({ abi: params.abi, bytecode: params.bytecode, args: params.args, account: wallet.account, chain }).catch((e: unknown) => feesError(capacity, e));
-      const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
-      if (receipt.status !== "success" || !receipt.contractAddress) throw new Error(`the deployment reverted (${hash})`);
-      return { address: receipt.contractAddress, hash };
-    });
-  }
-
   /** Signs EIP-712 typed data as a capacity, for a message the capacity attests off-chain. */
   async function signTypedData(capacity: string, typedData: Record<string, any>): Promise<Hex> {
     const { EIP712Domain: _domainTypes, ...types } = typedData.types ?? {};
@@ -210,7 +197,6 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
   return {
     publicClient,
     send,
-    deploy,
     transfer,
     signTypedData,
     signHash,

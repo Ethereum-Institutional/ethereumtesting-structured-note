@@ -1,28 +1,26 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { defineChain, encodeAbiParameters, keccak256, maxUint256, parseAbi, toBytes, type Address, type Hex } from "viem";
+import { decodeAbiParameters, defineChain, encodeAbiParameters, keccak256, maxUint256, parseAbi, parseEventLogs, toBytes, type Address, type Hex } from "viem";
 import { loadManifest, type Manifest } from "../chain/manifest.ts";
 import { signers } from "../chain/signer.ts";
 import { getStore, type DemoNote, type Registrant } from "../store.ts";
 import { hasRole } from "../operators.ts";
-import { until } from "../chain/until.ts";
-import artifacts from "./artifacts.json" with { type: "json" };
 import scenarios from "./scenarios.json" with { type: "json" };
 import { calendar as calendarOf, calendarProblem, stretch, type Interval } from "./calendar.ts";
 
 /**
- * Issuing a note (ADRs 0072, 0073, 0088): the same contracts as the note under review, a scenario's
- * terms, and a calendar staff choose at issuance. The token and its registries are issued as one
- * T-REX suite through T-REX's factory, on the deployment's identity storage and its fixed
- * implementations, so the note runs the very code under review; the lifecycle contracts are then
- * attached as agents restricted to their own powers (ADR 0085). Issuance is a sequence of single
- * transactions, each recorded as it lands, so the page that starts it can follow it to the end
- * and a failed step can be run again.
+ * Issuing a note (ADRs 0072, 0073, 0091): the same contracts as the note under review, a scenario's
+ * terms, and a calendar staff choose at issuance. The Issuer issues the note whole through the note
+ * factory, in one transaction: its terms, record dates, T-REX suite on the deployment's identity
+ * storage, term sheet, Paying Agent and settlement contract, each agent restricted to its own
+ * powers (ADR 0085), the notional minted to the Issuer's inventory, and the note opened. The bank
+ * and the Agent then do their own parts. Each step is recorded as it lands, so the page that starts
+ * it can follow it to the end and a failed step can be run again.
  *
- * Roles follow the issuance script: the Issuer owns the note, mints into its inventory and holds
- * it; the Agent funds; the Calculation Agent determines; the Agent's servicing wallet pays.
+ * Roles follow the issuance script: the factory owns the note for the Issuer, which mints into its
+ * inventory and holds it; the Agent funds and may cancel units from the inventory; the Calculation
+ * Agent determines; the Agent's servicing wallet pays.
  */
-
 export type Scenario = (typeof scenarios)[number];
 export const SCENARIOS: Scenario[] = scenarios;
 
@@ -30,45 +28,29 @@ const NOTE = parseAbi([
   "function name() view returns (string)",
   "function symbol() view returns (string)",
   "function onchainID() view returns (address)",
-  "function identityRegistry() view returns (address)",
-  "function compliance() view returns (address)",
-  "function mint(address to, uint256 amount)",
-  "function unpause()",
-  "function addAgent(address agent)",
-  "function isAgent(address agent) view returns (bool)",
-  "function setAgentRestrictions(address agent, (bool disableMint, bool disableBurn, bool disablePartialFreeze, bool disableAddressFreeze, bool disableRecovery, bool disableForceTransfer, bool disablePause) restrictions)",
 ]);
-const TREX_FACTORY = parseAbi([
-  "function deployTREXSuite(string salt, (address owner, string name, string symbol, uint8 decimals, address irs, address ONCHAINID, address[] irAgents, address[] tokenAgents, address[] complianceModules, bytes[] complianceSettings) tokenDetails, (uint256[] claimTopics, address[] issuers, uint256[][] issuerClaims) claimDetails)",
-  "function getToken(string salt) view returns (address)",
+const RESTRICTIONS = "(bool disableMint, bool disableBurn, bool disablePartialFreeze, bool disableAddressFreeze, bool disableRecovery, bool disableForceTransfer, bool disablePause)";
+// As IDeterminationAgent declares them, field for field.
+const OBSERVATION = "(uint48 date, uint48 recordTime, uint48 paymentDate, bool coupon, bool mer, bool barrier, bool isFinal, uint32 merTriggerBps)";
+const TERMS = `(uint256[] initialLevels, uint64 calculationAmountCents, uint32 couponBarrierBps, uint32 couponRateBps, bool memory_, uint32 barrierBps, (bool applies, uint32 upBps, uint32 downBps, uint32 capBps) twinWin, ${OBSERVATION}[] schedule)`;
+const NOTE_RECORD = "(address token, address identity, address identityRegistry, address compliance, address trustedIssuers, address claimTopics, address determinations, address recordDates, address payingAgent, address settlement)";
+const FACTORY = parseAbi([
+  `function issue((string salt, string name, string symbol, ${TERMS} terms, address issuer, address calculationAgent, address funder, address payer, bytes32 termSheetHash, string termSheetUri, uint256 units, bool open, (address agent, ${RESTRICTIONS} restrictions)[] agents) p) returns (${NOTE_RECORD})`,
+  `event NoteIssued(address indexed token, string salt, ${NOTE_RECORD} note)`,
 ]);
 const IDENTITY = parseAbi([
-  "function addClaim(uint256 topic, uint256 scheme, address issuer, bytes signature, bytes data, string uri) returns (bytes32)",
   "function getClaim(bytes32 claimId) view returns (uint256 topic, uint256 scheme, address issuer, bytes signature, bytes data, string uri)",
 ]);
 const DEPOSIT = parseAbi([
-  "function setAllowlisted(address account, bool allowed)",
+  "function setAllowlistedMany(address[] accounts, bool allowed)",
   "function approve(address spender, uint256 value) returns (bool)",
 ]);
 const GATEWAY = parseAbi(["function credit(address account, uint256 amount, bytes32 bookingRef)"]);
 
-const TOPIC = {
-  note: BigInt(keccak256(toBytes("claim.note-eligible"))),
-  termSheet: BigInt(keccak256(toBytes("claim.term-sheet"))),
-};
+const TERM_SHEET = BigInt(keccak256(toBytes("claim.term-sheet")));
 
-/** Every power off, then those named on (ADR 0085). */
-function only(...on: Array<"mint" | "burn" | "partialFreeze" | "pause">) {
-  return {
-    disableMint: !on.includes("mint"),
-    disableBurn: !on.includes("burn"),
-    disablePartialFreeze: !on.includes("partialFreeze"),
-    disableAddressFreeze: true,
-    disableRecovery: true,
-    disableForceTransfer: true,
-    disablePause: !on.includes("pause"),
-  };
-}
+/** Burning alone: the Agent cancels units from the Issuer's inventory (ADR 0085). */
+const BURN_ONLY = { disableMint: true, disableBurn: false, disablePartialFreeze: true, disableAddressFreeze: true, disableRecovery: true, disableForceTransfer: true, disablePause: true };
 
 const now = () => new Date().toISOString();
 
@@ -76,12 +58,10 @@ function context() {
   const m = loadManifest();
   const rpc = process.env.RPC_URL?.trim();
   if (!rpc) throw new Error("RPC_URL is not set");
-  if (!m.identity) throw new Error("the manifest has no identity scaffolding: deploy 0.2.0");
+  if (!m.identity?.noteFactory) throw new Error("the manifest has no note factory: deploy 0.2.0");
   const chain = defineChain({ id: m.chainId, name: `chain ${m.chainId}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
-  return { m, id: m.identity, s: signers(chain, rpc) };
+  return { m, id: m.identity, factory: m.identity.noteFactory as Address, s: signers(chain, rpc) };
 }
-
-const art = (name: keyof typeof artifacts) => ({ abi: artifacts[name].abi as readonly unknown[], bytecode: artifacts[name].bytecode as Hex });
 
 /** The note's observations and the time between them; notes issued before ADR 0073 had four, minutes apart. */
 const shapeOf = (n: DemoNote): { observations: number; interval: Interval } =>
@@ -91,14 +71,24 @@ type Ctx = ReturnType<typeof context> & { n: DemoNote; scenario: Scenario };
 type Step = { label: string; run: (c: Ctx) => Promise<Partial<DemoNote> | void> };
 
 const tx = (key: string, hash: Hex) => (n: DemoNote) => ({ txs: { ...n.txs, [key]: hash } });
-const asNote = (c: Ctx, key: string, functionName: string, args: readonly unknown[], capacity = "issuer") =>
-  c.s.send(capacity, { address: c.n.addresses.note, abi: NOTE, functionName, args }).then((h) => tx(key, h)(c.n));
 
-/** The issuance, step by step, as IssueNote.s.sol and Issuance.sol do it. */
+/** The live note's term sheet, its hash and location, as its own identity states them. */
+async function liveTermSheet(c: Ctx): Promise<{ hash: Hex; uri: string }> {
+  const live = c.m.assets.note!.address as Address;
+  const liveId = await c.s.publicClient.readContract({ address: live, abi: NOTE, functionName: "onchainID" });
+  const claimId = keccak256(encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [liveId, TERM_SHEET]));
+  const [, , , , data, uri] = await c.s.publicClient.readContract({ address: liveId, abi: IDENTITY, functionName: "getClaim", args: [claimId] });
+  const [hash] = decodeAbiParameters([{ type: "bytes32" }, { type: "string" }], data);
+  return { hash, uri };
+}
+
+/** The issuance: the Issuer's one transaction, then the bank's two and the Agent's one. */
 const STEPS: Step[] = [
   {
-    label: "Fix the terms and the calendar (Determination Agent)",
+    label: "Issue the note through the factory: terms, T-REX suite, term sheet, Paying Agent, settlement, agents, notional, open (Issuer, one transaction)",
     run: async (c) => {
+      const payer = c.m.governance?.servicingWallet;
+      if (!payer) throw new Error("the deployment has no servicing wallet");
       const block = await c.s.publicClient.getBlock();
       const shape = shapeOf(c.n);
       const calendar = calendarOf(Number(block.timestamp), shape.observations, shape.interval);
@@ -114,92 +104,52 @@ const STEPS: Step[] = [
         twinWin: t.twinWin,
         schedule: stretched.schedule.map((o, k) => ({ date: calendar[k].date, recordTime: calendar[k].recordTime, paymentDate: calendar[k].paymentDate, coupon: o.coupon, mer: o.mer, barrier: o.barrier, isFinal: o.isFinal, merTriggerBps: o.merTriggerBps })),
       };
-      const { address, hash } = await c.s.deploy("issuer", { ...art("DeterminationAgent"), args: [terms, c.s.address("calculationAgent")] });
-      return { calendar, addresses: { ...c.n.addresses, determinations: address }, ...tx("determinations", hash)(c.n) };
-    },
-  },
-  {
-    label: "Deploy the record-date module (the note's compliance)",
-    run: async (c) => {
-      const { address, hash } = await c.s.deploy("issuer", { ...art("RecordDateModule"), args: [c.n.addresses.determinations] });
-      return { addresses: { ...c.n.addresses, recordDates: address }, ...tx("recordDates", hash)(c.n) };
-    },
-  },
-  {
-    label: "Issue the note's T-REX suite: token, identity registry, compliance",
-    run: async (c) => {
-      const salt = c.n.id;
-      const details = {
-        owner: c.s.address("issuer"),
+      const sheet = await liveTermSheet(c);
+      const params = {
+        salt: c.n.id,
         name: c.n.name,
         symbol: c.n.symbol,
-        decimals: 0,
-        irs: c.id.identityStorage,
-        ONCHAINID: "0x0000000000000000000000000000000000000000" as Address,
-        irAgents: [c.s.address("accessIssuer")],
-        tokenAgents: [c.s.address("issuer")],
-        complianceModules: [c.n.addresses.recordDates as Address],
-        complianceSettings: [] as Hex[],
+        terms,
+        issuer: c.s.address("issuer"),
+        calculationAgent: c.s.address("calculationAgent"),
+        funder: c.s.address("agent"),
+        payer,
+        termSheetHash: sheet.hash,
+        termSheetUri: sheet.uri,
+        units: BigInt(c.n.units),
+        open: true,
+        agents: [{ agent: c.s.address("agent"), restrictions: BURN_ONLY }],
       };
-      const claims = { claimTopics: [TOPIC.note], issuers: [c.id.onboardingIssuer], issuerClaims: [[TOPIC.note]] };
-      const h = await c.s.send("issuer", { address: c.id.trexFactory, abi: TREX_FACTORY, functionName: "deployTREXSuite", args: [salt, details, claims] });
-      const note = await until(() => c.s.publicClient.readContract({ address: c.id.trexFactory, abi: TREX_FACTORY, functionName: "getToken", args: [salt] }), (a) => !/^0x0{40}$/i.test(a));
-      const [identityRegistry, compliance] = await Promise.all([
-        until(() => c.s.publicClient.readContract({ address: note, abi: NOTE, functionName: "identityRegistry" }), (a) => !/^0x0{40}$/i.test(a)),
-        c.s.publicClient.readContract({ address: note, abi: NOTE, functionName: "compliance" }),
-      ]);
-      return { addresses: { ...c.n.addresses, note, identityRegistry, compliance }, ...tx("note", h)(c.n) };
+      const hash = await c.s.send("issuer", { address: c.factory, abi: FACTORY, functionName: "issue", args: [params] });
+      const receipt = await c.s.publicClient.waitForTransactionReceipt({ hash });
+      const [issued] = parseEventLogs({ abi: FACTORY, eventName: "NoteIssued", logs: receipt.logs });
+      if (receipt.status !== "success" || !issued) throw new Error(`the issuance reverted (${hash})`);
+      const n = issued.args.note;
+      return {
+        calendar,
+        addresses: {
+          ...c.n.addresses,
+          note: n.token,
+          noteIdentity: n.identity,
+          identityRegistry: n.identityRegistry,
+          compliance: n.compliance,
+          determinations: n.determinations,
+          recordDates: n.recordDates,
+          payingAgent: n.payingAgent,
+          settlement: n.settlement,
+        },
+        data: { ...c.n.data, settlement: "locked" },
+        txs: { ...c.n.txs, note: hash, settlement: hash },
+      };
     },
   },
   {
-    label: "State the term sheet on the note's identity",
-    run: async (c) => {
-      // The live note's term sheet: its hash and location, as its own identity states them.
-      const live = c.m.assets.note!.address as Address;
-      const liveId = await c.s.publicClient.readContract({ address: live, abi: NOTE, functionName: "onchainID" });
-      const claimId = (identity: Address) => keccak256(encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [identity, TOPIC.termSheet]));
-      const [, , , , data, uri] = await c.s.publicClient.readContract({ address: liveId, abi: IDENTITY, functionName: "getClaim", args: [claimId(liveId)] });
-      const ownId = await until(() => c.s.publicClient.readContract({ address: c.n.addresses.note as Address, abi: NOTE, functionName: "onchainID" }), (a) => !/^0x0{40}$/i.test(a));
-      const h = await c.s.send("issuer", { address: ownId, abi: IDENTITY, functionName: "addClaim", args: [TOPIC.termSheet, 1n, ownId, "0x", data, uri] });
-      return { addresses: { ...c.n.addresses, noteIdentity: ownId }, ...tx("termSheet", h)(c.n) };
-    },
+    label: "The bank allowlists the Paying Agent and the settlement contract for its deposit",
+    run: async (c) =>
+      tx("allowlist", await c.s.send("depositAgent", { address: c.m.assets.deposit!.address, abi: DEPOSIT, functionName: "setAllowlistedMany", args: [[c.n.addresses.payingAgent, c.n.addresses.settlement], true] }))(c.n),
   },
   {
-    label: "Deploy the Paying Agent (paying by the Agent's servicing wallet)",
-    run: async (c) => {
-      const payer = c.m.governance?.servicingWallet;
-      if (!payer) throw new Error("the deployment has no servicing wallet");
-      const { address, hash } = await c.s.deploy("issuer", {
-        ...art("PayingAgent"),
-        args: [c.n.addresses.note, c.m.assets.deposit!.address, c.n.addresses.determinations, c.n.addresses.recordDates, c.s.address("issuer"), c.s.address("agent"), c.s.address("issuer"), payer],
-      });
-      return { addresses: { ...c.n.addresses, payingAgent: address }, ...tx("payingAgent", hash)(c.n) };
-    },
-  },
-  {
-    label: "Deploy the settlement contract (offers locked until they settle)",
-    run: async (c) => {
-      const { address, hash } = await c.s.deploy("issuer", { ...art("LockedSettlement"), args: [c.n.addresses.note, c.m.assets.deposit!.address] });
-      return { addresses: { ...c.n.addresses, settlement: address }, data: { ...c.n.data, settlement: "locked" }, ...tx("settlement", hash)(c.n) };
-    },
-  },
-  { label: "Restrict the Issuer to minting and unpausing", run: (c) => asNote(c, "issuerRestricted", "setAgentRestrictions", [c.s.address("issuer"), only("mint", "pause")]) },
-  { label: "Make the Paying Agent an agent of the note", run: (c) => asNote(c, "payingAgentAgent", "addAgent", [c.n.addresses.payingAgent]) },
-  { label: "Restrict the Paying Agent to burning and pausing at a redemption", run: (c) => asNote(c, "payingAgentRestricted", "setAgentRestrictions", [c.n.addresses.payingAgent, only("burn", "pause")]) },
-  { label: "Make the settlement contract an agent of the note", run: (c) => asNote(c, "settlementAgent", "addAgent", [c.n.addresses.settlement]) },
-  { label: "Restrict the settlement contract to locking the units of open offers", run: (c) => asNote(c, "settlementRestricted", "setAgentRestrictions", [c.n.addresses.settlement, only("partialFreeze")]) },
-  { label: "Make the Agent an agent of the note", run: (c) => asNote(c, "agentAgent", "addAgent", [c.s.address("agent")]) },
-  { label: "Restrict the Agent to cancelling units from the Issuer's inventory", run: (c) => asNote(c, "agentRestricted", "setAgentRestrictions", [c.s.address("agent"), only("burn")]) },
-  {
-    label: "The bank allowlists the Paying Agent for its deposit",
-    run: async (c) => tx("allowPayingAgent", await c.s.send("depositAgent", { address: c.m.assets.deposit!.address, abi: DEPOSIT, functionName: "setAllowlisted", args: [c.n.addresses.payingAgent, true] }))(c.n),
-  },
-  {
-    label: "The bank allowlists the settlement contract for its deposit",
-    run: async (c) => tx("allowSettlement", await c.s.send("depositAgent", { address: c.m.assets.deposit!.address, abi: DEPOSIT, functionName: "setAllowlisted", args: [c.n.addresses.settlement, true] }))(c.n),
-  },
-  {
-    label: "Fund the Agent for coupons and redemptions (bank credit)",
+    label: "The bank funds the Agent for coupons and redemptions",
     run: async (c) => {
       // Enough to pay every coupon and redeem at the most the scenario can pay: twice the Calculation Amount per unit.
       const amount = BigInt(c.n.units) * BigInt(c.scenario.terms.calculationAmountCents) * 2n;
@@ -208,11 +158,9 @@ const STEPS: Step[] = [
     },
   },
   {
-    label: "Let the Paying Agent draw the Agent's funds",
+    label: "The Agent lets the Paying Agent draw its funds",
     run: async (c) => tx("allowance", await c.s.send("agent", { address: c.m.assets.deposit!.address, abi: DEPOSIT, functionName: "approve", args: [c.n.addresses.payingAgent, maxUint256] }))(c.n),
   },
-  { label: "Mint the notional to the Issuer's inventory", run: (c) => asNote(c, "mint", "mint", [c.s.address("issuer"), BigInt(c.n.units)]) },
-  { label: "Open the note for transfers (T-REX issues it paused)", run: (c) => asNote(c, "unpause", "unpause", []) },
 ];
 
 export const ISSUANCE_STEPS = STEPS.map((s) => s.label);

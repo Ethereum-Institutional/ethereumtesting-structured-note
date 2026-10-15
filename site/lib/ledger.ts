@@ -7,12 +7,12 @@ import { getStore } from "./store.ts";
 /**
  * The Ledger (ADR 0071): the deployment's lifecycle reconstructed from chain events alone (S-35),
  * read through the ledger RPC (Alchemy on the test network, whose log queries take the whole
- * range), from the deployment's first block, cached for a minute. And, for staff, the register
+ * range), from the deployment's first block, cached for a minute while no new block lands. And, for staff, the register
  * reconciliation: every account the chain or the site knows, what each says, and where they differ.
  */
 
 const CACHE_MS = 60_000;
-let cache: { at: number; value: LedgerView } | null = null;
+let cache: { at: number; head: bigint; value: LedgerView } | null = null;
 let firstBlock: bigint | null = null;
 
 function client(m: Manifest): PublicClient {
@@ -110,9 +110,11 @@ export type LedgerRow = TapeRow & { at: string | null };
 export type LedgerView = { rows: LedgerRow[]; fromBlock: number; chainId: number; readAt: string };
 
 export async function readLedger(limit = 150): Promise<LedgerView> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
   const m = loadManifest();
   const c = client(m);
+  // Kept for a minute, but only while the chain stands still: a new block may carry a new call.
+  const head = await c.getBlockNumber();
+  if (cache && cache.head === head && Date.now() - cache.at < CACHE_MS) return cache.value;
   const from = await deploymentBlock(c, m);
   const tape = new Tape(await withCustodyAccounts(c, m, from), undefined, [...(await noteContracts()), ...(await identities(c, m, from))]);
   const rows = await readTape(c, tape, limit, from, ownContracts(tape, m));
@@ -125,7 +127,7 @@ export async function readLedger(limit = 150): Promise<LedgerView> {
     }),
   );
   const value = { rows: rows.map((r) => ({ ...r, at: times.get(r.block) ?? null })), fromBlock: Number(from), chainId: m.chainId, readAt: new Date().toISOString() };
-  cache = { at: Date.now(), value };
+  cache = { at: Date.now(), head, value };
   return value;
 }
 

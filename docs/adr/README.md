@@ -98,3 +98,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0088](0088-erc-3643-core.md) | The note as an ERC-3643 token: identities, claims by role, record dates as compliance, and restricted agents | Accepted |
 | [0089](0089-onboarding-by-role.md) | Onboarding by role: five portals, custody routes on identities, and no credential platform | Accepted |
 | [0090](0090-pool-on-identities.md) | The conversion pool, on by default, gated on the same ONCHAINID identities | Accepted |
+| [0091](0091-note-factory.md) | The note factory: a note issued whole in one transaction, owned by the factory for the Issuer | Accepted |

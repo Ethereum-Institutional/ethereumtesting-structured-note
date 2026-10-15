@@ -130,6 +130,7 @@ contract DeployInstruments is Script {
         string memory o = "identity";
         vm.serializeAddress(o, "idFactory", address(d.idFactory));
         vm.serializeAddress(o, "trexFactory", address(d.trexFactory));
+        vm.serializeAddress(o, "noteFactory", address(d.noteFactory));
         vm.serializeAddress(o, "trexAuthority", address(d.trexAuthority));
         vm.serializeAddress(o, "identityStorage", address(d.identities));
         vm.serializeAddress(o, "bankIssuer", address(d.bankIssuer));

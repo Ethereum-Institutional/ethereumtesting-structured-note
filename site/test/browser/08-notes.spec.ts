@@ -1,7 +1,7 @@
 import { test, expect, expectHealthy, signedIn, PEOPLE } from "./fixtures.ts";
 
 test("staff issue a note; the page carries the issuance to the end, and the Ledger names its contracts", async ({ browser }) => {
-  test.setTimeout(180_000); // issuance alone is some seventeen transactions
+  test.setTimeout(180_000); // issuance is four transactions, the Issuer's through the note factory
   const staff = await signedIn(browser, PEOPLE.operator);
   await staff.goto("/agent/notes");
   const form = staff.locator("#notes + .panel form");

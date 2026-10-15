@@ -100,6 +100,15 @@ contract DepositToken is ERC20, AccessControl, Pausable, IERC7943Fungible {
         emit Allowlisted(account, allowed);
     }
 
+    /// @notice Allowlists several accounts, or removes them, in one call: a note's lifecycle
+    ///         contracts at issuance (ADR 0091).
+    function setAllowlistedMany(address[] calldata accounts, bool allowed) external onlyRole(ALLOWLIST_ROLE) {
+        for (uint256 k = 0; k < accounts.length; ++k) {
+            allowlisted[accounts[k]] = allowed;
+            emit Allowlisted(accounts[k], allowed);
+        }
+    }
+
     function setIdentityRegistry(IVerifies registry) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setIdentityRegistry(registry);
     }

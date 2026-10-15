@@ -13,9 +13,11 @@ interface IApprove {
 }
 
 /**
- * Issues the note on the scaffolding (ADR 0088): fixes the terms, issues the T-REX suite with its
- * lifecycle attached, mints notional to the Issuer's inventory, opens the note for transfers, and
- * places units with investors A and B by locked offer.
+ * Issues the note on the scaffolding through the note factory, in one transaction (ADRs 0088,
+ * 0091): its terms, its T-REX suite with its lifecycle attached, the notional minted to the
+ * Issuer's inventory and the note opened for transfers. The bank then allowlists the lifecycle
+ * contracts and funds the Agent, the Agent lets the Paying Agent draw its funds, and units are
+ * placed with investors A and B by locked offer.
  *
  * The terms are the illustrative ones of spike 3, not the term sheet, with Twin Win applicable at
  * 100% participation each way, capped at 150% (C5, ADR 0015). **Dates are offsets from the
@@ -42,18 +44,19 @@ contract IssueNote is Script {
             d,
             _terms(),
             Issuance.Config({
-                owner: issuer,
                 issuer: issuer,
                 calculationAgent: calculationAgent,
                 payer: agent,
                 funder: agent,
-                onboardingAgent: vm.addr(vm.envUint("ACCESS_ISSUER_PK")),
                 name: _param("NOTE_NAME", "EUR Worst-of Autocallable Note"),
                 symbol: _param("NOTE_SYMBOL", "EURWAN"),
                 salt: string.concat("note-", vm.toString(block.timestamp)),
                 // Local defaults. On any other chain each value must be set explicitly (ADR 0027).
                 termSheetHash: _hashParam("TERM_SHEET_HASH", keccak256("term sheet, draft")),
-                termSheetUri: _param("TERM_SHEET_URI", "pending")
+                termSheetUri: _param("TERM_SHEET_URI", "pending"),
+                // The notional to the Issuer's inventory, and the note opened, in the same act.
+                units: ISSUED_UNITS,
+                open: true
             })
         );
         vm.stopBroadcast();
@@ -66,11 +69,6 @@ contract IssueNote is Script {
 
         vm.startBroadcast(agentPk);
         IApprove(address(d.deposit)).approve(address(l.payingAgent), type(uint256).max);
-        vm.stopBroadcast();
-
-        vm.startBroadcast(issuerPk);
-        l.note.mint(issuer, ISSUED_UNITS);
-        l.note.unpause();
         vm.stopBroadcast();
 
         _place(l, d, issuerPk, vm.envUint("INVESTOR_A_PK"), 10);

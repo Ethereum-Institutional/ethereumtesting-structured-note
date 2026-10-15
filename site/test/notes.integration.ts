@@ -36,7 +36,7 @@ async function issued(id: string) {
   return (await store.noteById(id))!;
 }
 
-test("a note is issued from the site, step by step, as a T-REX suite on the deployment's fixed implementations", async () => {
+test("a note is issued from the site in four steps, the Issuer's in one transaction through the note factory, as a T-REX suite on the deployment's fixed implementations", async () => {
   await assert.rejects(notes.startNote({ ...operator, email: "someone@corp.example" } as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 }), /Not permitted/);
   await assert.rejects(notes.startNote(operator as any, { scenario: "nope", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 }), /Choose a scenario/);
   const started = await notes.startNote(operator as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 });
@@ -45,7 +45,8 @@ test("a note is issued from the site, step by step, as a T-REX suite on the depl
 
   const n = await issued(started.id);
   assert.equal(n.status, "issued", n.error);
-  assert.equal(Object.keys(n.txs).length, notes.ISSUANCE_STEPS.length, "one transaction per step, each recorded");
+  assert.equal(notes.ISSUANCE_STEPS.length, 4, "the Issuer's one act, the bank's two, the Agent's one");
+  assert.equal(new Set(Object.values(n.txs)).size, 4, "one transaction per step, each recorded");
 
   const m = loadManifest();
   const note = n.addresses.note as Address;
@@ -83,6 +84,17 @@ test("a note is issued from the site, step by step, as a T-REX suite on the depl
   assert.deepEqual([pa.disableBurn, pa.disablePause, pa.disableMint, pa.disableForceTransfer], [false, false, true, true], "the Paying Agent burns and pauses, nothing else");
   const st = await restricted(n.addresses.settlement as Address);
   assert.deepEqual([st.disablePartialFreeze, st.disableBurn, st.disableMint], [false, true, true], "the settlement contract only locks units");
+  const ag = await restricted(m.parties.agent as Address);
+  assert.deepEqual([ag.disableBurn, ag.disableMint, ag.disablePause], [false, true, true], "the Agent only cancels inventory");
+
+  // The factory owns the note for the Issuer, keeps no agent power, and records it (ADR 0091).
+  const FACTORY = parseAbi(["function holds(address) view returns (bool)", "function noteOf(address) view returns ((address token, address identity, address identityRegistry, address compliance, address trustedIssuers, address claimTopics, address determinations, address recordDates, address payingAgent, address settlement))"]);
+  const factory = m.identity!.noteFactory as Address;
+  assert.equal(await client.readContract({ address: factory, abi: FACTORY, functionName: "holds", args: [note] }), true);
+  assert.equal((await client.readContract({ address: factory, abi: FACTORY, functionName: "noteOf", args: [note] })).payingAgent, n.addresses.payingAgent);
+  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "isAgent", args: [factory] }), false);
+  const OWNED = parseAbi(["function owner() view returns (address)"]);
+  assert.equal(await client.readContract({ address: note, abi: OWNED, functionName: "owner" }), factory);
   assert.ok(lagging.staleReads() > 0, "issued through a lagging RPC");
 });
 
@@ -322,7 +334,9 @@ const deposit = (a: Address) => client.readContract({ address: LOCAL.assets.depo
 
 /** Issues a four-date note two minutes apart and places units with the custody account and investor C. */
 async function placedNote(scenario: string, custodyUnits: number, walletUnits: number) {
-  const started = await notes.startNote(operator as any, { scenario, observations: 4, interval: { value: 2, unit: "minutes" as const }, units: 10 });
+  // Dates 30 minutes apart: the tests move the chain's clock to each, so no window lapses in real
+  // time on a slow machine before a test reaches it.
+  const started = await notes.startNote(operator as any, { scenario, observations: 4, interval: { value: 30, unit: "minutes" as const }, units: 10 });
   const n = await issued(started.id);
   assert.equal(n.status, "issued", n.error);
   await credit(LOCAL.custody.accounts["SEG-0003"], 100_000n * BigInt(custodyUnits));

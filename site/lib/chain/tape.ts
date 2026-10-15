@@ -61,7 +61,8 @@ export type ArgSpec =
   | "items"
   | "restrictions"
   | "topics"
-  | "claimData";
+  | "claimData"
+  | "issuance";
 
 export type Entry = { signature: string; meaning: string; tone: Tone; args: ArgSpec[] };
 
@@ -117,6 +118,7 @@ const DEPOSIT_TOKEN: Entry[] = [
   { signature: "function pause()", meaning: "Paused the deposit: all transfers halted", tone: "control", args: [] },
   { signature: "function unpause()", meaning: "Unpaused the deposit", tone: "control", args: [] },
   { signature: "function setAllowlisted(address account, bool allowed)", meaning: "Allowlisted a contract to hold and move the deposit, or removed it", tone: "onboard", args: ["account", "flag"] },
+  { signature: "function setAllowlistedMany(address[] accounts, bool allowed)", meaning: "Allowlisted several accounts for the deposit, or removed them, in one call", tone: "onboard", args: ["accounts", "flag"] },
   { signature: "function setFrozenTokens(address account, uint256 amount)", meaning: "Set the frozen part of a holding", tone: "control", args: ["account", "amount"] },
   { signature: "function forcedTransfer(address from, address to, uint256 amount)", meaning: "Forced a transfer without the holder's signature", tone: "control", args: ["account", "account", "amount"] },
   { signature: "function setIdentityRegistry(address registry)", meaning: "Pointed the deposit at a new identity registry", tone: "control", args: ["account"] },
@@ -225,7 +227,14 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function createIdentity(address wallet, string salt)", meaning: "Created an identity, managed by its wallet", tone: "onboard", args: ["account", "text"] },
   ],
   trexFactory: [
+    { signature: "function transferOwnership(address newOwner)", meaning: "Handed T-REX's factory to a new owner: the note factory", tone: "control", args: ["account"] },
     { signature: "function deployTREXSuite(string salt, (address owner, string name, string symbol, uint8 decimals, address irs, address ONCHAINID, address[] irAgents, address[] tokenAgents, address[] complianceModules, bytes[] complianceSettings) tokenDetails, (uint256[] claimTopics, address[] issuers, uint256[][] issuerClaims) claimDetails)", meaning: "Issued a note's T-REX suite: token, identity registry, compliance", tone: "control", args: ["text", "plan", "plan"] },
+  ],
+  noteFactory: [
+    { signature: `function issue((string salt, string name, string symbol, (uint256[] initialLevels, uint64 calculationAmountCents, uint32 couponBarrierBps, uint32 couponRateBps, bool memory_, uint32 barrierBps, (bool applies, uint32 upBps, uint32 downBps, uint32 capBps) twinWin, (uint48 date, uint48 recordTime, uint48 paymentDate, bool coupon, bool mer, bool barrier, bool isFinal, uint32 merTriggerBps)[] schedule) terms, address issuer, address calculationAgent, address funder, address payer, bytes32 termSheetHash, string termSheetUri, uint256 units, bool open, (address agent, (bool disableMint, bool disableBurn, bool disablePartialFreeze, bool disableAddressFreeze, bool disableRecovery, bool disableForceTransfer, bool disablePause) restrictions)[] agents) p)`, meaning: "Issued a note whole, in one transaction: terms, T-REX suite, term sheet, Paying Agent, settlement, agents, notional", tone: "control", args: ["issuance"] },
+    { signature: "function administer(address token, address target, bytes data)", meaning: "The Issuer acted as a note's owner, through the factory", tone: "control", args: ["account", "account", "plan"] },
+    { signature: "function handOver(address token, address newOwner)", meaning: "Offered a note's contracts to a new owner, and moved its identity's management", tone: "control", args: ["account", "account"] },
+    ...OWNABLE,
   ],
   recordDates: [
     { signature: "function sync(address[] accounts)", meaning: "Recorded balances after a wallet recovery", tone: "ops", args: ["accounts"] },
@@ -309,6 +318,7 @@ const KIND_OF_KEY: Record<string, string> = {
   "instruments.gateway": "gateway",
   "identity.idFactory": "idFactory",
   "identity.trexFactory": "trexFactory",
+  "identity.noteFactory": "noteFactory",
   "identity.bankIssuer": "claimIssuer",
   "identity.onboardingIssuer": "claimIssuer",
   "identity.depositRegistry": "identityRegistry",
@@ -494,6 +504,7 @@ export class Tape {
     if (spec === "restrictions") return restrictions(value as Record<string, boolean>);
     if (spec === "topics") return (Array.isArray(value) ? (value as bigint[]) : [value as bigint]).map(topicName).join(", ") || "none";
     if (spec === "claimData") return claimData(value as Hex);
+    if (spec === "issuance") return this.issuance(value as Issuance);
     if (spec === "levels") return `[${(value as bigint[]).map(String).join(", ")}]`;
     if (spec === "outcome") return outcome(value as Record<string, unknown>);
     if (spec === "signature") return `«signature, ${((value as Hex).length - 2) / 2} bytes»`;
@@ -513,6 +524,17 @@ export class Tape {
       return `${this.label(k.currency0)} / ${this.label(k.currency1)}, fee ${k.fee}, spacing ${k.tickSpacing}, hook ${this.label(k.hooks)}`;
     }
     return `[${(value as unknown[]).length} calls]`;
+  }
+
+  /** A note's issuance, in the words of its term sheet's headline and who serves it (ADR 0091). */
+  private issuance(p: Issuance): string {
+    return [
+      `${p.name} (${p.symbol})`,
+      `${p.units.toString()} units to ${this.label(p.issuer)}${p.open ? ", opened" : ", paused"}`,
+      `${p.terms.schedule.length} observations, the first ${new Date(Number(p.terms.schedule[0]?.date ?? 0) * 1000).toISOString()}`,
+      `paid by ${this.label(p.payer)}, funded by ${this.label(p.funder)}, determined by ${this.label(p.calculationAgent)}`,
+      `term sheet ${p.termSheetHash} at ${JSON.stringify(p.termSheetUri)}`,
+    ].join("; ");
   }
 
   /** Formatted in the token's own decimals, or as a raw integer when the token is not known. */
@@ -537,6 +559,20 @@ export class Tape {
     return [...this.book.entries()].filter(([, v]) => !v.key.startsWith("parties.") && !v.key.startsWith("public.")).map(([a]) => getAddress(a));
   }
 }
+
+type Issuance = {
+  name: string;
+  symbol: string;
+  units: bigint;
+  open: boolean;
+  issuer: Address;
+  payer: Address;
+  funder: Address;
+  calculationAgent: Address;
+  termSheetHash: Hex;
+  termSheetUri: string;
+  terms: { schedule: Array<{ date: number | bigint }> };
+};
 
 /** A determination's outcome, in cents per Calculation Amount. */
 function outcome(o: Record<string, unknown>): string {

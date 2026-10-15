@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.30;
 
-import {IIdentity} from "@onchain-id/solidity/contracts/interface/IIdentity.sol";
-import {KeyPurposes} from "@onchain-id/solidity/contracts/libraries/KeyPurposes.sol";
-import {KeyTypes} from "@onchain-id/solidity/contracts/libraries/KeyTypes.sol";
-import {Token} from "t-rex/token/Token.sol";
 import {GovernanceController} from "../src/GovernanceController.sol";
-import {IOwnable2Step} from "../src/interfaces/INote.sol";
+import {INote, IOwnable2Step} from "../src/interfaces/INote.sol";
+import {NoteFactory} from "../src/factory/NoteFactory.sol";
+import {AgentPowers} from "../src/factory/AgentPowers.sol";
 import {Scaffolding} from "./Scaffolding.sol";
 import {Issuance} from "./Issuance.sol";
 
@@ -20,8 +18,8 @@ interface IRoleAdmin {
  * The governance ceremony: every privileged power moved to its final holder, and the deployer's
  * renunciation as the last act (ADR 0025). Used by the ceremony script and the tests alike.
  *
- * Must be called by the deployer, which owns the note and administers the lifecycle and the
- * deposit until the end.
+ * Must be called by the deployer, the Issuer, which owns the note through the note factory
+ * (ADR 0091) and administers the lifecycle and the deposit until the end.
  *
  * Final holders:
  * - **Controller:** owner of the note, its identity registry, trusted issuers, claim topics and
@@ -39,7 +37,8 @@ interface IRoleAdmin {
  *   and trusted issuers, always; where the pool is deployed it also owns the checker and the
  *   deposit's permissions adapter and holds the pool gate's admin and supervisor roles.
  * - **Deployer and the interim Agent key:** nothing on the note or its lifecycle. The deployer, as
- *   the Issuer, keeps T-REX's factory, to issue further notes.
+ *   the Issuer, keeps the note factory, to issue further notes; the factory holds nothing of this
+ *   note once it is handed over.
  */
 library Governance {
     struct Config {
@@ -94,17 +93,15 @@ library Governance {
         );
         address controller = address(g);
 
-        // The note's agents: the controller and the servicing wallet in, the Issuer out.
-        l.note.addAgent(controller);
-        l.note.setAgentRestrictions(controller, Issuance.controllerRestrictions());
-        l.note.addAgent(c.servicingWallet);
-        l.note.setAgentRestrictions(c.servicingWallet, g.servicingRestrictions());
-        l.note.removeAgent(c.issuer);
-
-        // The note's identity: managed by the controller.
-        IIdentity identity = IIdentity(Token(address(l.note)).onchainID());
-        identity.addKey(keccak256(abi.encode(controller)), KeyPurposes.MANAGEMENT, KeyTypes.ECDSA);
-        identity.removeKey(keccak256(abi.encode(c.deployer)), KeyPurposes.MANAGEMENT);
+        // The note's agents, through the factory that owns the note: the controller and the
+        // servicing wallet in, the Issuer out.
+        address note = address(l.note);
+        NoteFactory f = d.noteFactory;
+        f.administer(note, note, abi.encodeCall(INote.addAgent, (controller)));
+        f.administer(note, note, abi.encodeCall(INote.setAgentRestrictions, (controller, AgentPowers.controller())));
+        f.administer(note, note, abi.encodeCall(INote.addAgent, (c.servicingWallet)));
+        f.administer(note, note, abi.encodeCall(INote.setAgentRestrictions, (c.servicingWallet, g.servicingRestrictions())));
+        f.administer(note, note, abi.encodeCall(INote.removeAgent, (c.issuer)));
 
         // Paying Agent.
         l.payingAgent.grantRole(ADMIN, controller);
@@ -117,11 +114,13 @@ library Governance {
         d.deposit.grantRole(d.deposit.FORCED_TRANSFER_ROLE(), address(l.payingAgent));
         d.gateway.grantRole(ADMIN, controller);
 
-        // Ownership, offered and accepted in the same sequence: the note and its registries, the
-        // pool's identity registries, and the venue where there is one.
+        // Ownership, offered and accepted in the same sequence: the note and its registries, which
+        // the factory hands over with the management of the note's identity; the pool's identity
+        // registries; and the venue where there is one.
+        f.handOver(note, controller);
         bool venue = c.venue.checker != address(0);
         address[] memory owned = new address[](venue ? 10 : 8);
-        owned[0] = address(l.note);
+        owned[0] = note;
         owned[1] = address(l.identityRegistry);
         owned[2] = l.trustedIssuers;
         owned[3] = l.claimTopics;
@@ -130,7 +129,7 @@ library Governance {
         owned[6] = address(d.poolTopics);
         owned[7] = address(d.poolIssuers);
         if (venue) (owned[8], owned[9]) = (c.venue.checker, c.venue.adapter);
-        for (uint256 k = 0; k < owned.length; ++k) {
+        for (uint256 k = 5; k < owned.length; ++k) {
             IOwnable2Step(owned[k]).transferOwnership(controller);
         }
         g.acceptOwnerships(owned);
