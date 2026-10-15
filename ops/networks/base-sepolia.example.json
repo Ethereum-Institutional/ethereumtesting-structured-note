@@ -14,7 +14,6 @@
     "NOTE_SYMBOL": "<from naming sign-off>",
     "DEPOSIT_NAME": "<from naming sign-off>",
     "DEPOSIT_SYMBOL": "<from naming sign-off>",
-    "TERM_SHEET_URI": "<the term sheet's URI>",
-    "TERM_SHEET_HASH": "<the term sheet's keccak256>"
+    "TERM_SHEET_BASE": "<the site's origin, where each term sheet is published at /term-sheets/<hash>>"
   }
 }

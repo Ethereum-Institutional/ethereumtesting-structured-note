@@ -1,6 +1,7 @@
+import { keccak256, toBytes } from "viem";
 import { test, expect, expectHealthy, signedIn, PEOPLE } from "./fixtures.ts";
 
-test("reconciliation: every note the factory issued, its statement now and as at the close of a day, downloaded as JSON and CSV (ADR 0094)", async ({ browser }) => {
+test("reconciliation: every note the factory issued, its statement now and as at the close of a day, downloaded as JSON and CSV, and the term sheet it was issued from (ADRs 0094, 0095)", async ({ browser }) => {
   const staff = await signedIn(browser, PEOPLE.operator);
   await staff.goto("/agent");
   await staff.getByRole("navigation", { name: "The Agent" }).getByRole("link", { name: "Reconciliation" }).click();
@@ -33,6 +34,17 @@ test("reconciliation: every note the factory issued, its statement now and as at
   const lines = csv.trim().split("\n");
   expect(lines[0]).toBe("note,block,as_at,account,name,units_in,units_out,balance,locked_units,eligible,coupons_eur,redemption_eur,held_eur");
   expect(lines.length).toBe(json.positions.length + 1);
+
+  // The term sheet the note was issued from, field by field, and as published at its hash (ADR 0095).
+  const sheet = staff.getByRole("region", { name: "Term sheet" });
+  await expect(sheet).toContainText("not applicable: Not listed");
+  await expect(sheet.getByRole("table", { name: "Observation calendar" }).locator("tbody tr")).toHaveCount(4);
+  await expect(statement.getByRole("list", { name: "Reconciliation checks" }).getByRole("listitem").filter({ hasText: "The term sheet matches the note" })).toContainText("✓");
+  const published = await staff.request.get(new URL((await sheet.getByRole("link", { name: "The record as published (JSON)" }).getAttribute("href"))!, staff.url()).toString());
+  const body = await published.text();
+  expect(keccak256(toBytes(body))).toBe(json.termSheet.hash);
+  const anonymous = await (await browser.newContext()).request.get(new URL(`/term-sheets/${json.termSheet.hash}`, staff.url()).toString());
+  expect(anonymous.status(), "behind sign-in").toBe(401);
 
   // Not the bank's: the statement is the Agent's.
   const bank = await signedIn(browser, PEOPLE.banker);

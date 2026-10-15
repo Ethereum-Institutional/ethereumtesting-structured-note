@@ -19,17 +19,14 @@ interface IApprove {
  * contracts and funds the Agent, the Agent lets the Paying Agent draw its funds, and units are
  * placed with investors A and B by locked offer.
  *
- * The terms are the illustrative ones of spike 3, not the term sheet, with Twin Win applicable at
- * 100% participation each way, capped at 150% (C5, ADR 0015). **Dates are offsets from the
- * chain's own clock at issuance**, so a local chain never carries a calendar that has already
- * passed: four quarterly observations, each with its Record Time two days and Payment Date five
- * days after it.
+ * The note is issued from its term sheet (ADR 0095), which site/scripts/term-sheet.ts builds just
+ * before: its name, symbol, size and terms are the record's, and the record's hash and address are
+ * anchored on the note's identity. The figures are the illustrative ones of spike 3, with Twin Win
+ * applicable (C5, ADR 0015), dated from the chain's own clock.
  *
  * Run from instruments/ after DeployInstruments. Extends the manifest under `noteSuite` and `lifecycle`.
  */
 contract IssueNote is Script {
-    uint256 constant QUARTER = 91 days;
-    uint256 constant ISSUED_UNITS = 100;
 
     function run() external {
         uint256 issuerPk = vm.envUint("ISSUER_PK");
@@ -38,24 +35,25 @@ contract IssueNote is Script {
         address agent = vm.addr(agentPk);
         address calculationAgent = vm.addr(vm.envUint("CALCULATION_AGENT_PK"));
         Scaffolding.Deployed memory d = Manifest.scaffolding(vm.readFile(_manifest()));
+        // The term sheet, built by site/scripts/term-sheet.ts: the input to issuance (ADR 0095).
+        string memory ts = vm.readFile(_termSheet());
 
         vm.startBroadcast(issuerPk);
         Issuance.Issued memory l = Issuance.issue(
             d,
-            _terms(),
+            _terms(ts),
             Issuance.Config({
                 issuer: issuer,
                 calculationAgent: calculationAgent,
                 payer: agent,
                 funder: agent,
-                name: _param("NOTE_NAME", "EUR Worst-of Autocallable Note"),
-                symbol: _param("NOTE_SYMBOL", "EURWAN"),
+                name: vm.parseJsonString(ts, ".record.fields.name.value"),
+                symbol: vm.parseJsonString(ts, ".record.fields.symbol.value"),
                 salt: string.concat("note-", vm.toString(block.timestamp)),
-                // Local defaults. On any other chain each value must be set explicitly (ADR 0027).
-                termSheetHash: _hashParam("TERM_SHEET_HASH", keccak256("term sheet, draft")),
-                termSheetUri: _param("TERM_SHEET_URI", "pending"),
+                termSheetHash: vm.parseJsonBytes32(ts, ".hash"),
+                termSheetUri: vm.parseJsonString(ts, ".uri"),
                 // The notional to the Issuer's inventory, and the note opened, in the same act.
-                units: ISSUED_UNITS,
+                units: vm.parseJsonUint(ts, ".terms.units"),
                 open: true
             })
         );
@@ -97,36 +95,39 @@ contract IssueNote is Script {
         vm.stopBroadcast();
     }
 
-    function _terms() private view returns (IDeterminationAgent.Terms memory t) {
-        t.initialLevels = new uint256[](3);
-        t.initialLevels[0] = 451_200;
-        t.initialLevels[1] = 1_820_300;
-        t.initialLevels[2] = 25_000;
-        t.calculationAmountCents = 100_000;
-        t.couponBarrierBps = 7_000;
-        t.couponRateBps = 250;
-        t.barrierBps = 6_000;
-        // C5: Twin Win applicable. Illustrative figures until the term sheet gives them (ADR 0015).
-        t.twinWin = IDeterminationAgent.TwinWin(true, 10_000, 10_000, 15_000);
-        t.schedule = new IDeterminationAgent.Observation[](4);
-        for (uint256 k = 0; k < 4; ++k) {
-            uint48 date = uint48(block.timestamp + (k + 1) * QUARTER);
+    /// The terms the term sheet gives, as site/scripts/term-sheet.ts derived them from it.
+    function _terms(string memory ts) private pure returns (IDeterminationAgent.Terms memory t) {
+        t.initialLevels = vm.parseJsonUintArray(ts, ".terms.initialLevels");
+        t.calculationAmountCents = uint64(vm.parseJsonUint(ts, ".terms.calculationAmountCents"));
+        t.couponBarrierBps = uint32(vm.parseJsonUint(ts, ".terms.couponBarrierBps"));
+        t.couponRateBps = uint32(vm.parseJsonUint(ts, ".terms.couponRateBps"));
+        t.memory_ = vm.parseJsonBool(ts, ".terms.memory");
+        t.barrierBps = uint32(vm.parseJsonUint(ts, ".terms.barrierBps"));
+        t.twinWin = IDeterminationAgent.TwinWin(
+            vm.parseJsonBool(ts, ".terms.twinWin.applies"),
+            uint32(vm.parseJsonUint(ts, ".terms.twinWin.upBps")),
+            uint32(vm.parseJsonUint(ts, ".terms.twinWin.downBps")),
+            uint32(vm.parseJsonUint(ts, ".terms.twinWin.capBps"))
+        );
+        uint256 n = vm.parseJsonUint(ts, ".terms.scheduleLength");
+        t.schedule = new IDeterminationAgent.Observation[](n);
+        for (uint256 k = 0; k < n; ++k) {
+            string memory o = string.concat(".terms.schedule[", vm.toString(k), "]");
             t.schedule[k] = IDeterminationAgent.Observation(
-                date, date + 2 days, date + 5 days, true, k < 3, k == 3, k == 3, k < 3 ? 10_000 : 0
+                uint48(vm.parseJsonUint(ts, string.concat(o, ".date"))),
+                uint48(vm.parseJsonUint(ts, string.concat(o, ".recordTime"))),
+                uint48(vm.parseJsonUint(ts, string.concat(o, ".paymentDate"))),
+                vm.parseJsonBool(ts, string.concat(o, ".coupon")),
+                vm.parseJsonBool(ts, string.concat(o, ".mer")),
+                vm.parseJsonBool(ts, string.concat(o, ".barrier")),
+                vm.parseJsonBool(ts, string.concat(o, ".isFinal")),
+                uint32(vm.parseJsonUint(ts, string.concat(o, ".merTriggerBps")))
             );
         }
     }
 
-    uint256 constant LOCAL_CHAIN_ID = 31337;
-
-    function _param(string memory key, string memory localDefault) private view returns (string memory) {
-        if (block.chainid == LOCAL_CHAIN_ID) return vm.envOr(key, localDefault);
-        return vm.envString(key);
-    }
-
-    function _hashParam(string memory key, bytes32 localDefault) private view returns (bytes32) {
-        if (block.chainid == LOCAL_CHAIN_ID) return vm.envOr(key, localDefault);
-        return vm.envBytes32(key);
+    function _termSheet() private view returns (string memory) {
+        return string.concat("../", vm.envOr("TERM_SHEET_FILE", string("ops/term-sheet.json")));
     }
 
     function _record(Issuance.Issued memory l, address calculationAgent) private {
@@ -146,7 +147,7 @@ contract IssueNote is Script {
 
         string memory t = "note";
         vm.serializeAddress(t, "address", address(l.note));
-        vm.serializeString(t, "symbol", _param("NOTE_SYMBOL", "EURWAN"));
+        vm.serializeString(t, "symbol", vm.parseJsonString(vm.readFile(_termSheet()), ".record.fields.symbol.value"));
         vm.writeJson(vm.serializeUint(t, "decimals", 0), _manifest(), ".assets.note");
     }
 

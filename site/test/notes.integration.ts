@@ -460,7 +460,20 @@ test("every note the factory issued has a statement, the deployment's note under
   assert.ok(notes.length >= 2, "and the notes issued here");
   const s = await reconcile.statementOf(underReview!);
   assert.equal(s.note.symbol, "EURWAN");
-  assert.deepEqual(s.checks.filter((c) => !c.ok), [], "the note under review reconciles");
+  assert.deepEqual(s.checks.filter((c) => !c.ok), [], "the note under review reconciles, its term sheet matching it");
+  // Its term sheet (ADR 0095): the record it was issued from, held, and published at the address its identity carries.
+  const { hashOf, validate } = await import("../lib/notes/termsheet.ts");
+  const deployed = loadManifest().termSheet as import("../lib/notes/termsheet.ts").TermSheet;
+  assert.deepEqual(validate(deployed), []);
+  assert.equal(s.termSheet?.hash, hashOf(deployed));
+  assert.equal(s.termSheet?.held, true);
+  assert.match(s.termSheet!.uri, new RegExp(`/term-sheets/${hashOf(deployed)}$`));
+
+  // A note issued here carries a record of its own, built from its scenario and calendar.
+  const series = notes.find((n) => !n.underReview)!;
+  const own = await reconcile.statementOf(series);
+  assert.notEqual(own.termSheet?.hash, s.termSheet?.hash, "each note its own term sheet");
+  assert.ok(own.checks.find((c) => c.label === "The term sheet matches the note")?.ok);
   assert.ok(s.positions.some((p) => p.balance !== "0" && p.eligible));
   const today = new Date(Number((await client.getBlock()).timestamp) * 1000).toISOString().slice(0, 10);
   const asAtToday = await reconcile.statementOf(underReview!, { kind: "day", day: today });

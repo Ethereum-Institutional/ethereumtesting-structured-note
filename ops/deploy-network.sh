@@ -30,7 +30,7 @@ export RPC="$(net .rpcUrl)"
 export MANIFEST="ops/addresses.$(basename "$NETWORK_FILE" .json).json"
 export PUBLIC_NETWORK=1
 export FORGE_FLAGS="--slow"
-for k in NOTE_NAME NOTE_SYMBOL DEPOSIT_NAME DEPOSIT_SYMBOL TERM_SHEET_URI TERM_SHEET_HASH; do
+for k in NOTE_NAME NOTE_SYMBOL DEPOSIT_NAME DEPOSIT_SYMBOL TERM_SHEET_BASE; do
   export "$k=$(net ".names.$k")"
 done
 

@@ -64,6 +64,8 @@ export type Manifest = {
     poolIssuers?: Address;
     poolAccessTopic?: number | string;
   };
+  /** The deployment's term sheet, the record its note was issued from (ADR 0095). */
+  termSheet?: unknown;
   /** The main note's T-REX suite. */
   noteSuite?: { identityRegistry: Address; compliance: Address; trustedIssuers: Address; claimTopics: Address };
   custody?: {

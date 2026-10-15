@@ -56,8 +56,14 @@ fi
 step "custodians and segregated client accounts, onboarded by role"
 forge script script/04_DeployCustody.s.sol:DeployCustody $FS >/dev/null
 
-step "issuance: the note as a T-REX suite, lifecycle attached as restricted agents, units placed by locked offer"
+step "the term sheet: the record the note is issued from, dated from the chain's clock (ADR 0095)"
+( cd site && RPC="$RPC" node scripts/term-sheet.ts )
+
+step "issuance: the note from its term sheet, through the note factory, units placed by locked offer"
 ( cd instruments && forge script script/IssueNote.s.sol:IssueNote $FS >/dev/null )
+# The record goes into the manifest, so the site can publish it at the address the note carries.
+M="${MANIFEST:-ops/addresses.json}"
+jq --slurpfile t "${TERM_SHEET_FILE:-ops/term-sheet.json}" '.termSheet = $t[0].record' "$M" > "$M.tmp" && mv "$M.tmp" "$M"
 
 step "governance ceremony: wallets, controller, ownership and roles moved, deployer renounces"
 ( cd instruments && forge script script/Ceremony.s.sol:Ceremony $FS >/dev/null )

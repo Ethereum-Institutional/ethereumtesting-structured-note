@@ -102,3 +102,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0092](0092-the-banks-deposit-acts.md) | The bank's acts on its deposit: debit, hold, pause and a move by order, on a Deposit page | Accepted |
 | [0093](0093-sign-in-by-code.md) | Sign-in by a six-digit code sent by email, in place of one-time links | Accepted |
 | [0094](0094-reconciliation-statement.md) | A reconciliation statement for every note, as at any day, now or a block | Accepted |
+| [0095](0095-term-sheet-as-data.md) | The term sheet as data: a typed record, the input to issuance, its hash on the note | Accepted |

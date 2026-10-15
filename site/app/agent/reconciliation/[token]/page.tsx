@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { noteOnRecord } from "@/lib/notes/registry";
 import { daysOf, parseAsAt, statementOf } from "@/lib/notes/reconcile";
+import { termSheetByHash } from "@/lib/notes/termsheets";
 import { StatementPanel } from "../StatementPanel";
+import { TermSheetView } from "../TermSheetView";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,12 @@ export default async function NoteReconciliation({ params, searchParams }: { par
       ) : (
         <StatementPanel s={statement} downloads={{ json: download(asAt, "json"), csv: download(asAt, "csv") }} />
       )}
+      {typeof statement !== "string" && statement.termSheet && (
+        <>
+          <h3 id="term-sheet">Term sheet</h3>
+          <TermSheetPanel hash={statement.termSheet.hash} />
+        </>
+      )}
       <h3 id="days">Each day</h3>
       <div className="table-wrap panel">
         <table aria-label="Statements by day">
@@ -44,4 +52,10 @@ export default async function NoteReconciliation({ params, searchParams }: { par
       </div>
     </>
   );
+}
+
+async function TermSheetPanel({ hash }: { hash: string }) {
+  const record = await termSheetByHash(hash);
+  if (!record) return <section className="panel"><p className="muted" style={{ margin: 0 }}>The term sheet {hash} is not held here.</p></section>;
+  return <TermSheetView t={record} hash={hash} href={`/term-sheets/${hash}`} />;
 }

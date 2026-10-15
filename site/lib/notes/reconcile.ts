@@ -6,6 +6,7 @@ import { getStore } from "../store.ts";
 import { lifecycleOf } from "./lifecycle.ts";
 import { offersOf } from "./place.ts";
 import { chainClient, type NoteOnRecord } from "./registry.ts";
+import { termSheetOfNote, type NoteTermSheet } from "./termsheets.ts";
 
 /**
  * A note's reconciliation statement (ADR 0094), generalising its close-out statement (S-33,
@@ -16,8 +17,8 @@ import { chainClient, type NoteOnRecord } from "./registry.ts";
  * whether it is eligible, the cash it was paid and anything held for it), the cash the Paying Agent
  * and the settlement contract hold and the Agent's funding, every distribution due, paid and held,
  * and the open offers. Its checks hold on any day: the supply is the sum of the balances, every
- * position reconciles, every holder is eligible, the locked units are the open offers', and the
- * Paying Agent holds exactly what it owes. Once the note has redeemed, the close-out's checks are
+ * position reconciles, every holder is eligible, the locked units are the open offers', the Paying
+ * Agent holds exactly what it owes, and the term sheet the note carries gives exactly its terms. Once the note has redeemed, the close-out's checks are
  * added, and the statement says closed when every check passes.
  */
 
@@ -87,6 +88,8 @@ export type Statement = {
   };
   distributions: Distribution[];
   openOffers: OpenOffer[];
+  /** The term sheet the note's identity names (ADR 0095). */
+  termSheet: { hash: string; uri: string; held: boolean; differences: string[] } | null;
 };
 
 const euros = (cents: bigint) => `€${(Number(cents) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
@@ -158,7 +161,7 @@ export async function statementOf(rec: NoteOnRecord, asAt: AsAt = { kind: "now" 
   const { block: atBlock, label } = await blockFor(asAt, rec.issuedBlock);
   const pin = { blockNumber: atBlock };
 
-  const [block, supply, paused, life, transfers, offers, inventory, funder, label_] = await Promise.all([
+  const [block, supply, paused, life, transfers, offers, inventory, funder, label_, sheet] = await Promise.all([
     c.getBlock(pin),
     c.readContract({ address: token, abi: NOTE, functionName: "totalSupply", ...pin }),
     c.readContract({ address: token, abi: NOTE, functionName: "paused", ...pin }),
@@ -168,6 +171,7 @@ export async function statementOf(rec: NoteOnRecord, asAt: AsAt = { kind: "now" 
     c.readContract({ address: pa, abi: PAYING, functionName: "INVENTORY" }),
     c.readContract({ address: pa, abi: PAYING, functionName: "FUNDER" }),
     names(),
+    termSheetOfNote(token, n.addresses.determinations as Address, atBlock).catch((): NoteTermSheet | null => null),
   ]);
   const [paCash, settlementCash, funderCash, funderAllowance, inventoryUnits] = await Promise.all([
     c.readContract({ address: deposit, abi: CASH, functionName: "balanceOf", args: [pa], ...pin }),
@@ -260,6 +264,17 @@ export async function statementOf(rec: NoteOnRecord, asAt: AsAt = { kind: "now" 
     { label: "The locked units are the open offers'", ok: locked === lockedByOffers, detail: `${locked} unit(s) locked; open offers to sell lock ${lockedByOffers}` },
     { label: "The Paying Agent holds what it owes", ok: paCash === owed, detail: `${euros(paCash)} held; ${euros(owed)} owed: the unpaid part of open distributions and ${euros(held)} held for holders` },
     { label: "The settlement contract holds no cash between settlements", ok: settlementCash === 0n, detail: `${euros(settlementCash)} of the deposit` },
+    {
+      label: "The term sheet matches the note",
+      ok: Boolean(sheet?.record) && sheet!.differences.length === 0,
+      detail: !sheet
+        ? "the note's identity names no term sheet"
+        : !sheet.record
+          ? `the term sheet ${sheet.hash} the note's identity names is not held here`
+          : sheet.differences.length
+            ? `the terms on the chain differ: ${sheet.differences.join("; ")}`
+            : `the record at ${sheet.hash} gives exactly the terms the Determination Agent holds`,
+    },
   ];
   if (life.terminated) {
     const open = distributions.filter((d) => d.state === "open");
@@ -295,6 +310,7 @@ export async function statementOf(rec: NoteOnRecord, asAt: AsAt = { kind: "now" 
       funder: { account: funder, balanceCents: String(funderCash), allowanceCents: String(funderAllowance) },
     },
     distributions,
+    termSheet: sheet ? { hash: sheet.hash, uri: sheet.uri, held: Boolean(sheet.record), differences: sheet.differences } : null,
     openOffers: openOffers.map((o) => ({ id: o.id, kind: o.kind, side: o.side, proposer: o.proposer, counterparty: o.counterparty, units: o.units, priceCents: o.priceCents, deadline: o.deadline })),
   };
 }

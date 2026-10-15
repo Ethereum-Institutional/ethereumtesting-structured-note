@@ -1,12 +1,14 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { decodeAbiParameters, defineChain, encodeAbiParameters, keccak256, maxUint256, parseAbi, parseEventLogs, toBytes, type Address, type Hex } from "viem";
+import { defineChain, keccak256, maxUint256, parseAbi, parseEventLogs, toBytes, type Address, type Hex } from "viem";
 import { loadManifest, type Manifest } from "../chain/manifest.ts";
 import { signers } from "../chain/signer.ts";
 import { getStore, type DemoNote, type Registrant } from "../store.ts";
 import { hasRole } from "../operators.ts";
 import scenarios from "./scenarios.json" with { type: "json" };
 import { calendar as calendarOf, calendarProblem, stretch, type Interval } from "./calendar.ts";
+import { termSheetFrom, toTerms } from "./termsheet.ts";
+import { keepTermSheet, termSheetUri } from "./termsheets.ts";
 
 /**
  * Issuing a note (ADRs 0072, 0073, 0091): the same contracts as the note under review, a scenario's
@@ -38,16 +40,11 @@ const FACTORY = parseAbi([
   `function issue((string salt, string name, string symbol, ${TERMS} terms, address issuer, address calculationAgent, address funder, address payer, bytes32 termSheetHash, string termSheetUri, uint256 units, bool open, (address agent, ${RESTRICTIONS} restrictions)[] agents) p) returns (${NOTE_RECORD})`,
   `event NoteIssued(address indexed token, string salt, ${NOTE_RECORD} note)`,
 ]);
-const IDENTITY = parseAbi([
-  "function getClaim(bytes32 claimId) view returns (uint256 topic, uint256 scheme, address issuer, bytes signature, bytes data, string uri)",
-]);
 const DEPOSIT = parseAbi([
   "function setAllowlistedMany(address[] accounts, bool allowed)",
   "function approve(address spender, uint256 value) returns (bool)",
 ]);
 const GATEWAY = parseAbi(["function credit(address account, uint256 amount, bytes32 bookingRef)"]);
-
-const TERM_SHEET = BigInt(keccak256(toBytes("claim.term-sheet")));
 
 /** Burning alone: the Agent cancels units from the Issuer's inventory (ADR 0085). */
 const BURN_ONLY = { disableMint: true, disableBurn: false, disablePartialFreeze: true, disableAddressFreeze: true, disableRecovery: true, disableForceTransfer: true, disablePause: true };
@@ -72,16 +69,6 @@ type Step = { label: string; run: (c: Ctx) => Promise<Partial<DemoNote> | void> 
 
 const tx = (key: string, hash: Hex) => (n: DemoNote) => ({ txs: { ...n.txs, [key]: hash } });
 
-/** The live note's term sheet, its hash and location, as its own identity states them. */
-async function liveTermSheet(c: Ctx): Promise<{ hash: Hex; uri: string }> {
-  const live = c.m.assets.note!.address as Address;
-  const liveId = await c.s.publicClient.readContract({ address: live, abi: NOTE, functionName: "onchainID" });
-  const claimId = keccak256(encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [liveId, TERM_SHEET]));
-  const [, , , , data, uri] = await c.s.publicClient.readContract({ address: liveId, abi: IDENTITY, functionName: "getClaim", args: [claimId] });
-  const [hash] = decodeAbiParameters([{ type: "bytes32" }, { type: "string" }], data);
-  return { hash, uri };
-}
-
 /** The issuance: the Issuer's one transaction, then the bank's two and the Agent's one. */
 const STEPS: Step[] = [
   {
@@ -94,17 +81,25 @@ const STEPS: Step[] = [
       const calendar = calendarOf(Number(block.timestamp), shape.observations, shape.interval);
       const stretched = stretch(c.scenario, shape.observations);
       const t = c.scenario.terms;
-      const terms = {
-        initialLevels: t.initialLevels.map(BigInt),
-        calculationAmountCents: BigInt(t.calculationAmountCents),
+      // The term sheet first: the record this series is issued from, kept and published by its hash (ADR 0095).
+      const record = termSheetFrom({
+        name: c.n.name,
+        symbol: c.n.symbol,
+        chainId: c.m.chainId,
+        issueSizeUnits: c.n.units,
+        strikeTime: Number(block.timestamp),
+        initialLevels: t.initialLevels,
+        calculationAmountCents: t.calculationAmountCents,
         couponBarrierBps: t.couponBarrierBps,
         couponRateBps: t.couponRateBps,
-        memory_: t.memory,
+        memory: t.memory,
         barrierBps: t.barrierBps,
         twinWin: t.twinWin,
         schedule: stretched.schedule.map((o, k) => ({ date: calendar[k].date, recordTime: calendar[k].recordTime, paymentDate: calendar[k].paymentDate, coupon: o.coupon, mer: o.mer, barrier: o.barrier, isFinal: o.isFinal, merTriggerBps: o.merTriggerBps })),
-      };
-      const sheet = await liveTermSheet(c);
+        depositSymbol: c.m.assets.deposit!.symbol,
+      });
+      const sheetHash = await keepTermSheet(record);
+      const terms = toTerms(record);
       const params = {
         salt: c.n.id,
         name: c.n.name,
@@ -114,8 +109,8 @@ const STEPS: Step[] = [
         calculationAgent: c.s.address("calculationAgent"),
         funder: c.s.address("agent"),
         payer,
-        termSheetHash: sheet.hash,
-        termSheetUri: sheet.uri,
+        termSheetHash: sheetHash,
+        termSheetUri: termSheetUri(sheetHash),
         units: BigInt(c.n.units),
         open: true,
         agents: [{ agent: c.s.address("agent"), restrictions: BURN_ONLY }],
@@ -138,7 +133,7 @@ const STEPS: Step[] = [
           payingAgent: n.payingAgent,
           settlement: n.settlement,
         },
-        data: { ...c.n.data, settlement: "locked" },
+        data: { ...c.n.data, settlement: "locked", termSheet: sheetHash },
         txs: { ...c.n.txs, note: hash, settlement: hash },
       };
     },

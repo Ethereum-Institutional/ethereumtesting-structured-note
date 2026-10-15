@@ -155,6 +155,10 @@ export interface Store {
   updateNote(n: DemoNote, expectedStep: number): Promise<boolean>;
   noteById(id: string): Promise<DemoNote | null>;
   listNotes(): Promise<DemoNote[]>;
+
+  /** Term sheets by the hash their notes carry (ADR 0095). Content-addressed, so never replaced. */
+  putTermSheet(hash: string, record: unknown): Promise<void>;
+  termSheet(hash: string): Promise<unknown | null>;
 }
 
 // --------------------------------------------------------------------------------------------
@@ -188,6 +192,11 @@ create table if not exists sessions (
   hash text primary key,
   registrant_id text not null references registrants(id),
   expires_at timestamptz not null
+);
+create table if not exists term_sheets (
+  hash text primary key,
+  created_at timestamptz not null default now(),
+  data jsonb not null
 );
 create table if not exists notes (
   id text primary key,
@@ -394,6 +403,15 @@ function postgresStore(url: string): Store {
       const s = await q();
       return (await s`select data from notes order by created_at desc`).map((r) => toJson(r.data) as DemoNote);
     },
+    async putTermSheet(hash, record) {
+      const s = await q();
+      await s`insert into term_sheets (hash, data) values (${hash.toLowerCase()}, ${s.json(record as any)}) on conflict (hash) do nothing`;
+    },
+    async termSheet(hash) {
+      const s = await q();
+      const [r] = await s`select data from term_sheets where hash = ${hash.toLowerCase()}`;
+      return r ? toJson(r.data) : null;
+    },
     async putClient(c) {
       const s = await q();
       await s`insert into clients (id, kyc_reference, created_at, data) values (${c.id}, ${c.kycReference}, ${c.createdAt}, ${s.json(c as any)})`;
@@ -433,6 +451,7 @@ type FileData = {
   admissions?: Admission[];
   clients?: Client[];
   notes?: DemoNote[];
+  termSheets?: Record<string, unknown>;
 };
 
 function fileStore(dir: string): Store {
@@ -569,6 +588,15 @@ function fileStore(dir: string): Store {
     },
     async listNotes() {
       return [...(load().notes ?? [])].sort((x, y) => y.createdAt.localeCompare(x.createdAt));
+    },
+    async putTermSheet(hash, record) {
+      edit((d) => {
+        d.termSheets ??= {};
+        d.termSheets[hash.toLowerCase()] ??= record;
+      });
+    },
+    async termSheet(hash) {
+      return load().termSheets?.[hash.toLowerCase()] ?? null;
     },
     async putClient(c) {
       edit((d) => {

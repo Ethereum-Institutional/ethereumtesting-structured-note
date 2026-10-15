@@ -37,7 +37,7 @@ for _ in $(seq 1 60); do cast chain-id --rpc-url "$RPC" >/dev/null 2>&1 && break
 printf '\033[1mFork of chain %s at block %s\033[0m\n' "$(cast chain-id --rpc-url "$RPC")" "$(cast block-number --rpc-url "$RPC")"
 
 # The deploy guard's values, set explicitly from the network file.
-for k in NOTE_NAME NOTE_SYMBOL DEPOSIT_NAME DEPOSIT_SYMBOL TERM_SHEET_URI TERM_SHEET_HASH; do
+for k in NOTE_NAME NOTE_SYMBOL DEPOSIT_NAME DEPOSIT_SYMBOL TERM_SHEET_BASE; do
   export "$k=$(net ".names.$k")"
 done
 

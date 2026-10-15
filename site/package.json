@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start -p 3020",
     "typecheck": "tsc --noEmit",
-    "test": "node --test lib/chain/chain.test.ts lib/pool/quote.test.ts lib/notes/calendar.test.ts",
+    "test": "node --test lib/chain/chain.test.ts lib/pool/quote.test.ts lib/notes/calendar.test.ts lib/notes/termsheet.test.ts",
     "test:chain": "node --test lib/chain/deployment.test.ts",
     "test:admission": "node --conditions=react-server --test --test-concurrency=1 test/onboarding.integration.ts test/notes.integration.ts test/governance.integration.ts test/deposit.integration.ts test/deployment.integration.ts",
     "test:browser": "next build && playwright test",

@@ -18,7 +18,7 @@ key() {
   {
     git ls-files -co --exclude-standard -- contracts script instruments/src instruments/script \
       foundry.toml instruments/foundry.toml instruments/soldeer.lock remappings.txt instruments/remappings.txt \
-      'ops/*.sh' ops/keys.env | grep -v '^ops/reset.sh$' | sort | xargs shasum 2>/dev/null
+      'ops/*.sh' ops/keys.env site/scripts/term-sheet.ts site/lib/notes/termsheet.ts | grep -v '^ops/reset.sh$' | sort | xargs shasum 2>/dev/null
     git submodule status --recursive 2>/dev/null
     anvil --version | head -1
   } | shasum | cut -c1-16
