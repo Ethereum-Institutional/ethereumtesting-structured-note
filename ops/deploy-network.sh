@@ -72,3 +72,11 @@ PT="$(cast call "$TOKEN" 'balanceOf(address)(uint256)' "$DA" --rpc-url "$RPC" | 
 echo "Deploying to chain $(net .chainId). This is public and permanent."
 ./ops/deploy-stack.sh
 echo "Addresses in $MANIFEST"
+
+# Every contract verified on the chain's explorer, where the key file holds an Etherscan key (ADR 0113).
+if [ -n "${ETHERSCAN_API_KEY:-}" ]; then
+  echo "Verifying the contracts on the explorer:"
+  python3 ops/verify-contracts.py || echo "Some contracts were not verified; run ops/verify-contracts.py again to retry them." >&2
+else
+  echo "No ETHERSCAN_API_KEY in $KEYS: the contracts are not verified. Add one and run ops/verify-contracts.py."
+fi

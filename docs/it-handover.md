@@ -73,6 +73,17 @@ From a workstation, not the VM, with the repository checked out at the release t
    It sends about 200 transactions, one at a time, each waiting for the last, so it takes some
    minutes. It writes `ops/addresses.ethereum-sepolia.json`, the manifest the site reads. The
    manifest holds addresses and the term sheet, nothing secret. Keep it with the release.
+6. **Verify the contracts on Etherscan.** With an Etherscan API key in the key file
+   (`./ops/store-secret.sh ETHERSCAN_API_KEY ops/keys.ethereum-sepolia.env`), the deploy verifies every
+   contract by itself. To run it again, or after adding the key:
+
+   ```
+   NETWORK_FILE=ops/networks/ethereum-sepolia.json KEYS=ops/keys.ethereum-sepolia.env python3 ops/verify-contracts.py
+   ```
+
+   It verifies each contract from its own compiler settings, including those the note factory creates
+   inside transactions, and skips any already verified. T-REX's 21-byte deployment stubs have no source
+   and are listed as such.
 
 ## 4. Running the site on the VM
 
