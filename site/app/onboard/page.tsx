@@ -20,6 +20,8 @@ import { PendingButton } from "../PendingButton";
 import { BringIdentityForm, NoteRequestForm } from "./Forms";
 import { accountOf } from "./account";
 import { Address } from "../Address";
+import { ActionForm } from "../staff/ActionForm";
+import { requestCloseAction, withdrawCloseAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -110,10 +112,27 @@ export default async function Account() {
                 </>
               )}
             </dl>
-            {p.admission.route !== "existing-identity" && (!d.note || d.note.status === "declined") && p.eligible.deposit && (
+            {p.admission.route !== "existing-identity" && (!d.note || d.note.status === "declined") && p.eligible.deposit && !d.closeRequest && (
               <details>
                 <summary>Ask for access to the note…</summary>
                 <NoteRequestForm id={p.admission.id} action={requestNoteAction} />
+              </details>
+            )}
+            {d.closeRequest ? (
+              <div className="notice">
+                <p style={{ margin: 0 }}>You asked to close this account on {d.closeRequest.at.slice(0, 10)}: {d.closeRequest.reason}. The bank closes it.</p>
+                <ActionForm action={withdrawCloseAction} hidden={{ id: p.admission.id }} label="Withdraw the request" working="Withdrawing…" quiet />
+              </div>
+            ) : (
+              <details>
+                <summary>Close this account…</summary>
+                <ActionForm action={requestCloseAction} hidden={{ id: p.admission.id }} label="Ask to close" working="Checking what the account holds…" quiet>
+                  <p className="muted" style={{ margin: 0 }}>
+                    The bank revokes its claim and removes the {p.admission.route === "self-custody" || p.admission.route === "existing-identity" ? "wallet" : "account"} from every
+                    registry: it can then neither hold nor receive the deposit or the note. It must first hold nothing and be owed nothing. The bank keeps its records.
+                  </p>
+                  <label>Reason<input name="reason" required maxLength={500} /></label>
+                </ActionForm>
               </details>
             )}
           </section>

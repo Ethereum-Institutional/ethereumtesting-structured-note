@@ -76,3 +76,34 @@ export async function rescreenClient(staff: Registrant, id: string): Promise<Cli
   await store.audit({ at: now(), actor: staff.email, action: `re-screened client ${c.kycReference}`, subject: c.id });
   return next;
 }
+
+/** Onboardings still in progress: confirmed against a client, not yet on the chain. */
+const IN_PROGRESS = ["awaiting-wallet", "awaiting-custodian", "failed"] as const;
+
+/**
+ * Removes a client from the bank's records, so that it can be added again with its facts put
+ * right (ADR 0108). Refused while any account onboarded for it is on the chain, since that account's
+ * bank claim carries this record's hash: the bank offboards it first. Onboardings in progress go
+ * back to waiting for the bank, to be confirmed against the client as it is added again.
+ */
+export async function removeClient(staff: Registrant, id: string, reason: string): Promise<{ returned: number }> {
+  if (!hasRole(staff.email, "bank")) throw new Error("Not permitted.");
+  if (!reason.trim()) throw new Error("Give the reason.");
+  const store = getStore();
+  const c = await store.clientById(id);
+  if (!c) throw new Error("No such client.");
+  const ofClient = (await store.listAdmissions(10_000)).filter((a) => (a.data as { kycReference?: string }).kycReference === c.kycReference);
+  const onChain = ofClient.filter((a) => a.status === "onboarded");
+  if (onChain.length) {
+    const wallets = onChain.map((a) => (a.data as { wallet?: string }).wallet ?? a.id).join(", ");
+    throw new Error(`${c.kycReference} has ${onChain.length === 1 ? "an account" : `${onChain.length} accounts`} onboarded on the chain (${wallets}), whose bank claim carries this record's hash. Offboard ${onChain.length === 1 ? "it" : "them"} under Onboarding first.`);
+  }
+  let returned = 0;
+  for (const a of ofClient.filter((x) => (IN_PROGRESS as readonly string[]).includes(x.status))) {
+    const { kycReference: _k, custodian: _c, challenge: _ch, wallet: _w, error: _e, ...rest } = a.data as Record<string, unknown>;
+    if (await store.updateAdmission({ ...a, status: "requested", data: { ...rest, returned: { by: staff.email, at: now(), reason: `client ${c.kycReference} removed: ${reason.trim()}` } } }, a.status)) returned++;
+  }
+  await store.deleteClient(c.id);
+  await store.audit({ at: now(), actor: staff.email, action: `removed client ${c.kycReference} (${String(c.claims.legalName)}) from the bank's records: ${reason.trim()}${returned ? `; ${returned} onboarding${returned === 1 ? "" : "s"} returned to the bank` : ""}`, subject: c.id });
+  return { returned };
+}

@@ -225,6 +225,73 @@ test("an identity brought from elsewhere is registered for the note only if a tr
   assert.match(undone, /^0x0{40}$/i, "the bad registration is undone");
 });
 
+test("a client asks to close its account: refused while it holds the deposit; asked, withdrawn and asked again; the bank closes it, and the wallet is in no registry (ADR 0107)", async () => {
+  const closing = await import("../lib/identity/closing.ts");
+  const deposit = await import("../lib/identity/deposit.ts");
+  const { c, r } = await aClient(5);
+  let a = await onboarding.requestRoute(r as any, "self-custody");
+  a = await onboarding.confirmRoute(banker as any, a.id, c.kycReference);
+  const key = generatePrivateKey();
+  const wallet = privateKeyToAccount(key).address;
+  a = await onboarding.completeWallet(r as any, a.id, await signFor(key, await onboarding.startWallet(r as any, a.id, wallet, SITE)));
+  assert.equal(a.status, "onboarded", String((a.data as any).error));
+
+  // Holding the deposit: refused, and the refusal says what is held.
+  await deposit.creditDeposit(wallet, 1_000n);
+  // Read as the site reads, through an RPC a block behind: wait until it shows the credit.
+  const seen = async (want: boolean) => { for (let i = 0; i < 30 && (await closing.stillHeld(wallet)).length > 0 !== want; i++) await new Promise((r) => setTimeout(r, 500)); };
+  await seen(true);
+  await assert.rejects(closing.requestClose(r as any, a.id, "Moving banks"), /cannot close while it holds or is owed anything: .* of the deposit/);
+  await assert.rejects(closing.requestClose(operator as any, a.id, "Not mine"), /Not your account/);
+  await deposit.debitDeposit(wallet, 1_000n);
+  await seen(false);
+  assert.deepEqual(await closing.stillHeld(wallet), []);
+
+  // Asked, withdrawn, asked again; only the bank's staff may close it.
+  await assert.rejects(closing.requestClose(r as any, a.id, "  "), /Give the reason/);
+  await closing.requestClose(r as any, a.id, "Moving banks");
+  assert.equal((onboarding.dataOf((await store.admissionById(a.id))!) as any).closeRequest.reason, "Moving banks");
+  await closing.withdrawClose(r as any, a.id);
+  assert.equal((onboarding.dataOf((await store.admissionById(a.id))!) as any).closeRequest, undefined);
+  await assert.rejects(closing.confirmClose(banker as any, a.id), /has not asked to close/);
+  await closing.requestClose(r as any, a.id, "Moving banks");
+  await assert.rejects(closing.confirmClose(r as any, a.id), /Not permitted/);
+  await closing.confirmClose(banker as any, a.id);
+  const closed = (await store.admissionById(a.id))!;
+  assert.equal(closed.status, "offboarded");
+  assert.match((onboarding.dataOf(closed) as any).offboarded.reason, /Closed at the client's request: Moving banks/);
+  assert.equal(await forDeposit(wallet), false);
+  const gone = await chain.readContract({ address: m.identity!.depositRegistry, abi: REGISTRY, functionName: "identity", args: [wallet] });
+  assert.match(gone, /^0x0{40}$/i, "in no registry");
+});
+
+test("the bank removes a client to add it again: refused while an account for it is onboarded; an onboarding in progress returns to the bank and is confirmed against the client added again (ADR 0108)", async () => {
+  // The self-custody client of the earlier test is onboarded on the chain: its record stays.
+  const onboarded = (await store.admissionById(selfCustody.id))!;
+  const ref = onboarding.dataOf(onboarded).kycReference!;
+  const held = (await store.clientByReference(ref))!;
+  await assert.rejects(clients.removeClient(banker as any, held.id, "Wrong jurisdiction"), /onboarded on the chain .* Offboard it under Onboarding first/);
+  await assert.rejects(clients.removeClient(operator as any, held.id, "  "), /Give the reason/);
+  assert.ok(await store.clientByReference(ref), "kept");
+
+  // A client whose onboarding is in progress: removed, the onboarding goes back to the bank.
+  const { c, r } = await aClient(6);
+  let a = await onboarding.requestRoute(r as any, "self-custody");
+  a = await onboarding.confirmRoute(banker as any, a.id, c.kycReference);
+  assert.equal(a.status, "awaiting-wallet");
+  await assert.rejects(clients.removeClient(r as any, c.id, "Typo"), /Not permitted/);
+  assert.deepEqual(await clients.removeClient(banker as any, c.id, "Legal name misspelt"), { returned: 1 });
+  assert.equal(await store.clientByReference(c.kycReference), null);
+  a = (await store.admissionById(a.id))!;
+  assert.equal(a.status, "requested");
+  assert.equal(onboarding.dataOf(a).kycReference, undefined);
+  // Added again, put right, and the same request confirmed against it.
+  const again = await clients.addClient(banker as any, { legalName: "Onboarding Test 6 SA", legalForm: "PLC", registrationNumber: `B6R${Date.now()}`, jurisdiction: "LU", incorporationDate: "2015-03-01", status: "active" });
+  a = await onboarding.confirmRoute(banker as any, a.id, again.kycReference);
+  assert.equal(a.status, "awaiting-wallet");
+  assert.match((await store.auditLog(50)).map((e) => e.action).join("\n"), /removed client .* Legal name misspelt; 1 onboarding returned to the bank/);
+});
+
 test("offboarding revokes the bank's claim and removes the wallet from every registry", async () => {
   const { wallet, id } = selfCustody;
   await onboarding.offboard(banker as any, id, "Relationship ended");

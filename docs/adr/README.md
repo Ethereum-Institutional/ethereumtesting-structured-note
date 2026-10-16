@@ -114,3 +114,5 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0104](0104-an-existing-identity-must-be-an-identity.md) | An identity brought to the site must be an ONCHAINID identity | Accepted |
 | [0105](0105-an-issuance-that-cannot-hang.md) | An issuance that cannot hang, and can be stopped | Accepted |
 | [0106](0106-addresses-shortened-and-linked.md) | Addresses shown short, and linked to the explorer | Accepted |
+| [0107](0107-a-client-closes-an-account.md) | A client asks to close an account; the bank closes it | Accepted |
+| [0108](0108-the-bank-removes-a-client.md) | The bank removes a client, to add it again | Accepted |

@@ -83,6 +83,8 @@ export type Data = {
   revocations?: Array<{ topic: "deposit" | "note" | "pool"; by: string; at: string; reason: string }>;
   error?: string;
   offboarded?: { by: string; at: string; reason: string };
+  /** The client asked to close the account; the bank confirms (ADR 0107). */
+  closeRequest?: { by: string; at: string; reason: string };
 };
 
 export const dataOf = (a: Admission) => a.data as Data;

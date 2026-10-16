@@ -150,6 +150,8 @@ export interface Store {
 
   putClient(c: Client): Promise<void>;
   updateClient(c: Client): Promise<void>;
+  /** Removes a client from the bank's records (ADR 0108). */
+  deleteClient(id: string): Promise<void>;
   clientById(id: string): Promise<Client | null>;
   clientByReference(kycReference: string): Promise<Client | null>;
   listClients(): Promise<Client[]>;
@@ -437,6 +439,10 @@ function postgresStore(url: string): Store {
       const s = await q();
       await s`update clients set data = ${s.json(c as any)} where id = ${c.id}`;
     },
+    async deleteClient(id) {
+      const s = await q();
+      await s`delete from clients where id = ${id}`;
+    },
     async clientById(id) {
       const s = await q();
       const [r] = await s`select data from clients where id = ${id}`;
@@ -632,6 +638,11 @@ function fileStore(dir: string): Store {
     async updateClient(c) {
       edit((d) => {
         d.clients = (d.clients ?? []).map((x) => (x.id === c.id ? c : x));
+      });
+    },
+    async deleteClient(id) {
+      edit((d) => {
+        d.clients = (d.clients ?? []).filter((x) => x.id !== id);
       });
     },
     async clientById(id) {

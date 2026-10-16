@@ -1,7 +1,8 @@
 import { getStore } from "@/lib/store";
 import { CORPORATE_STATUSES, LEGAL_FORMS } from "@/lib/identity/clients";
 import { CLAIM_DAYS } from "@/lib/identity/onchain";
-import { addClientAction, rescreenClientAction } from "../../actions";
+import { addClientAction, removeClientAction, rescreenClientAction } from "../../actions";
+import { ActionForm } from "../../staff/ActionForm";
 import { PendingButton } from "../../PendingButton";
 import { AddClientForm } from "../../staff/AddClientForm";
 import { ageDays, day } from "../../staff/parts";
@@ -45,6 +46,16 @@ export default async function Clients() {
                           <input type="hidden" name="id" value={c.id} />
                           <PendingButton className="quiet" working="Re-screening…">Re-screen</PendingButton>
                         </form>
+                        <details>
+                          <summary>Remove…</summary>
+                          <ActionForm action={removeClientAction} hidden={{ id: c.id }} label="Remove the client" working="Removing…" quiet>
+                            <p className="muted" style={{ margin: 0 }}>
+                              Removes the record, so the client can be added again with its facts put right. Refused while an account for it is onboarded on the
+                              chain: offboard it first. Onboardings in progress go back to Onboarding, to be confirmed again.
+                            </p>
+                            <label>Reason<input name="reason" required maxLength={500} /></label>
+                          </ActionForm>
+                        </details>
                       </td>
                     </tr>
                   );

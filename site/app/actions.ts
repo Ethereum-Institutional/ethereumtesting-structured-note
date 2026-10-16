@@ -248,6 +248,53 @@ export async function renewDepositAction(_prev: Result, f: FormData): Promise<Re
   });
 }
 
+/** The client asks to close an account; refused, in words, while it holds or is owed anything (ADR 0107). */
+export async function requestCloseAction(_prev: Result, f: FormData): Promise<Result> {
+  const who = await currentRegistrant();
+  if (!who) return { error: "Sign in again." };
+  try {
+    const { requestClose } = await import("@/lib/identity/closing");
+    await requestClose(who, field(f, "id"), field(f, "reason"));
+    return { ok: "Asked. The bank closes the account." };
+  } catch (e) {
+    return { error: (e as Error).message };
+  } finally {
+    revalidatePath("/onboard");
+  }
+}
+
+export async function withdrawCloseAction(_prev: Result, f: FormData): Promise<Result> {
+  const who = await currentRegistrant();
+  if (!who) return { error: "Sign in again." };
+  try {
+    const { withdrawClose } = await import("@/lib/identity/closing");
+    await withdrawClose(who, field(f, "id"));
+    return { ok: "Withdrawn." };
+  } catch (e) {
+    return { error: (e as Error).message };
+  } finally {
+    revalidatePath("/onboard");
+  }
+}
+
+/** The bank closes an account as its client asked (ADR 0107). */
+export async function confirmCloseAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank", async (staff) => {
+    const { confirmClose } = await import("@/lib/identity/closing");
+    await confirmClose(staff, field(f, "id"));
+    return "Closed: the bank's claim revoked and the wallet removed from every registry.";
+  });
+}
+
+/** The bank removes a client from its records, to add it again with its facts put right (ADR 0108). */
+export async function removeClientAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("bank", "/bank", async (staff) => {
+    const { removeClient } = await import("@/lib/identity/clients");
+    const { returned } = await removeClient(staff, field(f, "id"), field(f, "reason"));
+    return `Removed.${returned ? ` ${returned} onboarding${returned === 1 ? "" : "s"} in progress returned to Onboarding, to be confirmed again.` : ""}`;
+  });
+}
+
 export async function offboardAction(_prev: Result, f: FormData): Promise<Result> {
   return staffStep("bank", "/bank", async (staff) => {
     await onboarding.offboard(staff, field(f, "id"), field(f, "reason"));

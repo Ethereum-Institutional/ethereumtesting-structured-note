@@ -244,6 +244,10 @@ test("S-08 for a custody account: the custodian accepts in the same action, and 
   // The chain is the record: both placements, each settled.
   const offers = (await place.offersOf((await store.noteById(n.id))!)).map((x) => `${x.id}:${x.kind}:${x.status}`);
   assert.deepEqual(offers.sort(), ["1:placement:settled", "2:placement:settled"]);
+  // A custody account holding units cannot be closed (ADR 0107): the refusal names the note.
+  const { stillHeld } = await import("../lib/identity/closing.ts");
+  const held = await stillHeld(account);
+  assert.ok(held.some((h) => h.startsWith("1 units of ")), held.join("; "));
 });
 
 // --- transfers, buy-backs and the inventory (ADR 0081; S-11 to S-14, S-16) ---

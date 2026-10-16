@@ -74,6 +74,23 @@ test("self-custody: the bank declines, the client asks again, the bank confirms,
     await expect(account).toContainText("eligible, until", { timeout: 1_000 });
   }).toPass({ timeout: 30_000 });
 
+  // The client asks to close its account (ADR 0107): holding nothing yet, the request stands; the bank
+  // sees it with its reason; withdrawn, it is gone, and the account stays for the specs after this one.
+  await client.reload();
+  await account.getByText("Close this account…").click();
+  await account.getByLabel("Reason").fill("Consolidating accounts");
+  await account.getByRole("button", { name: "Ask to close" }).click();
+  await expect(account).toContainText("You asked to close this account", { timeout: 30_000 });
+  await bank.goto("/bank/onboarding");
+  const asked = bank.locator("#onboarded + .table-wrap tbody tr").filter({ hasText: wallet });
+  await expect(asked).toContainText("asked to close");
+  await expect(asked).toContainText("Consolidating accounts");
+  await expect(asked.getByRole("button", { name: "Close the account as asked" })).toBeVisible();
+  await account.getByRole("button", { name: "Withdraw the request" }).click();
+  await expect(account.getByText("Close this account…")).toBeVisible();
+  await bank.reload();
+  await expect(bank.locator("#onboarded + .table-wrap tbody tr").filter({ hasText: wallet })).not.toContainText("asked to close");
+
   // With an identity on the chain, the client's registration cannot be deleted, not even by an admin
   // (ADR 0100): the wallet is offboarded first.
   const admin = await signedIn(browser, PEOPLE.operator);

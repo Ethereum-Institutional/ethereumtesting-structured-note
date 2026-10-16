@@ -9,7 +9,7 @@ factory, the conversion pool, and reconciliation at any block.
   `docs/solution-overview.pdf`, generated from it. The gated site in `site/` serves the overview.
 - **The order of a note's life,** step by step, as the contracts enforce it:
   `docs/lifecycle-sequence.md`.
-- **Why each design decision went the way it did:** `docs/adr/`. 0.2.0's are ADRs 0085 to 0106.
+- **Why each design decision went the way it did:** `docs/adr/`. 0.2.0's are ADRs 0085 to 0108.
 - **The 0.2.0 plan and its workstreams:** `docs/plan/0.2.0.md`.
 - **Where things stand, hazards and open items:** `HANDOFF.md`.
 - **Spikes:** `docs/spikes/`, with their harnesses under `spikes/`.
@@ -62,7 +62,7 @@ ordered as it is are in `ops/README.md`.
 | Venue | `forge test --fork-url http://127.0.0.1:8545` | 31, against the deployed stack after the ceremony |
 | Site, unit | `cd site && npm test` | 44 |
 | Site, integration | `cd site && npm run test:admission` | 32, through a proxy that answers a block behind, as a load-balanced public RPC does |
-| Site, browser | `cd site && npm run test:browser` | 19 specs, every portal clicked through in Chromium, and every page at a phone's width |
+| Site, browser | `cd site && npm run test:browser` | 20 specs, every portal clicked through in Chromium, and every page at a phone's width |
 
 The overview's PDF is regenerated from the HTML with `cd site && node scripts/overview-pdf.ts`.
 

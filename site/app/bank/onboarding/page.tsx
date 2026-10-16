@@ -9,6 +9,7 @@ import {
   offboardAction,
   renewDepositAction,
   revokeDepositAction,
+  confirmCloseAction,
 } from "../../actions";
 import { ActionForm } from "../../staff/ActionForm";
 import { ClientReference, when } from "../../staff/parts";
@@ -96,7 +97,13 @@ export default async function BankOnboarding() {
                 const note = claimState(p.claims.note);
                 return (
                   <tr key={a.id}>
-                    <td>{nameOf(dataOf(a).kycReference)}{a.status === "offboarded" && <><br /><span className="pill revoked">offboarded</span></>}</td>
+                    <td>
+                      {nameOf(dataOf(a).kycReference)}
+                      {a.status === "offboarded" && <><br /><span className="pill revoked">offboarded</span></>}
+                      {a.status === "onboarded" && dataOf(a).closeRequest && (
+                        <><br /><span className="pill pending">asked to close</span><br /><span className="muted">{when(dataOf(a).closeRequest!.at)}: {dataOf(a).closeRequest!.reason}</span></>
+                      )}
+                    </td>
                     <td>{ROUTE_LABEL[a.route]}</td>
                     <td><Address value={p.wallet} /></td>
                     <td><Address value={p.identity} /></td>
@@ -105,6 +112,11 @@ export default async function BankOnboarding() {
                     <td>
                       {a.status === "onboarded" && (
                         <div className="stack-actions">
+                          {dataOf(a).closeRequest && (
+                            <ActionForm action={confirmCloseAction} hidden={{ id: a.id }} label="Close the account as asked" working="Checking, revoking and removing…">
+                              <p className="muted" style={{ margin: 0 }}>Checked again first: refused while the account holds or is owed anything.</p>
+                            </ActionForm>
+                          )}
                           <details>
                             <summary>Credit deposit…</summary>
                             <ActionForm action={creditDepositAction} hidden={{ id: a.id }} label="Credit" working="Crediting the deposit…">
