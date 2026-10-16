@@ -415,7 +415,7 @@ export async function propose(
 ): Promise<{ tx: Hex; id: number }> {
   staffOnly(staff);
   const reason = needReason(input.reason);
-  if (!OFFERED.includes(input.kind)) throw new Error(`${KIND_LABEL[input.kind]} is not offered from the site (ADR 0082).`);
+  if (!OFFERED.includes(input.kind)) throw new Error(`${KIND_LABEL[input.kind]} is not offered from the site: it is proposed and executed by the institutions' own wallets.`);
   const c = context();
   let data: Hex;
   if (input.kind === "AmendNotional") {

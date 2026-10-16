@@ -60,7 +60,7 @@ fi
 step "custodians and segregated client accounts, onboarded by role"
 forge script script/04_DeployCustody.s.sol:DeployCustody $FS >/dev/null
 
-step "the term sheet: the record the note is issued from, dated from the chain's clock (ADR 0095)"
+step "the term sheet: the record the note is issued from, dated from the chain's clock"
 ( cd site && RPC="$RPC" node scripts/term-sheet.ts )
 
 step "issuance: the note from its term sheet, through the note factory, units placed by locked offer"

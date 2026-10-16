@@ -215,7 +215,7 @@ async function offerIdFrom(s: Signers, hash: Hex): Promise<string> {
 async function noteFor(noteId: string): Promise<DemoNote> {
   const n = await getStore().noteById(noteId);
   if (!n || n.status !== "issued") throw new Error("That note is not issued.");
-  if (!lockedSettlement(n)) throw new Error(`${n.symbol} was issued before locked settlement (ADR 0081); issue a new note to trade.`);
+  if (!lockedSettlement(n)) throw new Error(`${n.symbol} was issued before locked settlement existed, so it cannot be traded through the site; issue a new note to trade.`);
   return n;
 }
 
@@ -236,7 +236,7 @@ async function noteWouldMove(s: Signers, n: DemoNote, seller: Address, buyer: Ad
     s.publicClient.readContract({ address: n.addresses.determinations as Address, abi: DETERMINATIONS, functionName: "transfersOpen" }),
     until(() => s.publicClient.readContract({ address: n.addresses.settlement as Address, abi: SETTLEMENT, functionName: "noteAccepts", args: [seller, buyer, value] }), Boolean),
   ]);
-  if (!open) throw new Error("Transfers are stopped from a record time until its determination (ADR 0010); trade once it is determined.");
+  if (!open) throw new Error("Transfers are stopped from a record time until that date is determined, so the holders of record cannot change; trade once it is determined.");
   if (!could) {
     const note = n.addresses.note as Address;
     if (!(await eligibleFor(n, buyer))) {

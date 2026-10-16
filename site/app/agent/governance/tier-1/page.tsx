@@ -69,7 +69,7 @@ export default async function Tier1() {
         <details style={{ marginTop: "0.75rem" }}>
           <summary>Freeze an account{view.pool ? ", or withdraw or restore pool access" : ""}…</summary>
           <ActionForm action={tier1WithdrawAction} hidden={{}} label="Act" working="The Agent's governance wallet acts…">
-            <p className="muted" style={{ margin: 0 }}>The supervisory stop, whichever institution vouched for the account (ADR 0004): a frozen account can neither send nor receive the note.</p>
+            <p className="muted" style={{ margin: 0 }}>The supervisory stop, whichever institution vouched for the account: a frozen account can neither send nor receive the note.</p>
             <div className="fields">
               <label>Act<select name="what" defaultValue="freeze">
                 <option value="freeze">Freeze the account on the note</option>

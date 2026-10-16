@@ -27,12 +27,12 @@ export default async function Keys() {
         <p className="muted">
           The keys the site signs with, on chain {view.chainId}, read {when(view.readAt)}. Before every transaction the site
           checks that its key can pay twice the estimated fees, and refuses otherwise. A key below {eth(view.buffer)} ETH is
-          low, and every Operator page says so. A top-up sends {eth(TOP_UP)} ETH from the best-funded key
+          low, and every staff portal says so. A top-up sends {eth(TOP_UP)} ETH from the best-funded key
           {view.funder ? `, now the ${view.funder.label}'s` : ""}.
         </p>
-        {view.chainId === 84532 && (
+        {view.chainId === 11155111 && (
           <p className="muted">
-            To refill the funding key: <a href="https://docs.base.org/base-chain/tools/network-faucets" target="_blank" rel="noreferrer">Base Sepolia faucets</a>.
+            To refill the best-funded key with test ETH: <a href="https://cloud.google.com/application/web3/faucet/ethereum/sepolia" target="_blank" rel="noreferrer">an Ethereum Sepolia faucet</a>.
           </p>
         )}
         <div className="table-wrap">

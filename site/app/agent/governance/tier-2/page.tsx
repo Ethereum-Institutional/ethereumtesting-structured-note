@@ -25,7 +25,7 @@ export default async function Tier2() {
           <dt>Thresholds</dt><dd>At least {view.minInstitutions} institutions, whose wallets need {view.minSignatures} signatures between them</dd>
           <dt>Delay</dt><dd>{span(view.tier2Delay)} on this deployment{view.targetTier2Delay ? `, ${span(view.targetTier2Delay)} in production` : ""}; {span(view.recoveryDelay)} for a recovery</dd>
           <dt>Execution window</dt>
-          <dd>{view.executionWindow === null ? "None: this deployment's controller predates expiry (S-24, ADR 0082)." : `${span(view.executionWindow)} after the delay${view.targetExecutionWindow ? `, ${span(view.targetExecutionWindow)} in production` : ""}; then a proposal expires (S-24)`}</dd>
+          <dd>{view.executionWindow === null ? "None: this deployment's controller was built before proposals expired, so a proposal stays open until it is executed or cancelled." : `${span(view.executionWindow)} after the delay${view.targetExecutionWindow ? `, ${span(view.targetExecutionWindow)} in production` : ""}; then a proposal expires (S-24)`}</dd>
           <dt>Institutions</dt><dd>{view.institutions.map((i) => i.label).join(", ")}: each a 2-of-3 wallet, whose two owners' keys the site holds</dd>
           <dt>Chain time</dt><dd>{t(view.chainNow)}</dd>
         </dl>

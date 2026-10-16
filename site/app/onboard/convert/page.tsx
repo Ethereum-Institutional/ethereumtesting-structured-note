@@ -44,9 +44,9 @@ export default async function Convert() {
             <dt>ETH for fees</dt><dd>{have ? show(have.eth, 18) : "–"}</dd>
           </dl>
           {!have && <p className="muted">The wallet's balances could not be read just now.</p>}
-          {chain.chainId === "0x14a34" && (
+          {chain.chainId === "0xaa36a7" && (
             <p className="muted">
-              Test {t.payment.symbol}: <a href="https://faucet.circle.com" target="_blank" rel="noreferrer">Circle's faucet</a>. Test ETH for fees: <a href="https://docs.base.org/base-chain/tools/network-faucets" target="_blank" rel="noreferrer">Base Sepolia faucets</a>. {t.deposit.symbol} is credited by your bank.
+              Test {t.payment.symbol}: <a href="https://faucet.circle.com" target="_blank" rel="noreferrer">Circle's faucet</a>. Test ETH for fees: <a href="https://cloud.google.com/application/web3/faucet/ethereum/sepolia" target="_blank" rel="noreferrer">an Ethereum Sepolia faucet</a>. {t.deposit.symbol} is credited by your bank.
             </p>
           )}
           <p className="pool-standing">

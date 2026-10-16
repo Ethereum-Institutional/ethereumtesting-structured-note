@@ -85,7 +85,7 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
           <dt>Symbol</dt><dd>{n.symbol}</dd>
           <dt>Scenario</dt><dd>{sc?.summary}</dd>
           <dt>Status</dt><dd>{live?.closed ? "Redeemed and closed" : live?.terminated ? "Redeemed early; paying" : `Issued; ${inventory} of ${total} units in the Issuer's inventory`}</dd>
-          {!locked && <><dt>Trading</dt><dd>Issued before locked settlement (ADR 0081): placed only, with no transfers or buy-backs.</dd></>}
+          {!locked && <><dt>Trading</dt><dd>Issued before locked settlement existed: its units can be placed, but not transferred or bought back through the site.</dd></>}
           <dt>Chain time</dt><dd>{live ? t(live.chainNow) : "–"}</dd>
         </dl>
         <details>
