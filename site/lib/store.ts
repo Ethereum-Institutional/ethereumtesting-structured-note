@@ -114,6 +114,30 @@ export type DemoNote = {
   data: Record<string, unknown>;
 };
 
+/**
+ * A background job: work the server carries to its end with no page open (ADR 0116). Its steps are
+ * worked out from the chain's state each time, so running one again is safe.
+ */
+export type Job = {
+  id: string;
+  kind: "payment";
+  /** What the job acts on: the note, for a payment. */
+  subject: string;
+  createdAt: string;
+  by: string;
+  state: "queued" | "done" | "failed" | "stopped";
+  /** Bumped on every write: a write that finds another version lost a race, and is not applied. */
+  version: number;
+  /** When a worker claimed the job; a claim older than any request can run is stale. */
+  claimedAt?: string;
+  /** Not run again before this time, after a failed step. */
+  notBefore?: string;
+  attempts: number;
+  error?: string;
+  /** What has been done: the transactions sent, and the job's own inputs. */
+  data: Record<string, unknown>;
+};
+
 export interface Store {
   registrantByEmail(email: string): Promise<Registrant | null>;
   registrantById(id: string): Promise<Registrant | null>;
@@ -166,6 +190,21 @@ export interface Store {
   noteById(id: string): Promise<DemoNote | null>;
   listNotes(): Promise<DemoNote[]>;
 
+  putJob(j: Job): Promise<void>;
+  /** Replaces the job, only if its version is still `expectedVersion`. Returns whether it did. */
+  updateJob(j: Job, expectedVersion: number): Promise<boolean>;
+  jobById(id: string): Promise<Job | null>;
+  /** The newest jobs first; `open` alone for those still queued. */
+  listJobs(limit: number, open?: boolean): Promise<Job[]>;
+
+  /**
+   * Takes a lease on `key` for `holder` until `ttlMs` from now, if no other holder's lease is live.
+   * Returns the lease's data when taken, null when another holds it. Atomic across servers.
+   */
+  takeLease(key: string, holder: string, ttlMs: number): Promise<Record<string, unknown> | null>;
+  /** Gives the lease back, keeping `data` with it for the next holder. */
+  releaseLease(key: string, holder: string, data: Record<string, unknown>): Promise<void>;
+
   /** Term sheets by the hash their notes carry (ADR 0095). Content-addressed, so never replaced. */
   putTermSheet(hash: string, record: unknown): Promise<void>;
   termSheet(hash: string): Promise<unknown | null>;
@@ -217,6 +256,20 @@ create table if not exists notes (
   created_at timestamptz not null,
   step integer not null,
   data jsonb not null
+);
+create table if not exists jobs (
+  id text primary key,
+  created_at timestamptz not null,
+  state text not null,
+  version integer not null,
+  data jsonb not null
+);
+create index if not exists jobs_state on jobs (state, created_at);
+create table if not exists leases (
+  key text primary key,
+  holder text,
+  expires_at timestamptz,
+  data jsonb not null default '{}'::jsonb
 );
 create table if not exists clients (
   id text primary key,
@@ -426,6 +479,41 @@ function postgresStore(url: string): Store {
       const s = await q();
       return (await s`select data from notes order by created_at desc`).map((r) => toJson(r.data) as DemoNote);
     },
+    async putJob(j) {
+      const s = await q();
+      await s`insert into jobs (id, created_at, state, version, data) values (${j.id}, ${j.createdAt}, ${j.state}, ${j.version}, ${s.json(j as any)})`;
+    },
+    async updateJob(j, expectedVersion) {
+      const s = await q();
+      const rows = await s`update jobs set state = ${j.state}, version = ${j.version}, data = ${s.json(j as any)} where id = ${j.id} and version = ${expectedVersion} returning id`;
+      return rows.length === 1;
+    },
+    async jobById(id) {
+      const s = await q();
+      const [r] = await s`select data from jobs where id = ${id}`;
+      return r ? (toJson(r.data) as Job) : null;
+    },
+    async listJobs(limit, open) {
+      const s = await q();
+      const rows = open
+        ? await s`select data from jobs where state = 'queued' order by created_at limit ${limit}`
+        : await s`select data from jobs order by created_at desc limit ${limit}`;
+      return rows.map((r) => toJson(r.data) as Job);
+    },
+    async takeLease(key, holder, ttlMs) {
+      const s = await q();
+      const until = new Date(Date.now() + ttlMs).toISOString();
+      const rows = await s`
+        insert into leases (key, holder, expires_at) values (${key}, ${holder}, ${until})
+        on conflict (key) do update set holder = excluded.holder, expires_at = excluded.expires_at
+          where leases.holder is null or leases.expires_at < now() or leases.holder = excluded.holder
+        returning data`;
+      return rows.length ? ((toJson(rows[0].data) as Record<string, unknown>) ?? {}) : null;
+    },
+    async releaseLease(key, holder, data) {
+      const s = await q();
+      await s`update leases set holder = null, expires_at = null, data = ${s.json(data as any)} where key = ${key} and holder = ${holder}`;
+    },
     async putTermSheet(hash, record) {
       const s = await q();
       await s`insert into term_sheets (hash, data) values (${hash.toLowerCase()}, ${s.json(record as any)}) on conflict (hash) do nothing`;
@@ -479,6 +567,8 @@ type FileData = {
   clients?: Client[];
   notes?: DemoNote[];
   termSheets?: Record<string, unknown>;
+  jobs?: Job[];
+  leases?: Record<string, { holder: string | null; expiresAt: number; data: Record<string, unknown> }>;
 };
 
 function fileStore(dir: string): Store {
@@ -624,6 +714,41 @@ function fileStore(dir: string): Store {
     async listNotes() {
       return [...(load().notes ?? [])].sort((x, y) => y.createdAt.localeCompare(x.createdAt));
     },
+    async putJob(j) {
+      edit((d) => void (d.jobs ??= []).push(j));
+    },
+    async updateJob(j, expectedVersion) {
+      return edit((d) => {
+        const i = (d.jobs ?? []).findIndex((x) => x.id === j.id && x.version === expectedVersion);
+        if (i < 0) return false;
+        d.jobs![i] = j;
+        return true;
+      });
+    },
+    async jobById(id) {
+      return (load().jobs ?? []).find((j) => j.id === id) ?? null;
+    },
+    async listJobs(limit, open) {
+      const all = load().jobs ?? [];
+      return open
+        ? all.filter((j) => j.state === "queued").sort((x, y) => x.createdAt.localeCompare(y.createdAt)).slice(0, limit)
+        : [...all].sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, limit);
+    },
+    async takeLease(key, holder, ttlMs) {
+      return edit((d) => {
+        d.leases ??= {};
+        const l = d.leases[key];
+        if (l && l.holder && l.holder !== holder && l.expiresAt > Date.now()) return null;
+        d.leases[key] = { holder, expiresAt: Date.now() + ttlMs, data: l?.data ?? {} };
+        return d.leases[key].data;
+      });
+    },
+    async releaseLease(key, holder, data) {
+      edit((d) => {
+        const l = d.leases?.[key];
+        if (l && l.holder === holder) d.leases![key] = { holder: null, expiresAt: 0, data };
+      });
+    },
     async putTermSheet(hash, record) {
       edit((d) => {
         d.termSheets ??= {};
@@ -725,5 +850,12 @@ function scopedToDeployment(inner: Store): Store {
       return n && ours(n.data) ? n : null;
     },
     listNotes: async () => (await inner.listNotes()).filter((n) => ours(n.data)),
+    putJob: (j) => inner.putJob({ ...j, data: { ...j.data, deployment: here } }),
+    updateJob: (j, v) => inner.updateJob({ ...j, data: { ...j.data, deployment: here } }, v),
+    jobById: async (id) => {
+      const j = await inner.jobById(id);
+      return j && ours(j.data) ? j : null;
+    },
+    listJobs: async (limit, open) => (await inner.listJobs(limit + 1000, open)).filter((j) => ours(j.data)).slice(0, limit),
   };
 }

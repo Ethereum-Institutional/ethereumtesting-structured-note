@@ -24,19 +24,22 @@ five minutes.
 - **What carries a job forward:**
   - Starting or advancing a job continues on the server after the page has its answer (Next's
     `after()`), for up to five minutes.
-  - A cron route, every minute, picks up any job with work left.
-  - Any staff page load also nudges the queue, so a deployment without a per-minute cron still moves.
+  - Any staff page load also carries the queue on.
+  - A cron route picks up any job with work left. The project is on Vercel's Hobby plan, which
+    allows a cron once a day, so it runs daily at 06:00 UTC as a backstop; on a plan that allows
+    it, the schedule becomes every minute.
 - **Staff can stop a job.** Whatever already reached the chain stays there.
 
 | Option | Chosen? | Why |
 |---|---|---|
-| After-response and cron | Yes | No page needs to stay open; a crashed run resumes within a minute; runs on Vercel with nothing extra |
+| After-response and cron | Yes | No page needs to stay open; a crashed run resumes at the next page load or cron; runs on Vercel with nothing extra |
 | Vercel Workflow | No | Durable, but ties the desk to a platform product still maturing, and the local stack would need its runner too |
 | Staff pages drive the run | No | A run stops when the tab closes: the failure seen on Ethereum Sepolia |
 
 ## Consequences
 
-- A per-minute cron needs a Vercel plan that allows one. Without it, jobs still move after every
-  start, every advance and every staff page load.
+- On the Hobby plan, a job whose server run ends (after five minutes, or a crash) waits for the
+  next staff page load, or at worst the daily cron. Moving to a plan with per-minute crons removes
+  that wait with a one-line change to `site/vercel.json`.
 - The cron route is protected by a secret, so it cannot be called from outside.
 - Pages show a job's progress from the database, and no longer run its steps themselves.

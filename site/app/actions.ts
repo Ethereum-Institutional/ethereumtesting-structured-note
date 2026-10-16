@@ -555,16 +555,16 @@ export async function startNoteAction(f: FormData) {
   const op = await currentStaff("agent");
   if (!op) throw new Error("Not permitted.");
   await recorded(async () => {
-    const { startNote, advanceIssuance } = await import("@/lib/notes/issue");
+    const { startNote } = await import("@/lib/notes/issue");
     const unit = field(f, "intervalUnit") as "minutes" | "hours" | "days" | "months";
-    const n = await startNote(op, {
+    await startNote(op, {
       scenario: field(f, "scenario"),
       observations: Number(field(f, "observations")),
       interval: { value: Number(field(f, "intervalValue")), unit },
       units: Number(field(f, "units")),
       isin: field(f, "isin"),
     });
-    await advanceIssuance(n.id);
+    await (await import("@/lib/jobs")).kick();
   }, "/agent/notes");
 }
 
@@ -577,12 +577,14 @@ export async function stopIssuanceAction(_prev: Result, f: FormData): Promise<Re
   });
 }
 
-/** Moves a note's issuance on by a step; the Agent's Notes page calls it while a note is being issued. */
-export async function advanceNoteAction(id: string) {
+/**
+ * Nudges the background jobs while the Notes page shows a note being issued: the server carries the
+ * issuance on after answering, whether or not the page stays open (ADR 0116).
+ */
+export async function advanceNoteAction(_id: string) {
   const op = await currentStaff("agent");
   if (!op) return;
-  const { advanceIssuance } = await import("@/lib/notes/issue");
-  await recorded(() => advanceIssuance(id), "/agent/notes");
+  await recorded(async () => (await import("@/lib/jobs")).kick(), "/agent/notes");
 }
 
 
@@ -781,8 +783,17 @@ export async function payEventAction(_prev: { ok?: string; error?: string }, f: 
   return lifecycleStep(async (op) => {
     const k = Number(field(f, "date"));
     const kind = field(f, "kind") === "redemption" ? "redemption" : "coupon";
-    const txs = await (await import("@/lib/notes/lifecycle")).payEvent(op, field(f, "noteId"), k, kind);
-    return `Paid, in ${txs.length} transaction${txs.length === 1 ? "" : "s"} from the servicing wallet.`;
+    await (await import("@/lib/notes/lifecycle")).startPayment(op, field(f, "noteId"), k, kind);
+    await (await import("@/lib/jobs")).kick();
+    return "Payment started: the servicing wallet pays the holders of record in the background, and this page follows it.";
+  });
+}
+
+/** Staff stop a background job; whatever reached the chain stays there. */
+export async function stopJobAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    await (await import("@/lib/jobs")).stopJob(op, field(f, "id"));
+    return "Stopped.";
   });
 }
 

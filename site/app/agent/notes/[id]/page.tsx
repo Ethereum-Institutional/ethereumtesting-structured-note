@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getStore } from "@/lib/store";
+import { getStore, type Job } from "@/lib/store";
+import { jobsFor } from "@/lib/jobs";
 import { explorerTx } from "@/lib/explorer";
 import { loadManifest } from "@/lib/chain/manifest";
 import { routeLabel } from "@/lib/routes";
@@ -20,6 +21,7 @@ import {
   determineAction,
   payEventAction,
   placeUnitsAction,
+  stopJobAction,
   releaseExpiredAction,
   takeForCustodyAction,
   withdrawArrangedAction,
@@ -45,13 +47,14 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
   const chainId = loadManifest().chainId;
   const sc = SCENARIOS.find((x) => x.name === n.scenario);
   const locked = lockedSettlement(n);
-  const [inventory, total, lifecycle, admissions, offers, units] = await Promise.all([
+  const [inventory, total, lifecycle, admissions, offers, units, jobs] = await Promise.all([
     inventoryOf(n).catch(() => n.units),
     totalOf(n).catch(() => n.units),
     lifecycleOf(n).catch((e) => (e as Error).message),
     store.listAdmissions(500),
     locked ? offersOf(n).catch(() => []) : Promise.resolve([]),
     locked ? holdersOf(n).catch(() => new Map<string, bigint>()) : Promise.resolve(new Map<string, bigint>()),
+    jobsFor(n.id),
   ]);
   const nameOf = await accountNamer();
   const accounts: Placeable[] = admissions
@@ -74,10 +77,12 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
   const statement = rec ? await statementOf(rec).catch((e) => (e as Error).message) : null;
   // Waiting for a time to come: the page looks again by itself.
   const waiting = live && !live.closed && live.dates.some((d) => d.waiting);
+  // A payment running in the background: the page follows it.
+  const running = jobs.some((j) => j.state === "queued");
 
   return (
     <>
-      {waiting && <AutoRefresh seconds={15} />}
+      {running ? <AutoRefresh seconds={4} /> : waiting && <AutoRefresh seconds={15} />}
       <p className="muted" style={{ marginTop: 0 }}><Link href="/agent/notes">← Notes</Link></p>
       <h2 id="note" style={{ marginTop: 0 }}>{n.name}</h2>
       <section className="panel">
@@ -232,7 +237,7 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
       {!live && <section className="panel"><p role="alert" className="notice err">The lifecycle could not be read: {String(lifecycle)}</p></section>}
       {live && (
         <ol className="timeline" aria-label="Lifecycle">
-          {live.dates.map((d) => <DateCard key={d.index} noteId={n.id} d={d} chainId={chainId} initial={sc?.terms.initialLevels ?? []} />)}
+          {live.dates.map((d) => <DateCard key={d.index} noteId={n.id} d={d} chainId={chainId} initial={sc?.terms.initialLevels ?? []} jobs={jobs.filter((j) => j.data.date === d.index)} />)}
         </ol>
       )}
 
@@ -249,7 +254,7 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
   );
 }
 
-function DateCard({ noteId, d, chainId, initial }: { noteId: string; d: DateView; chainId: number; initial: number[] }) {
+function DateCard({ noteId, d, chainId, initial, jobs }: { noteId: string; d: DateView; chainId: number; initial: number[]; jobs: Job[] }) {
   const tests = [d.tests.coupon && "coupon", d.tests.mer && "early redemption", d.tests.barrier && "barrier", d.tests.isFinal && "maturity"].filter(Boolean).join(", ");
   const o = d.outcome;
   const state = d.fallsAway ? "falls-away" : d.determined && d.events.every((e) => e.closed) ? "done" : d.can.determine || d.can.pay.length ? "due" : "todo";
@@ -288,8 +293,9 @@ function DateCard({ noteId, d, chainId, initial }: { noteId: string; d: DateView
             <strong>{e.kind === "coupon" ? "Coupon" : "Redemption"}</strong>: {euros(e.perCaCents)} a unit.{" "}
             {e.closed ? `Paid to ${e.unitsPaid} units; closed.` : e.open ? `Open: ${e.unitsPaid} of ${e.unitsEntitled} units paid.` : "Not yet paid."}
           </p>
-          {d.can.pay.includes(e.kind) && (
-            <ActionForm action={payEventAction} hidden={{ noteId, date: String(d.index), kind: e.kind }} label={`Pay the ${e.kind}`} working="The servicing wallet opens the event and pays the holders of record…" />
+          <PaymentJob job={jobs.find((j) => j.data.event === e.kind)} closed={e.closed} />
+          {d.can.pay.includes(e.kind) && !jobs.some((j) => j.data.event === e.kind && j.state === "queued") && (
+            <ActionForm action={payEventAction} hidden={{ noteId, date: String(d.index), kind: e.kind }} label={`Pay the ${e.kind}`} working="Starting the payment…" />
           )}
           {e.payments.length > 0 && (
             <div className="table-wrap">
@@ -319,3 +325,19 @@ function DateCard({ noteId, d, chainId, initial }: { noteId: string; d: DateView
   );
 }
 
+
+/** A payment's run in the background: where it has got to, why it is waiting, and a way to stop it. */
+function PaymentJob({ job, closed }: { job?: Job; closed: boolean }) {
+  if (!job || job.state === "done" || (closed && job.state !== "failed")) return null;
+  const sent = ((job.data.txs as string[]) ?? []).length;
+  if (job.state === "queued") {
+    return (
+      <div className="notice ok" role="status">
+        Paying in the background{job.data.step ? `: ${String(job.data.step)}` : ""}; {sent} transaction{sent === 1 ? "" : "s"} sent so far.
+        {job.error && <> The last step failed and will be tried again: {job.error}</>}
+        <ActionForm action={stopJobAction} hidden={{ id: job.id }} label="Stop paying" working="Stopping…" quiet />
+      </div>
+    );
+  }
+  return <p role="alert" className="notice err">The last payment run {job.state === "stopped" ? "was stopped" : "failed"}{job.error ? `: ${job.error}` : "."} Pay again to carry on from where it stopped.</p>;
+}

@@ -2,7 +2,9 @@ import "server-only";
 import { createPublicClient, createWalletClient, formatEther, http, parseEther, type Address, type Chain, type Hex } from "viem";
 import { createNonceManager, privateKeyToAccount } from "viem/accounts";
 import { jsonRpc } from "viem/nonce";
+import { randomUUID } from "node:crypto";
 import { signerQueues } from "./queue.ts";
+import { getStore } from "../store.ts";
 
 /**
  * Signing for the operations console, by capacity.
@@ -11,7 +13,10 @@ import { signerQueues } from "./queue.ts";
  * alone, the node's published test keys are the default, so a local run needs no setup. On any
  * other chain a missing key is an error, never a fallback to a published key.
  *
- * Every transaction waits for its receipt inside its signer's queue (see queue.ts). On the local
+ * Every transaction waits for its receipt inside its signer's queue (see queue.ts), and holds the
+ * key's lease in the database while it does (ADR 0116): no two servers send with one key at once,
+ * and the lease carries the key's next nonce, so a node that lags behind cannot hand out one already
+ * used. On the local
  * chain, a receipt that never arrives is almost always a transaction above a nonce gap left by a
  * state revert; the transaction pool is then cleared, the nonce state rebuilt from the chain,
  * and the transaction sent once more. Clearing the pool is a local node method and is never
@@ -150,25 +155,57 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     throw err;
   }
 
+  /**
+   * Runs `task` holding the key's lease, with the nonce it is to use: the higher of the chain's count
+   * and the one the lease recorded. `task` calls `sent` once a transaction has gone out with a nonce,
+   * so the lease records the next even when its receipt never comes. Waits for another server's
+   * lease to end, for at most as long as one can last.
+   */
+  async function leased<T>(capacity: string, task: (nonce: number, sent: (n: number) => void) => Promise<T>): Promise<T> {
+    const address = account(capacity).address;
+    const key = `send:${chain.id}:${address.toLowerCase()}`;
+    const holder = randomUUID();
+    const ttl = receiptTimeout + 60_000;
+    const store = getStore();
+    const deadline = Date.now() + ttl + 15_000;
+    let data = await store.takeLease(key, holder, ttl);
+    while (!data) {
+      if (Date.now() > deadline) throw new Error(`The ${CAPACITY_LABEL[capacity] ?? capacity}'s key is busy sending another transaction; try again shortly.`);
+      await new Promise((r) => setTimeout(r, local ? 300 : 2_000));
+      data = await store.takeLease(key, holder, ttl);
+    }
+    let next = Number(data.nextNonce ?? 0);
+    try {
+      next = Math.max(await publicClient.getTransactionCount({ address, blockTag: "pending" }), next);
+      return await task(next, (n) => void (next = n + 1));
+    } finally {
+      await store.releaseLease(key, holder, { nextNonce: next }).catch(() => undefined);
+    }
+  }
+
   async function send(capacity: string, params: Record<string, unknown>): Promise<Hex> {
-    return enqueue(capacity, async () => {
-      await ensureFees(capacity, () => (publicClient.estimateContractGas as any)({ ...params, account: account(capacity) }), GAS_CEILING.call);
-      const attempt = async (): Promise<Hex> => {
-        const wallet = createWalletClient({ account: account(capacity), chain, transport: http(rpcUrl) });
-        // viem's writeContract generics do not narrow against ABIs assembled at run time.
-        const hash = (await (wallet.writeContract as any)({ ...params, account: wallet.account, chain })) as Hex;
-        await publicClient.waitForTransactionReceipt({ hash, timeout: receiptTimeout });
-        return hash;
-      };
-      try {
-        return await attempt();
-      } catch (err) {
-        if (!local || !/timed out|timeout/i.test(String((err as Error)?.message))) return feesError(capacity, err);
-        await publicClient.request({ method: "anvil_dropAllTransactions" as any, params: [] as any });
-        resetNonces();
-        return attempt();
-      }
-    });
+    return enqueue(capacity, () =>
+      leased(capacity, async (nonce, sent) => {
+        await ensureFees(capacity, () => (publicClient.estimateContractGas as any)({ ...params, account: account(capacity) }), GAS_CEILING.call);
+        const attempt = async (n: number): Promise<Hex> => {
+          const wallet = createWalletClient({ account: account(capacity), chain, transport: http(rpcUrl) });
+          // viem's writeContract generics do not narrow against ABIs assembled at run time.
+          const hash = (await (wallet.writeContract as any)({ ...params, account: wallet.account, chain, nonce: n })) as Hex;
+          sent(n);
+          await publicClient.waitForTransactionReceipt({ hash, timeout: receiptTimeout });
+          return hash;
+        };
+        try {
+          return await attempt(nonce);
+        } catch (err) {
+          if (!local || !/timed out|timeout/i.test(String((err as Error)?.message))) return feesError(capacity, err);
+          // The local node lost it above a gap: cleared, and sent again at the chain's own count.
+          await publicClient.request({ method: "anvil_dropAllTransactions" as any, params: [] as any });
+          resetNonces();
+          return attempt(await publicClient.getTransactionCount({ address: account(capacity).address, blockTag: "pending" }));
+        }
+      }),
+    );
   }
 
   /** Signs EIP-712 typed data as a capacity, for a message the capacity attests off-chain. */
@@ -189,13 +226,16 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
 
   /** Sends ETH from a capacity, for topping up another key (ADR 0080). */
   async function transfer(capacity: string, to: Address, value: bigint): Promise<Hex> {
-    return enqueue(capacity, async () => {
-      await ensureFees(capacity, () => publicClient.estimateGas({ account: account(capacity), to, value }), 21_000n, value);
-      const wallet = createWalletClient({ account: account(capacity), chain, transport: http(rpcUrl) });
-      const hash = await wallet.sendTransaction({ account: account(capacity), to, value, chain }).catch((e: unknown) => feesError(capacity, e));
-      await publicClient.waitForTransactionReceipt({ hash, timeout: receiptTimeout });
-      return hash;
-    });
+    return enqueue(capacity, () =>
+      leased(capacity, async (nonce, sent) => {
+        await ensureFees(capacity, () => publicClient.estimateGas({ account: account(capacity), to, value }), 21_000n, value);
+        const wallet = createWalletClient({ account: account(capacity), chain, transport: http(rpcUrl) });
+        const hash = await wallet.sendTransaction({ account: account(capacity), to, value, chain, nonce }).catch((e: unknown) => feesError(capacity, e));
+        sent(nonce);
+        await publicClient.waitForTransactionReceipt({ hash, timeout: receiptTimeout });
+        return hash;
+      }),
+    );
   }
 
   return {

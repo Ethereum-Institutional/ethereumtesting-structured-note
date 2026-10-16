@@ -4,7 +4,8 @@ import { loadManifest } from "../chain/manifest.ts";
 import { signers } from "../chain/signer.ts";
 import { execThroughWallet } from "../chain/safe.ts";
 import { until } from "../chain/until.ts";
-import { getStore, type DemoNote, type Registrant } from "../store.ts";
+import { getStore, type DemoNote, type Job, type Registrant } from "../store.ts";
+import { createJob, jobsFor, runToEnd, type StepResult } from "../jobs.ts";
 import { isOperator } from "../operators.ts";
 import { stretch } from "./calendar.ts";
 import { SCENARIOS } from "./issue.ts";
@@ -331,11 +332,42 @@ async function holdersAt(s: ReturnType<typeof signers>, logs: ReturnType<typeof 
 }
 
 /**
- * The servicing wallet pays date `k`'s coupon or redemption (E1 to E4): it opens the event if it is
- * not open, then pays every holder of record not yet paid, in batches, until the event closes.
+ * Staff start paying date `k`'s coupon or redemption: a background job the server carries to its end
+ * (ADR 0116). Refused at once where nothing is due, it is early, it is paid, or a run is under way.
  */
-export async function payEvent(staff: Registrant, noteId: string, k: number, kind: "coupon" | "redemption"): Promise<Hex[]> {
+export async function startPayment(staff: Registrant, noteId: string, k: number, kind: "coupon" | "redemption"): Promise<Job> {
   const n = await noteFor(staff, noteId);
+  const view = await lifecycleOf(n);
+  const date = view.dates[k];
+  const event = date?.events.find((e) => e.kind === kind);
+  if (!event) throw new Error(`Date ${k + 1} has no ${kind} due.`);
+  if (view.chainNow < date.paymentDate) throw new Error(`Date ${k + 1} is payable from ${at(date.paymentDate)}.`);
+  if (event.closed) throw new Error(`Date ${k + 1}'s ${kind} is already paid.`);
+  const running = (await jobsFor(noteId)).find((j) => j.state === "queued" && j.data.date === k && j.data.event === kind);
+  if (running) throw new Error(`Date ${k + 1}'s ${kind} is already being paid.`);
+  const job = await createJob("payment", noteId, staff.email, { date: k, event: kind, txs: [] });
+  await getStore().audit({ at: now(), actor: staff.email, action: `started paying date ${k + 1}'s ${kind} of ${n.symbol}`, subject: n.id });
+  return job;
+}
+
+/**
+ * One step of a payment run, the next the chain's state calls for:
+ *
+ * 1. The funder approves the Paying Agent for exactly what opening the event draws: the amount per
+ *    Calculation Amount times the units entitled at the Record Time, every unit outside the Issuer's
+ *    inventory.
+ * 2. The servicing wallet opens the event.
+ * 3. For a redemption, which pauses the note, offers still locking units are released, as anyone
+ *    may once it is paused, so the units can be burned.
+ * 4. The servicing wallet pays the holders of record not yet paid, a batch per step, until the event
+ *    closes; then the note records it.
+ */
+export async function paymentStep(job: Job): Promise<StepResult> {
+  const n = await getStore().noteById(job.subject);
+  if (!n) throw new Error("The note is no longer on record.");
+  const k = Number(job.data.date);
+  const kind = job.data.event as "coupon" | "redemption";
+  const txs = [...((job.data.txs as Hex[]) ?? [])];
   const { m, s, logs } = context();
   const wallet = m.governance?.servicingWallet as Address | undefined;
   if (!wallet) throw new Error("The deployment has no servicing wallet.");
@@ -343,18 +375,24 @@ export async function payEvent(staff: Registrant, noteId: string, k: number, kin
   const c = s.publicClient;
   const code = kind === "coupon" ? COUPON : REDEMPTION;
   const id = await c.readContract({ address: pa, abi: PAYING, functionName: "idOf", args: [BigInt(k), code] });
-  const view = await lifecycleOf(n);
-  const date = view.dates[k];
-  if (!date?.events.some((e) => e.kind === kind)) throw new Error(`Date ${k + 1} has no ${kind} due.`);
-  if (view.chainNow < date.paymentDate) throw new Error(`Date ${k + 1} is payable from ${at(date.paymentDate)}.`);
-  const sent: Hex[] = [];
   const through = (data: Hex) => execThroughWallet(s, wallet, SERVICING_OWNERS, "agent", pa, data);
+  const d = await c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] });
+  const date = (await lifecycleOf(n)).dates[k];
 
-  let d = await c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] });
-  if (d[5]) throw new Error(`Date ${k + 1}'s ${kind} is already paid.`);
+  if (d[5]) {
+    // Closed: recorded on the note, once.
+    const closesNote = kind === "redemption";
+    await record(n.id, (x) => ({ ...x, payments: { ...(x.payments ?? {}), [`${k}/${kind}`]: { by: job.by, at: now(), txs } } }), closesNote ? "closed" : undefined);
+    await getStore().audit({
+      at: now(),
+      actor: job.by,
+      action: `the servicing wallet paid date ${k + 1}'s ${kind} of ${n.symbol}: ${d[3]} units at ${d[1]} cents per Calculation Amount${closesNote ? "; the note is redeemed and closed" : ""}`,
+      subject: n.id,
+    });
+    return { done: true, data: { txs } };
+  }
+
   if (!d[4]) {
-    // The funder approves exactly what opening the event draws: the amount per Calculation Amount
-    // times the units entitled at the Record Time, which is every unit outside the Issuer's inventory.
     const [funder, inventory] = await Promise.all([
       c.readContract({ address: pa, abi: PAYING_ROLES, functionName: "FUNDER" }),
       c.readContract({ address: pa, abi: PAYING_ROLES, functionName: "INVENTORY" }),
@@ -367,41 +405,46 @@ export async function payEvent(staff: Registrant, noteId: string, k: number, kin
     const amount = (kind === "coupon" ? outcome.couponPerCa : outcome.redemptionPerCa) * (supply - kept);
     if (funder.toLowerCase() !== s.address("agent").toLowerCase()) throw new Error(`The funder of distributions is ${funder}, whose key the site does not hold.`);
     const deposit = m.assets.deposit!.address as Address;
-    const held = await c.readContract({ address: deposit, abi: CASH, functionName: "balanceOf", args: [funder] });
-    if (held < amount) throw new Error(`The Agent holds ${held} cents of the deposit; date ${k + 1}'s ${kind} needs ${amount}. The bank credits the Agent first.`);
-    if (amount > 0n) {
-      sent.push(await s.send("agent", { address: deposit, abi: CASH, functionName: "approve", args: [pa, amount] }));
+    const allowance = await c.readContract({ address: deposit, abi: CASH, functionName: "allowance", args: [funder, pa] });
+    if (amount > 0n && allowance < amount) {
+      const held = await c.readContract({ address: deposit, abi: CASH, functionName: "balanceOf", args: [funder] });
+      if (held < amount) throw new Error(`The Agent holds ${held} cents of the deposit; date ${k + 1}'s ${kind} needs ${amount}. The bank credits the Agent first.`);
+      txs.push(await s.send("agent", { address: deposit, abi: CASH, functionName: "approve", args: [pa, amount] }));
       await until(() => c.readContract({ address: deposit, abi: CASH, functionName: "allowance", args: [funder, pa] }), (a) => a >= amount);
+      return { done: false, data: { txs, step: "approved" } };
     }
-    sent.push(await through(encodeFunctionData({ abi: PAYING, functionName: "open", args: [BigInt(k), code] })));
-    d = await until(() => c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] }), (x) => x[4]);
+    txs.push(await through(encodeFunctionData({ abi: PAYING, functionName: "open", args: [BigInt(k), code] })));
+    await until(() => c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] }), (x) => x[4]);
+    return { done: false, data: { txs, step: "opened" } };
   }
-  if (!d[5]) {
-    // Opening a redemption paused the note. Units locked in open offers could not be burned, so
-    // the offers are released first, as anyone may once the note is paused (ADR 0081).
-    if (kind === "redemption") await releaseOpenOffers(n.id, true);
-    const holders = await holdersAt(s, logs, n, date.recordTime, s.address("issuer"));
-    const settled = await Promise.all(holders.map((h) => c.readContract({ address: pa, abi: PAYING, functionName: "settled", args: [id, h.holder] })));
-    const due = holders.filter((_, i) => !settled[i]).map((h) => h.holder);
-    for (let i = 0; i < due.length; i += BATCH) {
-      sent.push(await through(encodeFunctionData({ abi: PAYING, functionName: "pay", args: [id, due.slice(i, i + BATCH)] })));
-    }
-    d = await until(() => c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] }), (x) => x[5]);
-    if (!d[5]) throw new Error(`Paid ${d[3]} of ${d[2]} units entitled; the event is not closed. A holder of record is missing from the note's transfers.`);
+
+  if (kind === "redemption" && !job.data.released) {
+    await releaseOpenOffers(n.id, true);
+    return { done: false, data: { txs, released: true, step: "offers released" } };
   }
-  const closesNote = kind === "redemption";
-  await record(
-    noteId,
-    (x) => ({ ...x, payments: { ...(x.payments ?? {}), [`${k}/${kind}`]: { by: staff.email, at: now(), txs: sent } } }),
-    closesNote ? "closed" : undefined,
-  );
-  await getStore().audit({
-    at: now(),
-    actor: staff.email,
-    action: `the servicing wallet paid date ${k + 1}'s ${kind} of ${n.symbol}: ${d[3]} units at ${d[1]} cents per Calculation Amount${closesNote ? "; the note is redeemed and closed" : ""}`,
-    subject: n.id,
-  });
-  return sent;
+
+  const holders = await holdersAt(s, logs, n, date.recordTime, s.address("issuer"));
+  const settled = await Promise.all(holders.map((h) => c.readContract({ address: pa, abi: PAYING, functionName: "settled", args: [id, h.holder] })));
+  const due = holders.filter((_, i) => !settled[i]).map((h) => h.holder);
+  if (!due.length) {
+    const closed = await until(() => c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] }), (x) => x[5]);
+    if (!closed[5]) throw new Error(`Paid ${closed[3]} of ${closed[2]} units entitled; the event is not closed. A holder of record is missing from the note's transfers.`);
+    return { done: false, data: { txs } };
+  }
+  txs.push(await through(encodeFunctionData({ abi: PAYING, functionName: "pay", args: [id, due.slice(0, BATCH)] })));
+  await until(() => c.readContract({ address: pa, abi: PAYING, functionName: "settled", args: [id, due[0]] }), Boolean);
+  return { done: false, data: { txs, step: `paid ${Math.min(BATCH, due.length)} of ${due.length} holders still due` } };
+}
+
+/**
+ * Pays date `k`'s coupon or redemption to the end within this request: the same job, run here, for
+ * scripts and tests that wait for it. Returns the transactions sent.
+ */
+export async function payEvent(staff: Registrant, noteId: string, k: number, kind: "coupon" | "redemption"): Promise<Hex[]> {
+  const job = await startPayment(staff, noteId, k, kind);
+  const end = await runToEnd(job.id);
+  if (end.state !== "done") throw new Error(end.error ?? `The payment did not finish: ${end.state}.`);
+  return (end.data.txs as Hex[]) ?? [];
 }
 
 /** Pays an amount held for a holder the deposit could not credit, once it can (anyone may). */

@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test lib/chain/chain.test.ts lib/pool/quote.test.ts lib/notes/calendar.test.ts lib/notes/termsheet.test.ts",
     "test:chain": "node --test lib/chain/deployment.test.ts",
-    "test:admission": "node --conditions=react-server --test --test-concurrency=1 test/onboarding.integration.ts test/notes.integration.ts test/governance.integration.ts test/deposit.integration.ts test/deployment.integration.ts",
+    "test:admission": "node --conditions=react-server --test --test-concurrency=1 test/onboarding.integration.ts test/notes.integration.ts test/governance.integration.ts test/jobs.integration.ts test/deposit.integration.ts test/deployment.integration.ts",
     "test:browser": "next build && playwright test",
     "test:local": "../ops/reset.sh && npm test && npm run test:admission && ../ops/reset.sh && npm run test:browser"
   },
