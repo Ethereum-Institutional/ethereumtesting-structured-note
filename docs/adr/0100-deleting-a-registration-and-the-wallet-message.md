@@ -54,3 +54,10 @@ are removed with the rest: they are history the chain still holds.
 - **Browser spec 01:** the bank's own staff are not offered deletion; the admin deletes a declined sign-up, which leaves the list, and the audit log records the deletion.
 - **Browser spec 03:** deleting the self-custody client, whose wallet holds an identity, is refused in words, and the client stays.
 - **Integration:** the message names the site, carries an issued-at time and a nonce, and is refused past its expiry on the existing-identity route.
+
+**The retired links table.** The production database still held `links`, the one-time sign-in links
+that ADR 0093 retired. Its rows referred to registrations, so the first deletion there failed on
+the foreign key. The browser tests use the file store, which never had the table, so they did not
+catch it. The site now drops `links` when it applies its schema. A database as production had it
+was rebuilt locally in Postgres and the deletion run against it: it succeeds, and the table is
+gone.

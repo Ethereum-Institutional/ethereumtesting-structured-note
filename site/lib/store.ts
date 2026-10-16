@@ -167,7 +167,11 @@ export interface Store {
 // Postgres
 // --------------------------------------------------------------------------------------------
 
+// The schema, applied on first use. Tables a release retires are dropped here, so a database the
+// site has used before carries nothing that still points at a registration: the one-time sign-in
+// links went with ADR 0093, and their rows blocked deleting a registration (ADR 0100).
 const DDL = `
+drop table if exists links;
 create table if not exists registrants (
   id text primary key,
   email text not null unique,
