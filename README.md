@@ -62,7 +62,7 @@ ordered as it is are in `ops/README.md`.
 | Venue | `forge test --fork-url http://127.0.0.1:8545` | 31, against the deployed stack after the ceremony |
 | Site, unit | `cd site && npm test` | 44 |
 | Site, integration | `cd site && npm run test:admission` | 32, through a proxy that answers a block behind, as a load-balanced public RPC does |
-| Site, browser | `cd site && npm run test:browser` | 18 specs, every portal clicked through in Chromium, and every page at a phone's width |
+| Site, browser | `cd site && npm run test:browser` | 19 specs, every portal clicked through in Chromium, and every page at a phone's width |
 
 The overview's PDF is regenerated from the HTML with `cd site && node scripts/overview-pdf.ts`.
 

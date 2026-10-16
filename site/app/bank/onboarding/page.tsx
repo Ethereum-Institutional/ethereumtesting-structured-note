@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getStore } from "@/lib/store";
 import { ROUTE_LABEL, dataOf } from "@/lib/identity/onboarding";
 import { claimState, participants } from "@/lib/identity/participants";
@@ -43,9 +44,13 @@ export default async function BankOnboarding() {
               {a.route === "third-party" && "Confirming sends the client to its custodian, which opens the account from its own portal. The bank's claim is added once it does."}
               {a.route === "self-custody" && "Confirming lets the client connect its wallet and sign. The bank then creates the identity, adds its claim and hands the identity to the client's wallet."}
             </p>
-            <ActionForm action={confirmRouteAction} hidden={{ id: a.id }} label="Confirm the client's KYB" working="Confirming; a custody account takes up to a minute…">
-              <div className="fields"><ClientReference clients={clients} known={r.knownReference} /></div>
-            </ActionForm>
+            {clients.length > 0 ? (
+              <ActionForm action={confirmRouteAction} hidden={{ id: a.id }} label="Confirm the client's KYB" working="Confirming; on Ethereum Sepolia a custody account takes a few minutes…">
+                <div className="fields"><ClientReference clients={clients} known={r.knownReference} /></div>
+              </ActionForm>
+            ) : (
+              <p className="notice">The bank has no client yet. <Link href="/bank/clients">Add the client under Clients</Link>, then confirm the request here.</p>
+            )}
             <details>
               <summary>Decline…</summary>
               <ActionForm action={declineRouteAction} hidden={{ id: a.id }} label="Decline" working="Declining…" quiet>

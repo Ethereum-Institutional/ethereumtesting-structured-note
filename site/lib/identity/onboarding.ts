@@ -300,6 +300,7 @@ export async function completeExisting(client: Registrant, id: string, signature
 // ---------------------------------------------------------------------------------------------
 
 async function activeClient(kycReference: string): Promise<Client> {
+  if (!kycReference.trim()) throw new Error("Choose the client from the bank's records; add it under Clients if it is not there.");
   const c = await getStore().clientByReference(kycReference.trim());
   if (!c) throw new Error(`The bank has no client ${kycReference}.`);
   if (c.claims.status !== "active") throw new Error(`Client ${kycReference} is ${String(c.claims.status)}, not active.`);
