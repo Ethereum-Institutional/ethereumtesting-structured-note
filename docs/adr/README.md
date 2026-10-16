@@ -121,3 +121,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0111](0111-one-claim-for-every-note.md) | One claim makes a client eligible for every note | Accepted |
 | [0112](0112-placement-checks-the-buyers-cash.md) | Placement checks the buyer's cash before offering | Accepted |
 | [0113](0113-contracts-verified-on-etherscan.md) | Every contract verified on Etherscan | Accepted |
+| [0114](0114-tier-1-names-the-note-it-governs.md) | Tier 1 names the note it governs, and its accounts by client | Accepted |

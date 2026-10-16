@@ -8,10 +8,12 @@ test("governance: Tier 1 corrects the register, recovers a lost wallet and freez
   await expect(staff).toHaveURL(/\/agent\/governance\/tier-1$/);
 
   // S-25: a register correction, at once, its written reason recorded on-chain.
-  await staff.getByText("Correct the register…").click();
+  // The page names the note it acts on: the deployment's own, which the controller owns.
+  await expect(staff.locator("dl[aria-label=\"The note governed\"]")).toContainText("the deployment's own note");
+  await staff.getByText(/^Correct the register of /).click();
   const correct = staff.locator("form").filter({ has: staff.getByRole("button", { name: "Correct the register" }) });
-  await correct.locator('select[name="from"]').selectOption({ label: (await correct.locator('select[name="from"] option', { hasText: "investorA" }).innerText()).trim() });
-  await correct.locator('select[name="to"]').selectOption({ label: "investorB" });
+  await correct.locator('select[name="from"]').selectOption({ label: (await correct.locator('select[name="from"] option', { hasText: "Investor A" }).innerText()).trim() });
+  await correct.locator('select[name="to"]').selectOption({ label: "Investor B" });
   await correct.getByLabel("Written reason").fill("Browser test: lost key reported, one unit restored");
   await correct.getByRole("button", { name: "Correct the register" }).click();
   await expect(correct.getByRole("status").filter({ hasText: "Corrected: 1 unit moved" })).toBeVisible({ timeout: 60_000 });
@@ -21,7 +23,7 @@ test("governance: Tier 1 corrects the register, recovers a lost wallet and freez
   // S-25 by ERC-3643's own recovery: a holder's units, and its identity, move to its new wallet.
   await staff.getByText("Recover a lost wallet…").click();
   const recover = staff.locator("form").filter({ has: staff.getByRole("button", { name: "Recover the units" }) });
-  const lost = recover.locator('select[name="lost"] option', { hasText: "investorB" });
+  const lost = recover.locator('select[name="lost"] option', { hasText: "Investor B" });
   await recover.locator('select[name="lost"]').selectOption((await lost.getAttribute("value"))!);
   await recover.locator('input[name="replacement"]').fill("0x00000000000000000000000000000000000b0b0b");
   await recover.getByLabel("Written reason").fill("Browser test: investor B reported its key lost");
@@ -31,7 +33,7 @@ test("governance: Tier 1 corrects the register, recovers a lost wallet and freez
   // The supervisory stop: frozen at once, whichever institution vouched for the account, then lifted.
   await staff.getByText(/^Freeze an account/).click();
   const stop = staff.locator("form").filter({ has: staff.getByRole("button", { name: "Act", exact: true }) });
-  const account = (await stop.locator('select[name="account"] option', { hasText: "investorA" }).getAttribute("value"))!;
+  const account = (await stop.locator('select[name="account"] option', { hasText: "Investor A" }).getAttribute("value"))!;
   await stop.locator('select[name="what"]').selectOption("freeze");
   await stop.locator('select[name="account"]').selectOption(account);
   await stop.getByLabel("Written reason").fill("Browser test: sanctions screening hit under review");

@@ -4,6 +4,7 @@ import { governanceView, parties } from "@/lib/governance";
 import { attemptForcedTransferAction, correctRegisterAction, recoverWalletAction, tier1WithdrawAction } from "../../../actions";
 import { ActionForm } from "../../../staff/ActionForm";
 import { Linked } from "../../../staff/parts";
+import { Address } from "../../../Address";
 
 export const dynamic = "force-dynamic";
 
@@ -19,15 +20,21 @@ export default async function Tier1() {
     <>
       <h2 id="tier-1">Tier 1</h2>
       <section className="panel">
+        <dl className="facts" aria-label="The note governed">
+          <dt>Acts on</dt>
+          <dd><strong>{view.note.name}</strong> ({view.note.symbol}), the deployment's own note: <Address value={view.note.address} /></dd>
+          <dt>Units</dt>
+          <dd>{view.note.total} outstanding, {view.note.inventory} of them in the Issuer's inventory</dd>
+        </dl>
         <p className="muted" style={{ marginTop: 0 }}>
           The Agent's governance wallet acts alone, at once, and only through the controller's typed acts. Each carries a
-          written reason, recorded on-chain in full. It owns the note under review ({view.note.total} units outstanding) and
-          its registries{view.pool ? ", and governs the pool" : ""}. Notes issued here are administered by the Issuer's key.
+          written reason, recorded on-chain in full. The controller owns this note and its registries{view.pool ? ", and governs the pool" : ""}.
+          Notes issued from the site (Series 2 onwards) are not governed here: their contracts are the Issuer's, through the note factory.
         </p>
         <details>
-          <summary>Correct the register…</summary>
+          <summary title={`Moves units of ${view.note.symbol} between accounts by a forced transfer, with a written reason.`}>Correct the register of {view.note.symbol}…</summary>
           <ActionForm action={correctRegisterAction} hidden={{}} label="Correct the register" working="The Agent's governance wallet forces the transfer, with the reason…">
-            <p className="muted" style={{ margin: 0 }}>Moves units to match the Register by a forced transfer, the reason emitted with it. The receiving account must be eligible for the note.</p>
+            <p className="muted" style={{ margin: 0 }}>Moves units of {view.note.symbol} from one account to another, to match the Register, by a forced transfer: the reason is emitted with it. The receiving account must be eligible for the notes.</p>
             <div className="fields">
               <label>From<select name="from" required defaultValue="">
                 <option value="" disabled>Choose the holder…</option>

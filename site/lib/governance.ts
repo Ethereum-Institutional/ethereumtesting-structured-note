@@ -1,6 +1,8 @@
 import "server-only";
 import { decodeAbiParameters, decodeErrorResult, defineChain, encodeFunctionData, keccak256, parseAbi, parseAbiItem, toBytes, type Address, type Hex } from "viem";
-import { loadManifest, type Manifest } from "./chain/manifest.ts";
+import { loadManifest, partyLabel, type Manifest } from "./chain/manifest.ts";
+import { accountNamer } from "./identity/names.ts";
+import { routeLabel } from "./routes.ts";
 import { signers } from "./chain/signer.ts";
 import { execThroughWallet } from "./chain/safe.ts";
 import { until } from "./chain/until.ts";
@@ -74,6 +76,8 @@ const CONTROLLER = parseAbi([
 const TOKEN = parseAbi([
   "function balanceOf(address) view returns (uint256)",
   "function totalSupply() view returns (uint256)",
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
   "function isAgent(address agent) view returns (bool)",
   "function isFrozen(address account) view returns (bool)",
   "function identityRegistry() view returns (address)",
@@ -211,7 +215,7 @@ export type GovernanceView = {
   institutions: Array<{ key: InstitutionKey; label: string; wallet: Address }>;
   proposals: ProposalView[];
   tier1: Array<{ action: string; reason: string; tx: string; block: number }>;
-  note: { address: Address; total: string; inventory: string };
+  note: { address: Address; name: string; symbol: string; total: string; inventory: string };
   /** The claim issuers the note trusts. */
   trustedIssuers: Address[];
   /** Whether the deployment has the optional conversion pool. */
@@ -254,7 +258,7 @@ export async function governanceView(): Promise<GovernanceView> {
   const pc = c.s.publicClient;
   const read = <T>(functionName: any, args: readonly unknown[] = []) => pc.readContract({ address: c.g.controller, abi: CONTROLLER, functionName, args } as any) as Promise<T>;
   const note = governedNote(c.m);
-  const [minI, minS, delay, recovery, window, count, block, total, inventory, trustedIssuers] = await Promise.all([
+  const [minI, minS, delay, recovery, window, count, block, total, inventory, trustedIssuers, noteName, noteSymbol] = await Promise.all([
     read<bigint>("MIN_INSTITUTIONS"),
     read<bigint>("MIN_SIGNATURES"),
     read<number>("TIER2_DELAY"),
@@ -265,6 +269,8 @@ export async function governanceView(): Promise<GovernanceView> {
     pc.readContract({ address: note, abi: TOKEN, functionName: "totalSupply" }),
     pc.readContract({ address: note, abi: TOKEN, functionName: "balanceOf", args: [c.m.parties.issuer as Address] }),
     read<Address>("TRUSTED_ISSUERS").then((tir) => pc.readContract({ address: tir, abi: ISSUERS, functionName: "getTrustedIssuers" })).catch(() => [] as readonly Address[]),
+    pc.readContract({ address: note, abi: TOKEN, functionName: "name" }),
+    pc.readContract({ address: note, abi: TOKEN, functionName: "symbol" }),
   ]);
   const chainNow = Number(block.timestamp);
   const institutions = INSTITUTIONS.map((i) => ({ key: i.key, label: i.label, wallet: i.wallet(c.m) }));
@@ -309,20 +315,32 @@ export async function governanceView(): Promise<GovernanceView> {
     institutions,
     proposals,
     tier1: logs.map((l) => ({ action: l.args.action!, reason: l.args.reason!, tx: l.transactionHash, block: Number(l.blockNumber) })).reverse(),
-    note: { address: note, total: String(total), inventory: String(inventory) },
+    note: { address: note, name: noteName, symbol: noteSymbol, total: String(total), inventory: String(inventory) },
     trustedIssuers: [...trustedIssuers],
     pool: Boolean(c.m.venue),
   };
 }
 
-/** Accounts known to the deployment, with their units of the governed note, for the console's choices. */
+/**
+ * The accounts the governed note can act on, with their units of it, for the console's choices: the
+ * deployment's own parties by their capacity, and every account onboarded on the site by the bank's
+ * client it was confirmed against (ADR 0110), its route beside it.
+ */
 export async function parties(): Promise<Array<{ name: string; address: Address; units: string }>> {
   const c = context();
   const note = governedNote(c.m);
-  const named = { ...(c.m.parties ?? {}), ...(c.m.custody?.accounts ?? {}) } as Record<string, string>;
-  const rows = Object.entries(named).filter(([, a]) => /^0x[0-9a-fA-F]{40}$/.test(String(a)));
-  const units = await Promise.all(rows.map(([, a]) => c.s.publicClient.readContract({ address: note, abi: TOKEN, functionName: "balanceOf", args: [a as Address] }).catch(() => 0n)));
-  return rows.map(([name, a], i) => ({ name, address: a as Address, units: String(units[i]) }));
+  const named = new Map<string, { name: string; address: Address }>();
+  const put = (a: string, name: string) => /^0x[0-9a-fA-F]{40}$/.test(a) && named.set(a.toLowerCase(), { name, address: a as Address });
+  for (const [key, a] of Object.entries(c.m.parties ?? {})) put(String(a), partyLabel(key));
+  for (const [ref, a] of Object.entries(c.m.custody?.accounts ?? {})) put(String(a), `${ref}, bank custody`);
+  const nameOf = await accountNamer();
+  for (const a of await getStore().listAdmissions(1000)) {
+    const wallet = (a.data as { wallet?: string }).wallet;
+    if (a.status === "onboarded" && wallet) put(wallet, `${nameOf(a)}, ${routeLabel(a.route)}`);
+  }
+  const rows = [...named.values()];
+  const units = await Promise.all(rows.map((r) => c.s.publicClient.readContract({ address: note, abi: TOKEN, functionName: "balanceOf", args: [r.address] }).catch(() => 0n)));
+  return rows.map((r, i) => ({ ...r, units: String(units[i]) })).sort((x, y) => x.name.localeCompare(y.name));
 }
 
 // ---------------------------------------------------------------------------------------------
