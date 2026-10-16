@@ -39,6 +39,11 @@ export function hasRole(email: string, role: Role, env: NodeJS.ProcessEnv = proc
   return rolesOf(email, env).includes(role);
 }
 
+/** An admin: staff in OPERATOR_EMAILS, who hold every portal and alone may delete a registration (ADR 0100). */
+export function isAdmin(email: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  return emailList(env.OPERATOR_EMAILS).includes(normaliseEmail(email));
+}
+
 /** Staff in any portal. */
 export function isOperator(email: string, env: NodeJS.ProcessEnv = process.env): boolean {
   return rolesOf(email, env).length > 0;

@@ -128,6 +128,8 @@ export interface Store {
   sessionRegistrant(hash: string, now: string): Promise<string | null>;
   deleteSession(hash: string): Promise<void>;
   deleteSessionsFor(registrantId: string): Promise<void>;
+  /** Removes a registration and what is kept only for it: its codes, sessions and onboarding requests (ADR 0100). */
+  deleteRegistrant(id: string): Promise<void>;
 
   audit(e: AuditEntry): Promise<void>;
   auditLog(limit: number): Promise<AuditEntry[]>;
@@ -336,6 +338,15 @@ function postgresStore(url: string): Store {
       const s = await q();
       await s`delete from sessions where registrant_id = ${registrantId}`;
     },
+    async deleteRegistrant(id) {
+      const s = await q();
+      await s.begin(async (tx) => {
+        await tx`delete from codes where registrant_id = ${id}`;
+        await tx`delete from sessions where registrant_id = ${id}`;
+        await tx`delete from admissions where registrant_id = ${id}`;
+        await tx`delete from registrants where id = ${id}`;
+      });
+    },
     async audit(e) {
       const s = await q();
       await s`insert into audit (at, actor, action, subject) values (${e.at}, ${e.actor}, ${e.action}, ${e.subject})`;
@@ -535,6 +546,14 @@ function fileStore(dir: string): Store {
     },
     async deleteSessionsFor(registrantId) {
       edit((d) => void (d.sessions = d.sessions.filter((s) => s.registrantId !== registrantId)));
+    },
+    async deleteRegistrant(id) {
+      edit((d) => {
+        d.codes = (d.codes ?? []).filter((c) => c.registrantId !== id);
+        d.sessions = d.sessions.filter((s) => s.registrantId !== id);
+        d.admissions = (d.admissions ?? []).filter((a) => a.registrantId !== id);
+        d.registrants = d.registrants.filter((r) => r.id !== id);
+      });
     },
     async audit(e) {
       edit((d) => void d.audit.push(e));

@@ -75,6 +75,8 @@ async function signFor(key: Hex, typedData: Record<string, any>): Promise<Hex> {
   return privateKeyToAccount(key).signTypedData({ domain: typedData.domain, types, primaryType: typedData.primaryType, message: typedData.message });
 }
 
+const SITE = "http://localhost:3020";
+
 const ANSWERS = { notUsPerson: true, investorClass: "institutional", relyOnBankKyb: true };
 
 test("bank custody: confirmed by the bank, the custody platform opens the account, manages its identity, and the bank vouches", async () => {
@@ -110,7 +112,7 @@ test("self-custody: the client signs once, the bank sets the identity up and han
 
   const key = generatePrivateKey();
   const wallet = privateKeyToAccount(key).address;
-  const typedData = await onboarding.startWallet(r as any, a.id, wallet);
+  const typedData = await onboarding.startWallet(r as any, a.id, wallet, SITE);
   // A signature by another key is refused, and nothing changes.
   await assert.rejects(onboarding.completeWallet(r as any, a.id, await signFor(generatePrivateKey(), typedData)), /not this wallet's/);
   a = await onboarding.completeWallet(r as any, a.id, await signFor(key, typedData));
@@ -166,7 +168,16 @@ test("an identity brought from elsewhere is registered for the note only if a tr
   const key = generatePrivateKey();
   const wallet = privateKeyToAccount(key).address;
   let a = await onboarding.requestExisting(r, identity);
-  const typedData = await onboarding.startExistingWallet(r, a.id, wallet);
+  const typedData = await onboarding.startExistingWallet(r, a.id, wallet, SITE);
+  // The message names the site that asks, when, and a nonce; past its expiry it is refused on this
+  // route too (ADR 0100).
+  assert.equal(typedData.message.site, SITE);
+  assert.ok(Number(typedData.message.issuedAt) < Number(typedData.message.expiresAt));
+  assert.match(typedData.message.nonce, /^[0-9a-f]{32}$/);
+  const waiting = (await store.admissionById(a.id))!;
+  await store.updateAdmission({ ...waiting, data: { ...waiting.data, challenge: { ...(waiting.data as any).challenge, expiresAt: 1 } } }, waiting.status);
+  await assert.rejects(onboarding.completeExisting(r, a.id, await signFor(key, typedData)), /expired/);
+  await store.updateAdmission(waiting, waiting.status);
   await onboarding.completeExisting(r, a.id, await signFor(key, typedData));
   a = (await store.admissionById(a.id))!;
   assert.equal(a.status, "requested");
@@ -186,7 +197,7 @@ test("an identity brought from elsewhere is registered for the note only if a tr
   const otherKey = generatePrivateKey();
   const other = privateKeyToAccount(otherKey).address;
   let e = await onboarding.requestExisting(r4 as any, bare);
-  await onboarding.completeExisting(r4 as any, e.id, await signFor(otherKey, await onboarding.startExistingWallet(r4 as any, e.id, other)));
+  await onboarding.completeExisting(r4 as any, e.id, await signFor(otherKey, await onboarding.startExistingWallet(r4 as any, e.id, other, SITE)));
   await onboarding.acceptExisting(operator as any, e.id);
   e = (await store.admissionById(e.id))!;
   assert.equal(e.status, "declined");

@@ -164,10 +164,20 @@ export async function cancel(client: Registrant, id: string): Promise<void> {
   await audit(client.email, "cancelled an onboarding", a.id);
 }
 
-/** The message a self-custody client signs (Q4): its wallet, the hand-over, and its consent. */
-function walletMessage(a: Admission, wallet: Address, expiresAt: number) {
+/** How long a wallet message may be signed for. */
+const WALLET_MESSAGE_SECONDS = 15 * 60;
+
+/**
+ * The message a self-custody client signs (Q4): its wallet, the hand-over, and its consent. It names
+ * the site that asks, when it was issued and until when it may be signed, with a random nonce, as
+ * Sign-In with Ethereum does (EIP-4361, ADR 0100): the wallet shows the site, and a message another
+ * site shows is not this one.
+ */
+function walletMessage(a: Admission, wallet: Address, site: string) {
   const { m, s } = context();
-  return {
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const expiresAt = issuedAt + WALLET_MESSAGE_SECONDS;
+  const typedData = {
     domain: { name: "Onboarding", version: "1", chainId: m.chainId },
     types: {
       EIP712Domain: [
@@ -180,7 +190,10 @@ function walletMessage(a: Admission, wallet: Address, expiresAt: number) {
         { name: "onboarding", type: "string" },
         { name: "statement", type: "string" },
         { name: "consentTo", type: "address[]" },
+        { name: "site", type: "string" },
+        { name: "issuedAt", type: "uint256" },
         { name: "expiresAt", type: "uint256" },
+        { name: "nonce", type: "string" },
       ],
     },
     primaryType: "WalletControl",
@@ -190,21 +203,37 @@ function walletMessage(a: Admission, wallet: Address, expiresAt: number) {
       statement:
         "I control this wallet. I ask the bank to create my identity, to record my consent to the bank and the onboarding agent vouching for me, and then to hand the identity's management to this wallet.",
       consentTo: [s.address("depositAgent"), s.address("accessIssuer")],
+      site: site.replace(/\/+$/, ""),
+      issuedAt: String(issuedAt),
       expiresAt: String(expiresAt),
+      nonce: randomBytes(16).toString("hex"),
     },
   };
+  return { typedData, expiresAt };
+}
+
+/**
+ * The waiting message, checked: not expired, and signed by its wallet, by recovery or EIP-1271 for a
+ * contract wallet. One check for both routes, so neither can skip the expiry (ADR 0100).
+ */
+async function checkWalletSignature(d: Data, signature: Hex): Promise<void> {
+  if (!d.challenge || !d.wallet) throw new Error("There is no message waiting for a signature.");
+  if (d.challenge.expiresAt < Math.floor(Date.now() / 1000)) throw new Error("The message has expired; connect the wallet again for a new one.");
+  const { s } = context();
+  const { EIP712Domain: _t, ...types } = d.challenge.typedData.types;
+  const ok = await s.publicClient.verifyTypedData({ address: d.wallet, domain: d.challenge.typedData.domain, types, primaryType: "WalletControl", message: d.challenge.typedData.message, signature });
+  if (!ok) throw new Error("The signature is not this wallet's.");
 }
 
 /** Self-custody: the message for the wallet the client connects. */
-export async function startWallet(client: Registrant, id: string, wallet: string): Promise<Record<string, any>> {
+export async function startWallet(client: Registrant, id: string, wallet: string, site: string): Promise<Record<string, any>> {
   const a = await load(id);
   if (a.registrantId !== client.id) throw new Error("Not your onboarding.");
   if (a.status !== "awaiting-wallet") throw new Error("The bank has not confirmed this route yet.");
   if (!isAddress(wallet)) throw new Error("That is not a wallet address.");
   const w = getAddress(wallet);
   if (await identityOf(w)) throw new Error("That wallet already belongs to an identity.");
-  const expiresAt = Math.floor(Date.now() / 1000) + 15 * 60;
-  const typedData = walletMessage(a, w, expiresAt);
+  const { typedData, expiresAt } = walletMessage(a, w, site);
   await save(a, a.status, { ...dataOf(a), wallet: w, challenge: { typedData, expiresAt }, error: undefined });
   return typedData;
 }
@@ -216,12 +245,8 @@ export async function startWallet(client: Registrant, id: string, wallet: string
 export async function completeWallet(client: Registrant, id: string, signature: Hex): Promise<Admission> {
   const a = await load(id);
   const d = dataOf(a);
-  if (a.registrantId !== client.id || a.status !== "awaiting-wallet" || !d.challenge || !d.wallet) throw new Error("There is no message waiting for a signature.");
-  if (d.challenge.expiresAt < Math.floor(Date.now() / 1000)) throw new Error("The message has expired; connect the wallet again for a new one.");
-  const { s } = context();
-  const { EIP712Domain: _t, ...types } = d.challenge.typedData.types;
-  const ok = await s.publicClient.verifyTypedData({ address: d.wallet, domain: d.challenge.typedData.domain, types, primaryType: "WalletControl", message: d.challenge.typedData.message, signature });
-  if (!ok) throw new Error("The signature is not this wallet's.");
+  if (a.registrantId !== client.id || a.status !== "awaiting-wallet") throw new Error("There is no message waiting for a signature.");
+  await checkWalletSignature(d, signature);
   await save(a, a.status, { ...d, signature });
   await audit(client.email, `signed for wallet ${d.wallet}`, a.id);
   return establish(await load(id), "the client's signature");
@@ -261,11 +286,8 @@ export async function requestExisting(client: Registrant, identity: string): Pro
 export async function completeExisting(client: Registrant, id: string, signature: Hex): Promise<void> {
   const a = await load(id);
   const d = dataOf(a);
-  if (a.registrantId !== client.id || a.route !== "existing-identity" || a.status !== "awaiting-wallet" || !d.challenge || !d.wallet) throw new Error("There is no message waiting for a signature.");
-  const { s } = context();
-  const { EIP712Domain: _t, ...types } = d.challenge.typedData.types;
-  const ok = await s.publicClient.verifyTypedData({ address: d.wallet, domain: d.challenge.typedData.domain, types, primaryType: "WalletControl", message: d.challenge.typedData.message, signature });
-  if (!ok) throw new Error("The signature is not this wallet's.");
+  if (a.registrantId !== client.id || a.route !== "existing-identity" || a.status !== "awaiting-wallet") throw new Error("There is no message waiting for a signature.");
+  await checkWalletSignature(d, signature);
   await save(a, a.status, { ...d, signature }, "requested");
   await audit(client.email, `signed for wallet ${d.wallet}, for identity ${d.identity}`, a.id);
 }
@@ -528,13 +550,12 @@ async function establish(a: Admission, actor: string): Promise<Admission> {
 }
 
 /** The existing-identity route's message: the same wallet-control message, without a hand-over. */
-export async function startExistingWallet(client: Registrant, id: string, wallet: string): Promise<Record<string, any>> {
+export async function startExistingWallet(client: Registrant, id: string, wallet: string, site: string): Promise<Record<string, any>> {
   const a = await load(id);
   if (a.registrantId !== client.id || a.route !== "existing-identity" || a.status !== "awaiting-wallet") throw new Error("This identity is not waiting for a wallet.");
   if (!isAddress(wallet)) throw new Error("That is not a wallet address.");
   const w = getAddress(wallet);
-  const expiresAt = Math.floor(Date.now() / 1000) + 15 * 60;
-  const typedData = walletMessage(a, w, expiresAt);
+  const { typedData, expiresAt } = walletMessage(a, w, site);
   typedData.message.statement = `I control this wallet, and ask for it to be registered against my identity ${dataOf(a).identity}.`;
   await save(a, a.status, { ...dataOf(a), wallet: w, challenge: { typedData, expiresAt } });
   return typedData;

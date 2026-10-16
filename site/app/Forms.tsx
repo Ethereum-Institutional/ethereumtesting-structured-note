@@ -5,12 +5,12 @@ import { confirmCodeAction, registerAction, signInAction, type FormState } from 
 
 const SENT = "If the address can be used, a six-digit code has been sent to it. It is valid for 10 minutes and can be used once.";
 
-/** The code the visitor was sent, typed here (ADR 0093). */
-function CodeForm({ email }: { email: string }) {
+/** The code the visitor was sent, typed here (ADR 0093), or on the page the mail links to (ADR 0099). */
+export function CodeForm({ email, notice = SENT }: { email: string; notice?: string }) {
   const [state, action, pending] = useActionState(confirmCodeAction, { sent: true, email });
   return (
     <form action={action} className="stack">
-      <p className="notice ok" role="status">{SENT}</p>
+      <p className="notice ok" role="status">{notice}</p>
       <input type="hidden" name="email" value={email} />
       <label>
         Code

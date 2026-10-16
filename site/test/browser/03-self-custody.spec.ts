@@ -73,6 +73,18 @@ test("self-custody: the bank declines, the client asks again, the bank confirms,
     await client.reload();
     await expect(account).toContainText("eligible, until", { timeout: 1_000 });
   }).toPass({ timeout: 30_000 });
+
+  // With an identity on the chain, the client's registration cannot be deleted, not even by an admin
+  // (ADR 0100): the wallet is offboarded first.
+  const admin = await signedIn(browser, PEOPLE.operator);
+  await admin.goto("/bank");
+  const signUp = admin.getByRole("row").filter({ hasText: PEOPLE.selfCustody.email });
+  await signUp.getByText("Delete…").click();
+  await signUp.getByRole("button", { name: "Delete permanently" }).click();
+  await expect(signUp.getByRole("alert")).toContainText("has an identity on the chain");
+  await admin.reload();
+  await expect(admin.getByRole("row").filter({ hasText: PEOPLE.selfCustody.email })).toHaveCount(1);
   await expectHealthy(client);
   await expectHealthy(bank);
+  await expectHealthy(admin);
 });

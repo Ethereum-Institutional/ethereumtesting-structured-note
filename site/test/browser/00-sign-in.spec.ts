@@ -70,6 +70,25 @@ test("sign-in by emailed code: a visitor confirms its address with one, staff ap
   await replay.getByRole("button", { name: "Continue" }).click();
   await expect(replay.getByRole("alert")).toContainText("That code is not right");
 
+  // The mail links to a page that takes the code for its address, opened here in a fresh browser as
+  // if from the mail later; the link carries the address, never the code (ADR 0099).
+  const linked = PEOPLE.selfCustody.email;
+  const asker = await visitor(browser);
+  const askFor = asker.locator("section.panel").filter({ has: asker.getByRole("heading", { name: "Already registered" }) });
+  await askFor.getByLabel("Email").fill(linked);
+  await askFor.getByRole("button", { name: "Send me a code" }).click();
+  const linkedCode = await codeFor(linked, "Your sign-in code");
+  const mail = ((await (await fetch(`http://127.0.0.1:${MAILBOX_PORT}/test/mails`)).json()) as Array<{ to: string; text: string }>).filter((m) => m.to === linked).at(-1)!;
+  const link = mail.text.match(/https?:\/\/\S+\/access\?email=\S+/)![0];
+  expect(link, "the link carries no code").not.toContain(linkedCode);
+  const fromMail = await (await browser.newContext()).newPage();
+  await fromMail.goto(link);
+  await expect(fromMail.getByRole("status")).toContainText(`the email sent to ${linked}`);
+  await fromMail.getByLabel("Code").fill(linkedCode);
+  await fromMail.getByRole("button", { name: "Continue" }).click();
+  await expect(fromMail.locator(".bar nav").getByRole("link", { name: "Onboard" })).toBeVisible();
+  await expect(fromMail.getByRole("button", { name: "Sign out" })).toBeVisible();
+
   // Five wrong tries spend a code: the right one is then refused too.
   const spender = PEOPLE.custodied.email;
   const spend = await visitor(browser);
@@ -94,5 +113,5 @@ test("sign-in by emailed code: a visitor confirms its address with one, staff ap
   await ask.getByRole("button", { name: "Send me a code" }).click();
   await expect(ask.getByRole("status")).toContainText("If the address can be used, a six-digit code has been sent");
   expect(await mailsTo("nobody@unknown.example")).toBe(0);
-  for (const p of [page, bank, signIn, again, spend, unknown]) await expectHealthy(p);
+  for (const p of [page, bank, signIn, again, asker, fromMail, spend, unknown]) await expectHealthy(p);
 });

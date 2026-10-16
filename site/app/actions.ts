@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { confirm, currentRegistrant, currentStaff, decide, register, requestSignIn, resendConfirmation, signOut } from "@/lib/access";
+import { confirm, currentRegistrant, currentStaff, decide, deleteRegistration, register, requestSignIn, resendConfirmation, signOut } from "@/lib/access";
 import * as onboarding from "@/lib/identity/onboarding";
 import { getStore } from "@/lib/store";
 import { addClient, rescreenClient } from "@/lib/identity/clients";
@@ -77,6 +77,16 @@ export async function decideAction(f: FormData) {
 }
 
 /** Staff resend the confirmation code; whether the mail went is said on the row. */
+export async function deleteRegistrationAction(_prev: Result, f: FormData): Promise<Result> {
+  try {
+    return { ok: await deleteRegistration(field(f, "id")) };
+  } catch (e) {
+    return { error: (e as Error).message };
+  } finally {
+    revalidatePath("/bank", "layout");
+  }
+}
+
 export async function resendLinkAction(_prev: FormState, f: FormData): Promise<FormState> {
   if (!(await currentStaff("bank"))) return { error: "Not permitted." };
   try {
@@ -132,8 +142,9 @@ export async function browserWalletStartAction(id: string, address: string): Pro
   if (!who) return { error: "Sign in again." };
   try {
     const a = await getStore().admissionById(id);
-    if (a?.route === "existing-identity") return { typedData: await onboarding.startExistingWallet(who, id, address) };
-    return { typedData: await onboarding.startWallet(who, id, address) };
+    const site = await siteOrigin();
+    if (a?.route === "existing-identity") return { typedData: await onboarding.startExistingWallet(who, id, address, site) };
+    return { typedData: await onboarding.startWallet(who, id, address, site) };
   } catch (e) {
     console.error(e);
     return { error: (e as Error).message };

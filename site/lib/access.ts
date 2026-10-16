@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto
 import { cookies } from "next/headers";
 import { getStore, type Registrant } from "./store";
 import { sendMail } from "./mail";
-import { emailList as list, hasRole, isOperator, normaliseEmail, type Role } from "./operators";
+import { emailList as list, hasRole, isAdmin, isOperator, normaliseEmail, type Role } from "./operators";
 
 export { isOperator, normaliseEmail };
 
@@ -54,8 +54,16 @@ function clean(v: string, max: number): string {
 
 const codeHash = (salt: string, code: string) => sha256(`${salt}:${code}`);
 
+/**
+ * The page that takes the code for this address, linked from the mail so it can be opened in a new
+ * tab or later. The link carries the address only, never the code: sign-in stays code-only (ADR 0099).
+ */
+export function codePageUrl(origin: string, email: string): string {
+  return `${origin.replace(/\/+$/, "")}/access?email=${encodeURIComponent(email)}`;
+}
+
 /** Sends a one-use six-digit code; false when throttled, as one was sent moments ago. */
-async function issueCode(r: Registrant, subject: string, intro: string): Promise<boolean> {
+async function issueCode(r: Registrant, subject: string, intro: string, origin: string): Promise<boolean> {
   const store = getStore();
   const last = await store.latestCodeAt(r.id);
   if (last && Date.now() - Date.parse(last) < CODE_INTERVAL_SECONDS * 1000) return false; // throttled, silently
@@ -66,8 +74,8 @@ async function issueCode(r: Registrant, subject: string, intro: string): Promise
   await sendMail(
     r.email,
     subject,
-    `${intro}\n\n    ${code}\n\nType it into the page you asked from. It is valid for ${CODE_TTL_MINUTES} minutes and can be used once. ` +
-      `If you did not ask for it, no action is needed.\n`,
+    `${intro}\n\n    ${code}\n\nType it into the page you asked from, or open this page and type it there:\n\n${codePageUrl(origin, r.email)}\n\n` +
+      `It is valid for ${CODE_TTL_MINUTES} minutes and can be used once. If you did not ask for it, no action is needed.\n`,
   );
   await store.putCode({ id: `code_${randomBytes(9).toString("base64url")}`, registrantId: r.id, salt, hash: codeHash(salt, code), expiresAt: new Date(Date.now() + CODE_TTL_MINUTES * 60_000).toISOString() });
   return true;
@@ -99,7 +107,7 @@ export async function register(input: { email: string; name: string; organisatio
     await store.audit({ at: now(), actor: email, action: "registered", subject: email });
   }
   if (r.status !== "revoked") {
-    await issueCode(r, "Your code to confirm your email address", "Your code to confirm your email address:");
+    await issueCode(r, "Your code to confirm your email address", "Your code to confirm your email address:", origin);
   }
   return { ok: true as const, email };
 }
@@ -109,7 +117,7 @@ export async function requestSignIn(rawEmail: string, origin: string) {
   const email = normaliseEmail(rawEmail);
   if (!validEmail(email)) return { ok: false as const, error: "Enter a valid email address." };
   const r = await getStore().registrantByEmail(email);
-  if (r && r.status !== "revoked") await issueCode(r, "Your sign-in code", "Your sign-in code:");
+  if (r && r.status !== "revoked") await issueCode(r, "Your sign-in code", "Your sign-in code:", origin);
   return { ok: true as const, email };
 }
 
@@ -206,6 +214,31 @@ export async function signOut() {
   jar.delete(COOKIE);
 }
 
+/**
+ * An admin deletes a registration (ADR 0100): the registration, its codes, sessions and onboarding
+ * requests, so the address may register afresh; the audit log keeps the deletion. Off-chain only,
+ * and refused while any wallet onboarded for it holds an identity on the chain, which no deletion
+ * here could remove: the claims are revoked and the wallet offboarded first.
+ */
+export async function deleteRegistration(registrantId: string): Promise<string> {
+  const op = await currentRegistrant();
+  if (!op || !isAdmin(op.email)) throw new Error("Only an admin may delete a registration.");
+  const store = getStore();
+  const r = await store.registrantById(registrantId);
+  if (!r) throw new Error("No such registration.");
+  if (r.id === op.id) throw new Error("An admin cannot delete their own registration.");
+  const { identityOf } = await import("./identity/onchain");
+  for (const a of await store.admissionsFor(r.id)) {
+    const wallet = (a.data as { wallet?: `0x${string}` }).wallet;
+    if (wallet && (await identityOf(wallet))) {
+      throw new Error(`${r.email} has an identity on the chain for wallet ${wallet}. Offboard the wallet first; the chain cannot be erased from here.`);
+    }
+  }
+  await store.deleteRegistrant(r.id);
+  await store.audit({ at: now(), actor: op.email, action: "deleted the registration", subject: r.email });
+  return `Deleted ${r.email}. The address may register again.`;
+}
+
 /** Operator decisions. The caller must be a current operator; checked here, not only in the page. */
 /** Staff send a fresh confirmation code to a registration that has not confirmed its address (ADRs 0077, 0093). */
 export async function resendConfirmation(registrantId: string, origin: string): Promise<void> {
@@ -214,7 +247,7 @@ export async function resendConfirmation(registrantId: string, origin: string): 
   const store = getStore();
   const r = await store.registrantById(registrantId);
   if (!r || r.status !== "unverified") throw new Error("Only an unconfirmed registration is sent a fresh code.");
-  if (!(await issueCode(r, "Your code to confirm your email address", "Your code to confirm your email address:"))) {
+  if (!(await issueCode(r, "Your code to confirm your email address", "Your code to confirm your email address:", origin))) {
     throw new Error(`A code was sent less than ${CODE_INTERVAL_SECONDS} seconds ago; try again shortly.`);
   }
   await store.audit({ at: now(), actor: op.email, action: "sent a fresh confirmation code", subject: r.email });

@@ -106,3 +106,6 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0096](0096-order-of-lifecycle-events.md) | The order of lifecycle events, written from the contracts and walked by a test | Accepted |
 | [0097](0097-overview-for-0.2.0.md) | The overview rewritten for 0.2.0, and its PDF generated from it | Accepted |
 | [0098](0098-ethereum-sepolia-and-the-bank-vm.md) | Ethereum Sepolia under Amsterdam, and the site as a container for the bank's VM | Accepted |
+| [0099](0099-code-mail-links-to-the-code-page.md) | The code mail links to the page that takes the code | Accepted |
+| [0100](0100-deleting-a-registration-and-the-wallet-message.md) | An admin may delete a registration; the wallet message names its site and expires on every route | Accepted |
+| [0101](0101-full-suite-at-release-tags.md) | The full local suite runs at release tags; a change runs the tests that cover it | Accepted |

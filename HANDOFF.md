@@ -61,7 +61,8 @@ and its detailed order of lifecycle events, mapped to `docs/lifecycle-sequence.m
 (a snapshot restored in seconds, or a fresh deployment when the deployment's sources changed), then
 the site's unit, integration and browser tests. Contracts: `cd instruments && forge test`, and the
 venue's `forge test --fork-url http://127.0.0.1:8545` against the deployed stack. Tests never run
-against a public network.
+against a public network. The full suite runs before a release is tagged, or on request; a change runs the
+tests that cover it (ADR 0101).
 
 **The site** is deployed from the repository root to the Vercel project, on the ethereumtesting.com
 domain only, with deployment protection on. Sign-in is by emailed code; the portals are given by
@@ -437,7 +438,8 @@ clause, so a changed answer changes terms or one line, and the vector grid is re
   local session also uses the Vercel CLI and changes its default scope. From `site/` the build
   fails, because it copies from `docs/`. Environment variables are set through the REST API
   (`ops/vercel-env.sh`) because `vercel env add` hangs non-interactively. Run
-  `npm run test:local` in `site/` before every deploy (ADR 0059).
+  the tests that cover a change before deploying it, and `npm run test:local` in `site/` before a
+  release tag (ADRs 0059, 0101).
 - **Commits are GPG-signed** and need the passphrase at the keyboard.
 - **Payoff confirmations C1 to C10** (`docs/spikes/03-payoff-specification.md` section 10) are
   still outstanding. Wave 3 is built on the defaults.
