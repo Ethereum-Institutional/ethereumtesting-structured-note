@@ -169,7 +169,7 @@ footer { padding: 3rem 0 4rem; color: var(--fg3); font-size: 0.75rem; }
 .console-nav a:hover { background: var(--bg2); color: var(--fg); }
 .console-nav a[aria-current="page"] { background: var(--bg3); color: var(--fg); font-weight: 600; }
 @media (max-width: 860px) {
-  .console { grid-template-columns: 1fr; gap: 1.25rem; }
+  .console { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
   .console-nav { position: static; }
   .console-nav > ul { display: flex; flex-wrap: wrap; gap: 0.35rem; }
   .console-nav ul ul { display: flex; gap: 0.35rem; margin: 0; padding: 0; border: 0; }
@@ -206,3 +206,44 @@ footer { padding: 3rem 0 4rem; color: var(--fg3); font-size: 0.75rem; }
 .facts dt { color: var(--fg2); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+
+/* An address or a transaction hash is one long word: it breaks rather than widening the page (ADR 0102). */
+body { overflow-wrap: break-word; }
+h1, h2, h3, .notice, .facts dd, code { overflow-wrap: anywhere; }
+
+/* Phones (ADR 0102): the menu folds away, the portal's tabs scroll in one strip, each table row
+   reads as a card, and nothing is wider than the screen. */
+.bar-toggle { display: none; }
+@media (max-width: 720px) {
+  .bar { padding: 0.75rem 0; }
+  .bar-toggle { display: inline-block; color: var(--cream); border-color: rgba(244, 240, 230, 0.4); }
+  .bar nav { display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0.1rem; padding: 0.6rem; }
+  .bar nav[data-open="true"] { display: flex; }
+  .bar nav a { padding: 0.6rem 0.6rem; border-radius: 8px; }
+  .bar nav a:hover { background: rgba(20, 19, 15, 0.06); text-decoration: none; }
+  .bar nav > span { padding: 0.5rem 0.6rem 0.2rem; overflow-wrap: anywhere; }
+  .bar nav form { padding: 0.3rem 0.6rem 0.2rem; }
+  header.masthead { margin-bottom: 1.5rem; }
+}
+@media (max-width: 860px) {
+  .console-nav > ul { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--pad)); padding: 0 var(--pad) 0.25rem; }
+  .console-nav > ul::-webkit-scrollbar { display: none; }
+  .console-nav li { flex: none; }
+  .console-nav > ul > li:has(> ul) { display: flex; align-items: center; }
+  .console-nav .group { display: none; }
+  .console-nav a { white-space: nowrap; }
+}
+@media (max-width: 640px) {
+  input:not([type]), input[type="email"], input[type="text"], input[type="date"], input[type="number"], select, textarea { font-size: 16px; }
+  .panel { padding-left: 1rem; padding-right: 1rem; }
+  table.labelled, table.labelled tbody, table.labelled tr, table.labelled td { display: block; width: 100%; }
+  table.labelled thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  table.labelled tr { padding: 0.65rem 0; border-bottom: 1px solid var(--border); }
+  table.labelled tr:last-child { border-bottom: 0; }
+  table.labelled td { border: 0; padding: 0.2rem 0 0.2rem 8.25rem; position: relative; overflow-wrap: anywhere; }
+  table.labelled td:not([data-label]) { padding-left: 0; }
+  table.labelled td:empty { display: none; }
+  table.labelled td::before { content: attr(data-label); position: absolute; left: 0; top: 0.3rem; width: 7.5rem; color: var(--fg3); font-size: 0.75rem; }
+  table.labelled td:not([data-label])::before { content: none; }
+  .table-wrap { overflow-x: visible; }
+}

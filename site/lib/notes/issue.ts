@@ -8,7 +8,7 @@ import { hasRole } from "../operators.ts";
 import scenarios from "./scenarios.json" with { type: "json" };
 import { calendar as calendarOf, calendarProblem, stretch, type Interval } from "./calendar.ts";
 import { termSheetFrom, toTerms } from "./termsheet.ts";
-import { keepTermSheet, termSheetUri } from "./termsheets.ts";
+import { keepTermSheet, termSheetOfNote, termSheetUri } from "./termsheets.ts";
 
 /**
  * Issuing a note (ADRs 0072, 0073, 0091): the same contracts as the note under review, a scenario's
@@ -67,13 +67,63 @@ const shapeOf = (n: DemoNote): { observations: number; interval: Interval } =>
 type Ctx = ReturnType<typeof context> & { n: DemoNote; scenario: Scenario };
 type Step = { label: string; run: (c: Ctx) => Promise<Partial<DemoNote> | void> };
 
+/** What the site records of an issued note: its contracts, calendar, term sheet and transaction. */
+function issuedPatch(
+  c: Ctx,
+  n: { token: Address; identity: Address; identityRegistry: Address; compliance: Address; determinations: Address; recordDates: Address; payingAgent: Address; settlement: Address },
+  hash: Hex,
+  calendar: Array<{ date: number; recordTime: number; paymentDate: number }>,
+  sheetHash: Hex | undefined,
+): Partial<DemoNote> {
+  return {
+    calendar,
+    addresses: {
+      ...c.n.addresses,
+      note: n.token,
+      noteIdentity: n.identity,
+      identityRegistry: n.identityRegistry,
+      compliance: n.compliance,
+      determinations: n.determinations,
+      recordDates: n.recordDates,
+      payingAgent: n.payingAgent,
+      settlement: n.settlement,
+    },
+    data: { ...c.n.data, settlement: "locked", ...(sheetHash ? { termSheet: sheetHash } : {}) },
+    txs: { ...c.n.txs, note: hash, settlement: hash },
+  } as Partial<DemoNote>;
+}
+
 const tx = (key: string, hash: Hex) => (n: DemoNote) => ({ txs: { ...n.txs, [key]: hash } });
+
+const SCHEDULE = parseAbi([`function terms() view returns (${TERMS} t)`]);
+
+/**
+ * A note this series already issued, found by its salt in the factory's events (ADR 0103). The
+ * issuance can land after the site stopped waiting for it; run again, the step then picks the note
+ * up rather than issuing a second, which the factory would refuse.
+ */
+async function issuedEarlier(c: Ctx) {
+  const head = await c.s.publicClient.getBlockNumber();
+  const ageBlocks = BigInt(Math.ceil((Date.now() - Date.parse(c.n.createdAt)) / 1000 / 2) + 600); // block times of 2 s or more
+  const fromBlock = head > ageBlocks ? head - ageBlocks : 0n;
+  const logs = await c.s.publicClient.getLogs({ address: c.factory, event: FACTORY.find((x) => x.type === "event" && x.name === "NoteIssued") as any, fromBlock, toBlock: head });
+  const found = (logs as any[]).find((l) => l.args?.salt === c.n.id);
+  return found ? { hash: found.transactionHash as Hex, block: found.blockNumber as bigint, note: found.args.note as { token: Address; identity: Address; identityRegistry: Address; compliance: Address; determinations: Address; recordDates: Address; payingAgent: Address; settlement: Address } } : null;
+}
 
 /** The issuance: the Issuer's one transaction, then the bank's two and the Agent's one. */
 const STEPS: Step[] = [
   {
     label: "Issue the note through the factory: terms, T-REX suite, term sheet, Paying Agent, settlement, agents, notional, open (Issuer, one transaction)",
     run: async (c) => {
+      const earlier = await issuedEarlier(c);
+      if (earlier) {
+        // Its own calendar and term sheet, read back from the chain, not made afresh.
+        // Read at the block that reported it, which every RPC that returned the event has seen.
+        const t = (await c.s.publicClient.readContract({ address: earlier.note.determinations, abi: SCHEDULE, functionName: "terms", blockNumber: earlier.block })) as any;
+        const sheet = await termSheetOfNote(earlier.note.token, earlier.note.determinations, earlier.block);
+        return issuedPatch(c, earlier.note, earlier.hash, t.schedule.map((o: any) => ({ date: Number(o.date), recordTime: Number(o.recordTime), paymentDate: Number(o.paymentDate) })), sheet?.hash);
+      }
       const payer = c.m.governance?.servicingWallet;
       if (!payer) throw new Error("the deployment has no servicing wallet");
       const block = await c.s.publicClient.getBlock();
@@ -119,23 +169,7 @@ const STEPS: Step[] = [
       const receipt = await c.s.publicClient.waitForTransactionReceipt({ hash });
       const [issued] = parseEventLogs({ abi: FACTORY, eventName: "NoteIssued", logs: receipt.logs });
       if (receipt.status !== "success" || !issued) throw new Error(`the issuance reverted (${hash})`);
-      const n = issued.args.note;
-      return {
-        calendar,
-        addresses: {
-          ...c.n.addresses,
-          note: n.token,
-          noteIdentity: n.identity,
-          identityRegistry: n.identityRegistry,
-          compliance: n.compliance,
-          determinations: n.determinations,
-          recordDates: n.recordDates,
-          payingAgent: n.payingAgent,
-          settlement: n.settlement,
-        },
-        data: { ...c.n.data, settlement: "locked", termSheet: sheetHash },
-        txs: { ...c.n.txs, note: hash, settlement: hash },
-      };
+      return issuedPatch(c, issued.args.note, hash, calendar, sheetHash);
     },
   },
   {

@@ -109,3 +109,6 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0099](0099-code-mail-links-to-the-code-page.md) | The code mail links to the page that takes the code | Accepted |
 | [0100](0100-deleting-a-registration-and-the-wallet-message.md) | An admin may delete a registration; the wallet message names its site and expires on every route | Accepted |
 | [0101](0101-full-suite-at-release-tags.md) | The full local suite runs at release tags; a change runs the tests that cover it | Accepted |
+| [0102](0102-the-site-on-a-phone.md) | The site on a phone | Accepted |
+| [0103](0103-waiting-for-ethereum-sepolia.md) | Waiting long enough for Ethereum Sepolia, and an issuance safe to run again | Accepted |
+| [0104](0104-an-existing-identity-must-be-an-identity.md) | An identity brought to the site must be an ONCHAINID identity | Accepted |

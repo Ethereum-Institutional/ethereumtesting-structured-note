@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { getAddress, isAddress, type Address, type Hex } from "viem";
 import { getStore, type Admission, type AdmissionRoute, type Client, type Registrant } from "../store.ts";
 import { hasRole, type Role } from "../operators.ts";
-import { claimsOf, consented, context, consent, createIdentity, eligibility, handOver, identityOf, recordHash, register, revoke, unregister, vouch } from "./onchain.ts";
+import { claimsOf, consented, context, consent, createIdentity, eligibility, handOver, identityOf, isIdentity, recordHash, register, revoke, unregister, vouch } from "./onchain.ts";
 import { accountFor, custodianAddress, openAccount, type Custodian } from "./custody.ts";
 import { ROUTE_LABEL as LABELS } from "../routes.ts";
 
@@ -267,6 +267,9 @@ export async function requestNote(client: Registrant, id: string, answers: Answe
 /** An identity the client already has (Q2): the client names it and signs for its wallet. */
 export async function requestExisting(client: Registrant, identity: string): Promise<Admission> {
   if (!isAddress(identity)) throw new Error("That is not an identity address.");
+  if (!(await isIdentity(getAddress(identity)))) {
+    throw new Error("That address is not an ONCHAINID identity: it is a wallet, or a contract of another kind. Give the address of the identity contract itself.");
+  }
   const a: Admission = {
     id: newId(),
     registrantId: client.id,
@@ -496,6 +499,14 @@ export async function acceptExisting(staff: Registrant, id: string): Promise<voi
   const a = await load(id);
   const d = dataOf(a);
   if (a.route !== "existing-identity" || a.status !== "requested" || !d.wallet || !d.identity) throw new Error("This identity is not waiting for the onboarding agent.");
+  // Not an identity: declined, and a registration made against it before this check is undone.
+  if (!(await isIdentity(d.identity))) {
+    if ((await identityOf(d.wallet))?.toLowerCase() === d.identity.toLowerCase()) await unregister(d.wallet);
+    const latest = await load(id);
+    await save(latest, latest.status, { ...dataOf(latest), error: "The address given is not an ONCHAINID identity." }, "declined");
+    await audit(staff.email, `refused ${d.identity}: not an identity`, a.id);
+    return;
+  }
   await onChain(a, () => register(d.wallet!, d.identity!, "onboarding"));
   const ok = (await eligibility(d.wallet)).note;
   if (!ok) {
@@ -555,6 +566,7 @@ export async function startExistingWallet(client: Registrant, id: string, wallet
   if (a.registrantId !== client.id || a.route !== "existing-identity" || a.status !== "awaiting-wallet") throw new Error("This identity is not waiting for a wallet.");
   if (!isAddress(wallet)) throw new Error("That is not a wallet address.");
   const w = getAddress(wallet);
+  if (w === dataOf(a).identity) throw new Error("A wallet cannot be its own identity: connect the wallet the identity is for.");
   const { typedData, expiresAt } = walletMessage(a, w, site);
   typedData.message.statement = `I control this wallet, and ask for it to be registered against my identity ${dataOf(a).identity}.`;
   await save(a, a.status, { ...dataOf(a), wallet: w, challenge: { typedData, expiresAt } });

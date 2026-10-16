@@ -86,6 +86,21 @@ export function vouchers() {
 
 // --- reads ---
 
+/**
+ * Whether an address is an ONCHAINID identity: a contract that answers the key manager's question
+ * every identity answers. A wallet, which has no code, is not, nor is a contract of another kind.
+ */
+export async function isIdentity(address: Address): Promise<boolean> {
+  const { s } = context();
+  const code = await s.publicClient.getCode({ address });
+  if (!code || code === "0x") return false;
+  const key = keccak256(encodeAbiParameters([{ type: "address" }], [address]));
+  return s.publicClient.readContract({ address, abi: IDENTITY, functionName: "keyHasPurpose", args: [key, 1n] }).then(
+    () => true,
+    () => false,
+  );
+}
+
 /** The identity a wallet is registered against in the shared storage, or null. */
 export async function identityOf(wallet: Address): Promise<Address | null> {
   const { id, s } = context();
@@ -104,8 +119,11 @@ function decodeData(data: Hex): { issuedAt: number; validUntil: number; recordHa
 /** A claim of the given topic by the given issuer on an identity, and whether it holds now. */
 export async function claimOn(identity: Address, topic: Topic, issuer: Address): Promise<ClaimView> {
   const { s } = context();
-  const [t, , iss, sig, data] = await s.publicClient.readContract({ address: identity, abi: IDENTITY, functionName: "getClaim", args: [claimId(issuer, TOPIC[topic])] });
   const empty: ClaimView = { topic, issuer, present: false, valid: false, revoked: false, issuedAt: 0, validUntil: 0, recordHash: null, signature: null };
+  // An address that is not an identity carries no claim: read as none, never as an error.
+  const found = await s.publicClient.readContract({ address: identity, abi: IDENTITY, functionName: "getClaim", args: [claimId(issuer, TOPIC[topic])] }).catch(() => null);
+  if (!found) return empty;
+  const [t, , iss, sig, data] = found;
   if (t === 0n || iss.toLowerCase() !== issuer.toLowerCase()) return empty;
   const [valid, revoked] = await Promise.all([
     s.publicClient.readContract({ address: issuer, abi: ISSUER, functionName: "isClaimValid", args: [identity, TOPIC[topic], sig, data] }),
@@ -125,7 +143,10 @@ export async function claimsOf(identity: Address): Promise<Record<Topic, ClaimVi
 /** Whether a wallet may hold the deposit and the main note, and use the conversion pool, now. */
 export async function eligibility(wallet: Address): Promise<{ deposit: boolean; note: boolean; pool: boolean }> {
   const { m, id, s } = context();
-  const read = (registry: Address) => s.publicClient.readContract({ address: registry, abi: REGISTRY, functionName: "isVerified", args: [wallet] });
+  // A registry whose check reverts (a wallet registered against an address that is not an identity)
+  // has not verified the wallet: it fails closed, as the transfer itself would.
+  const read = (registry: Address) =>
+    s.publicClient.readContract({ address: registry, abi: REGISTRY, functionName: "isVerified", args: [wallet] }).catch(() => false);
   const [deposit, note, pool] = await Promise.all([
     read(id.depositRegistry),
     m.noteSuite ? read(m.noteSuite.identityRegistry) : Promise.resolve(false),

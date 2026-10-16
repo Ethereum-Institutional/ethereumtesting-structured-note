@@ -96,6 +96,10 @@ const LOCAL_KEYS: Record<string, Hex> = {
 
 export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = process.env) {
   const local = chain.id === LOCAL_CHAIN_ID;
+  // How long a sent transaction is waited for. The local node mines at once; Ethereum Sepolia makes a
+  // block every 12 s and a large transaction can wait several, so 25 s gave up on issuances that
+  // then landed (ADR 0103).
+  const receiptTimeout = local ? 25_000 : 150_000;
   const configured = env.SIGNER_KEYS ? (JSON.parse(env.SIGNER_KEYS) as Record<string, Hex>) : {};
   const keys = local ? { ...LOCAL_KEYS, ...configured } : configured;
 
@@ -153,7 +157,7 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
         const wallet = createWalletClient({ account: account(capacity), chain, transport: http(rpcUrl) });
         // viem's writeContract generics do not narrow against ABIs assembled at run time.
         const hash = (await (wallet.writeContract as any)({ ...params, account: wallet.account, chain })) as Hex;
-        await publicClient.waitForTransactionReceipt({ hash, timeout: 25_000 });
+        await publicClient.waitForTransactionReceipt({ hash, timeout: receiptTimeout });
         return hash;
       };
       try {
@@ -189,7 +193,7 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
       await ensureFees(capacity, () => publicClient.estimateGas({ account: account(capacity), to, value }), 21_000n, value);
       const wallet = createWalletClient({ account: account(capacity), chain, transport: http(rpcUrl) });
       const hash = await wallet.sendTransaction({ account: account(capacity), to, value, chain }).catch((e: unknown) => feesError(capacity, e));
-      await publicClient.waitForTransactionReceipt({ hash, timeout: 25_000 });
+      await publicClient.waitForTransactionReceipt({ hash, timeout: receiptTimeout });
       return hash;
     });
   }

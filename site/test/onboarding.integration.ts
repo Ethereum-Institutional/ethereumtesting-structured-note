@@ -203,6 +203,26 @@ test("an identity brought from elsewhere is registered for the note only if a tr
   assert.equal(e.status, "declined");
   const none = await chain.readContract({ address: m.identity!.depositRegistry, abi: REGISTRY, functionName: "identity", args: [other] });
   assert.match(none, /^0x0{40}$/i, "the registration is undone");
+
+  // A wallet's address given as the identity is refused at once: it is not an ONCHAINID identity.
+  const eoaKey = generatePrivateKey();
+  const eoa = privateKeyToAccount(eoaKey).address;
+  await assert.rejects(onboarding.requestExisting(r4 as any, eoa), /not an ONCHAINID identity/);
+  // One accepted before that check, with the wallet registered against it, is declined when accepted
+  // again, and the registration undone; the wallet's eligibility reads as none, not as an error.
+  let f = await onboarding.requestExisting(r4 as any, bare);
+  await onboarding.completeExisting(r4 as any, f.id, await signFor(eoaKey, await onboarding.startExistingWallet(r4 as any, f.id, eoa, SITE)));
+  f = (await store.admissionById(f.id))!;
+  await store.updateAdmission({ ...f, data: { ...f.data, identity: eoa } }, f.status);
+  const onchain = await import("../lib/identity/onchain.ts");
+  await onchain.register(eoa, eoa, "onboarding");
+  assert.deepEqual(await onchain.eligibility(eoa), { deposit: false, note: false, pool: false });
+  await onboarding.acceptExisting(operator as any, f.id);
+  f = (await store.admissionById(f.id))!;
+  assert.equal(f.status, "declined");
+  assert.match((f.data as any).error, /not an ONCHAINID identity/);
+  const undone = await chain.readContract({ address: m.identity!.depositRegistry, abi: REGISTRY, functionName: "identity", args: [eoa] });
+  assert.match(undone, /^0x0{40}$/i, "the bad registration is undone");
 });
 
 test("offboarding revokes the bank's claim and removes the wallet from every registry", async () => {

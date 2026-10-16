@@ -182,7 +182,7 @@ export async function depositView(): Promise<DepositView> {
         read<bigint>("balanceOf", account),
         read<bigint>("getFrozenTokens", account),
         read<boolean>("allowlisted", account),
-        c.readContract({ address: id.depositRegistry, abi: REGISTRY, functionName: "isVerified", args: [account], blockNumber: at }),
+        c.readContract({ address: id.depositRegistry, abi: REGISTRY, functionName: "isVerified", args: [account], blockNumber: at }).catch(() => false),
       ]);
       return { account, label: label(account), admission: onboarding.get(account.toLowerCase())?.id ?? null, balance, held, why: verified ? "identity" : listed ? "allowlist" : null };
     }),

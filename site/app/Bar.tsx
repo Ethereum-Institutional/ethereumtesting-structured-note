@@ -2,6 +2,7 @@ import Link from "next/link";
 import { signOutAction } from "./actions";
 import type { Registrant } from "@/lib/store";
 import { rolesOf } from "@/lib/operators";
+import { BarMenu } from "./BarMenu";
 
 /** The portals a staff member may open, in the bar's order (ADR 0089). */
 export const PORTALS = [
@@ -16,7 +17,7 @@ export function Bar({ who }: { who: Registrant; operator?: boolean }) {
   return (
     <div className="bar">
       <span>Structured Note Technical PoC</span>
-      <nav>
+      <BarMenu>
         <Link href="/">Architecture</Link>
         <a href="/overview">Solution overview</a>
         <Link href="/onboard">Onboard</Link>
@@ -28,7 +29,7 @@ export function Bar({ who }: { who: Registrant; operator?: boolean }) {
         <form action={signOutAction}>
           <button type="submit" className="quiet">Sign out</button>
         </form>
-      </nav>
+      </BarMenu>
     </div>
   );
 }

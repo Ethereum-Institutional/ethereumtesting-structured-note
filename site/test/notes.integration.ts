@@ -116,6 +116,25 @@ test("a note with six observations, an hour apart, is issued with that schedule"
   assert.equal(Number(last.recordTime) - Number(last.date), 720, "a fifth of an hour");
 });
 
+test("an issuance that lands after the site stopped waiting is picked up when the step runs again, not issued twice (ADR 0103)", async () => {
+  const started = await notes.startNote(operator as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 1, unit: "hours" }, units: 7 });
+  const landed = await notes.advanceIssuance(started.id);
+  assert.equal(landed!.step, 1, landed!.error);
+  const FACTORY = parseAbi(["function notes() view returns (address[])"]);
+  const factory = loadManifest().identity!.noteFactory as Address;
+  const before = await client.readContract({ address: factory, abi: FACTORY, functionName: "notes" });
+  // As the site found it on Ethereum Sepolia: the issuance on the chain, the step not recorded.
+  await store.updateNote({ ...landed!, step: 0, addresses: {}, calendar: undefined, txs: {} } as any, 1);
+  const again = await notes.advanceIssuance(started.id);
+  assert.equal(again!.step, 1, again!.error);
+  assert.equal(again!.addresses.note, landed!.addresses.note, "the same note, picked up");
+  assert.deepEqual(again!.calendar, landed!.calendar, "its calendar, read back from the chain");
+  assert.equal((again!.data as any).termSheet, (landed!.data as any).termSheet, "its term sheet, read back from its identity");
+  assert.equal((await client.readContract({ address: factory, abi: FACTORY, functionName: "notes" })).length, before.length, "no second note");
+  const n = await issued(started.id);
+  assert.equal(n.status, "issued", n.error);
+});
+
 // --- selling restrictions and placement (ADR 0075; S-08, S-09) ---
 
 const place = await import("../lib/notes/place.ts");
