@@ -95,6 +95,8 @@ export async function runJobs(budgetMs = 240_000): Promise<{ steps: number }> {
   const deadline = Date.now() + budgetMs;
   let steps = 0;
   const { advanceIssuance } = await import("./notes/issue.ts");
+  // The index of the programme's events is brought up to date with every run.
+  await (await import("./chain/events.ts")).syncIndex(true).catch(() => undefined);
   while (Date.now() < deadline) {
     let moved = false;
     for (const n of (await store.listNotes()).filter((x) => x.status === "issuing")) {

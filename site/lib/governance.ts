@@ -1,12 +1,12 @@
 import "server-only";
-import { decodeAbiParameters, decodeErrorResult, defineChain, encodeFunctionData, keccak256, parseAbi, parseAbiItem, toBytes, zeroAddress, type Address, type Hex } from "viem";
+import { decodeAbiParameters, decodeErrorResult, defineChain, encodeFunctionData, keccak256, parseAbi, toBytes, zeroAddress, type Address, type Hex } from "viem";
 import { loadManifest, partyLabel, type Manifest } from "./chain/manifest.ts";
 import { accountNamer } from "./identity/names.ts";
 import { routeLabel } from "./routes.ts";
 import { signers } from "./chain/signer.ts";
 import { execThroughWallet } from "./chain/safe.ts";
 import { until } from "./chain/until.ts";
-import { ledgerFrom } from "./ledger.ts";
+import { indexed } from "./chain/events.ts";
 import { getStore, type Registrant } from "./store.ts";
 import { hasRole } from "./operators.ts";
 
@@ -125,8 +125,6 @@ const PAYING = parseAbi([
   "function distributions(bytes32 id) view returns (uint48 recordTime, uint64 perCa, uint64 unitsEntitled, uint64 unitsPaid, bool open, bool closed, uint8 kind, bool reversed, uint64 unitsReversed, uint256 dateIndex)",
   "function FUNDER() view returns (address)",
 ]);
-const PAID = parseAbiItem("event Paid(bytes32 indexed id, address indexed holder, uint256 units, uint256 amount)");
-const HELD = parseAbiItem("event Held(bytes32 indexed id, address indexed holder, uint256 units, uint256 amount)");
 const CASH = parseAbi([
   "function approve(address spender, uint256 value) returns (bool)",
   "function allowance(address owner, address spender) view returns (uint256)",
@@ -134,7 +132,6 @@ const CASH = parseAbi([
 ]);
 const REGISTRY = parseAbi(["function identity(address wallet) view returns (address)"]);
 const ISSUERS = parseAbi(["function getTrustedIssuers() view returns (address[])"]);
-const TIER1 = parseAbiItem("event Tier1(address indexed token, string action, string reason)");
 /** The note-eligible claim topic. */
 const NOTE_TOPIC = BigInt(keccak256(toBytes("claim.note-eligible")));
 const COUPON = 0;
@@ -420,8 +417,7 @@ export async function governanceView(token?: string): Promise<GovernanceView> {
       state,
     });
   }
-  const { client, from } = await ledgerFrom().catch(() => ({ client: pc, from: 0n }));
-  const logs = await client.getLogs({ address: c.g.controller, event: TIER1, fromBlock: from, toBlock: "latest" }).catch(() => []);
+  const logs = await indexed({ addresses: [c.g.controller], names: ["Tier1"], fresh: true });
   return {
     chainNow,
     controller: c.g.controller,
@@ -437,11 +433,11 @@ export async function governanceView(token?: string): Promise<GovernanceView> {
     proposals,
     tier1: logs
       .map((l) => ({
-        note: l.args.token === zeroAddress ? "every note" : (symbols.get(String(l.args.token).toLowerCase()) ?? String(l.args.token)),
-        action: l.args.action!,
-        reason: l.args.reason!,
-        tx: l.transactionHash,
-        block: Number(l.blockNumber),
+        note: String(l.args.token).toLowerCase() === zeroAddress ? "every note" : (symbols.get(String(l.args.token).toLowerCase()) ?? String(l.args.token)),
+        action: String(l.args.action),
+        reason: String(l.args.reason),
+        tx: l.tx,
+        block: l.block,
       }))
       .reverse(),
     notes,
@@ -592,13 +588,9 @@ export async function previewCorrection(token: Address, levels: bigint[]) {
 }
 
 /** The holders a closed coupon paid or held for: those its reversal recovers from. */
-async function paidHolders(c: Ctx, payingAgent: Address, id: Hex): Promise<Address[]> {
-  const { client, from } = await ledgerFrom().catch(() => ({ client: c.s.publicClient, from: 0n }));
-  const [paid, held] = await Promise.all([
-    client.getLogs({ address: payingAgent, event: PAID, args: { id }, fromBlock: from, toBlock: "latest" }),
-    client.getLogs({ address: payingAgent, event: HELD, args: { id }, fromBlock: from, toBlock: "latest" }),
-  ]);
-  return [...new Set([...paid, ...held].map((l) => l.args.holder!.toLowerCase()))] as Address[];
+async function paidHolders(payingAgent: Address, id: Hex): Promise<Address[]> {
+  const events = await indexed({ addresses: [payingAgent], names: ["Paid", "Held"], fresh: true });
+  return [...new Set(events.filter((e) => String(e.args.id).toLowerCase() === id.toLowerCase()).map((e) => String(e.args.holder).toLowerCase()))] as Address[];
 }
 
 /** Tier 2: an institution proposes one of the acts offered from the site. */
@@ -626,7 +618,7 @@ export async function propose(
     // The Calculation Agent signs the corrected Levels and outcome, as it signs every determination.
     const digest = await c.s.publicClient.readContract({ address: p.g.determinations, abi: DETERMINATIONS, functionName: "digest", args: [p.dateIndex, levels, p.outcome] });
     const signature = await c.s.signHash("calculationAgent", digest);
-    const holders = p.coupon.closed ? await paidHolders(c, p.g.payingAgent, p.coupon.id) : [];
+    const holders = p.coupon.closed ? await paidHolders(p.g.payingAgent, p.coupon.id) : [];
     data = encodeFunctionData({
       abi: CONTROLLER,
       functionName: "proposeCorrectDetermination",

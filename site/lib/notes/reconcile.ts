@@ -1,5 +1,6 @@
 import "server-only";
-import { parseAbi, parseAbiItem, type Address } from "viem";
+import { indexed } from "../chain/events.ts";
+import { parseAbi, type Address } from "viem";
 import { addressBook } from "../chain/manifest.ts";
 import { client, deploymentBlock, noteContracts, withCustodyAccounts } from "../ledger.ts";
 import { getStore } from "../store.ts";
@@ -32,7 +33,6 @@ const NOTE = parseAbi([
 const CASH = parseAbi(["function balanceOf(address) view returns (uint256)", "function allowance(address owner, address spender) view returns (uint256)"]);
 const PAYING = parseAbi(["function INVENTORY() view returns (address)", "function FUNDER() view returns (address)"]);
 const REGISTRY = parseAbi(["function isVerified(address) view returns (bool)"]);
-const TRANSFER = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const ZERO = "0x0000000000000000000000000000000000000000";
 
 export type AsAt = { kind: "now" } | { kind: "day"; day: string } | { kind: "block"; block: bigint };
@@ -168,7 +168,7 @@ export async function statementOf(rec: NoteOnRecord, asAt: AsAt = { kind: "now" 
     c.readContract({ address: token, abi: NOTE, functionName: "totalSupply", ...pin }),
     c.readContract({ address: token, abi: NOTE, functionName: "paused", ...pin }),
     lifecycleOf(n, atBlock),
-    c.getLogs({ address: token, event: TRANSFER, fromBlock: rec.issuedBlock, toBlock: atBlock }),
+    indexed({ addresses: [token], names: ["Transfer"], toBlock: Number(atBlock), fresh: true }),
     offersOf(n, atBlock),
     c.readContract({ address: pa, abi: PAYING, functionName: "INVENTORY" }),
     c.readContract({ address: pa, abi: PAYING, functionName: "FUNDER" }),
@@ -187,7 +187,8 @@ export async function statementOf(rec: NoteOnRecord, asAt: AsAt = { kind: "now" 
   const flows = new Map<string, { account: Address; in: bigint; out: bigint }>();
   const flow = (a: Address) => flows.get(a.toLowerCase()) ?? flows.set(a.toLowerCase(), { account: a, in: 0n, out: 0n }).get(a.toLowerCase())!;
   for (const l of transfers) {
-    const { from, to, value } = l.args as { from: Address; to: Address; value: bigint };
+    const { from, to } = l.args as { from: Address; to: Address };
+    const value = BigInt(String(l.args.value));
     if (to.toLowerCase() !== ZERO) flow(to).in += value;
     if (from.toLowerCase() !== ZERO) flow(from).out += value;
   }

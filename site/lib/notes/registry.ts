@@ -1,6 +1,7 @@
 import "server-only";
-import { createPublicClient, defineChain, http, parseAbi, parseAbiItem, type Address, type Hex } from "viem";
+import { createPublicClient, defineChain, http, parseAbi, type Address, type Hex } from "viem";
 import { loadManifest } from "../chain/manifest.ts";
+import { indexed } from "../chain/events.ts";
 import { getStore, type DemoNote } from "../store.ts";
 
 /**
@@ -14,7 +15,6 @@ const FACTORY = parseAbi([
   "function notes() view returns (address[])",
   `function noteOf(address token) view returns (${RECORD})`,
 ]);
-const ISSUED = parseAbiItem(`event NoteIssued(address indexed token, uint256 indexed series, string isin, ${RECORD} note)`);
 const TOKEN = parseAbi(["function name() view returns (string)", "function symbol() view returns (string)"]);
 
 export type NoteOnRecord = {
@@ -46,32 +46,32 @@ export async function notesOnRecord(): Promise<NoteOnRecord[]> {
   if (!factory) throw new Error("The deployment has no note factory.");
   const [tokens, issued, stored] = await Promise.all([
     c.readContract({ address: factory, abi: FACTORY, functionName: "notes" }),
-    c.getLogs({ address: factory, event: ISSUED, fromBlock: 0n, toBlock: "latest" }),
+    indexed({ addresses: [factory], names: ["NoteIssued"], fresh: true }),
     getStore().listNotes(),
   ]);
   const underReview = (m.assets.note?.address ?? "").toLowerCase();
   return Promise.all(
     tokens.map(async (token): Promise<NoteOnRecord> => {
-      const log = issued.find((l) => l.args.token?.toLowerCase() === token.toLowerCase());
+      const log = issued.find((l) => String(l.args.token).toLowerCase() === token.toLowerCase());
       if (!log) throw new Error(`the factory's record of ${token} has no issuance event`);
-      const [record, name, symbol, block] = await Promise.all([
+      const [record, name, symbol] = await Promise.all([
         c.readContract({ address: factory, abi: FACTORY, functionName: "noteOf", args: [token] }),
         c.readContract({ address: token, abi: TOKEN, functionName: "name" }),
         c.readContract({ address: token, abi: TOKEN, functionName: "symbol" }),
-        c.getBlock({ blockNumber: log.blockNumber! }),
       ]);
+      const isin = String(log.args.isin ?? "");
       const site = stored.find((n) => n.addresses.note?.toLowerCase() === token.toLowerCase());
       const note: DemoNote = site ?? {
         id: token,
         series: Number(record.series),
-        ...(log.args.isin ? { isin: log.args.isin } : {}),
+        ...(isin ? { isin } : {}),
         name,
         symbol,
         scenario: "",
         units: 0,
         status: "issued",
         step: 0,
-        createdAt: new Date(Number(block.timestamp) * 1000).toISOString(),
+        createdAt: new Date(log.at * 1000).toISOString(),
         by: "the deployment",
         addresses: {
           note: record.token,
@@ -83,10 +83,10 @@ export async function notesOnRecord(): Promise<NoteOnRecord[]> {
           payingAgent: record.payingAgent,
           settlement: record.settlement,
         },
-        txs: { note: log.transactionHash!, settlement: log.transactionHash! },
+        txs: { note: log.tx, settlement: log.tx },
         data: { settlement: "locked" },
       };
-      return { token, name, symbol, underReview: token.toLowerCase() === underReview, series: Number(record.series), isin: log.args.isin ?? "", issuedBlock: log.blockNumber!, issuedAt: Number(block.timestamp), issuedTx: log.transactionHash!, note };
+      return { token, name, symbol, underReview: token.toLowerCase() === underReview, series: Number(record.series), isin, issuedBlock: BigInt(log.block), issuedAt: log.at, issuedTx: log.tx as Hex, note };
     }),
   );
 }

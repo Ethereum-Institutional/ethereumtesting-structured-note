@@ -1,5 +1,6 @@
 import "server-only";
-import { formatUnits, parseAbi, parseAbiItem, type Address } from "viem";
+import { indexed } from "../chain/events.ts";
+import { formatUnits, parseAbi, type Address, type Hex } from "viem";
 import { getStore, type Registrant } from "../store.ts";
 import { hasRole } from "../operators.ts";
 import { notesOnRecord, chainClient } from "../notes/registry.ts";
@@ -20,7 +21,6 @@ const PAYING_AGENT = parseAbi([
   "function held(bytes32 id, address holder) view returns (uint256)",
 ]);
 const RECORD_DATES = parseAbi(["function balanceAt(address account, uint256 time) view returns (uint256)"]);
-const OPENED = parseAbiItem("event Opened(bytes32 indexed id, uint256 indexed dateIndex, uint8 kind, uint256 perCa, uint256 unitsEntitled)");
 
 /** What an account still holds or is owed, in words; empty when it may close. */
 export async function stillHeld(wallet: Address): Promise<string[]> {
@@ -36,9 +36,9 @@ export async function stillHeld(wallet: Address): Promise<string[]> {
     const payingAgent = n.note.addresses.payingAgent as Address | undefined;
     const recordDates = n.note.addresses.recordDates as Address | undefined;
     if (!payingAgent || !recordDates) continue;
-    const opened = await c.getLogs({ address: payingAgent, event: OPENED, fromBlock: n.issuedBlock, toBlock: "latest" });
+    const opened = await indexed({ addresses: [payingAgent], names: ["Opened"] });
     for (const log of opened) {
-      const id = log.args.id!;
+      const id = log.args.id as Hex;
       const [held, settled, dist] = await Promise.all([
         c.readContract({ address: payingAgent, abi: PAYING_AGENT, functionName: "held", args: [id, wallet] }),
         c.readContract({ address: payingAgent, abi: PAYING_AGENT, functionName: "settled", args: [id, wallet] }),

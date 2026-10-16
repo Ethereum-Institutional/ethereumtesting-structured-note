@@ -3,6 +3,9 @@
  * with one key at once each get their own nonce, and two workers never run the same step.
  *
  *   ../ops/reset.sh && npm run test:admission
+ *
+ * With POSTGRES_URL set it runs against that database instead of a file store; add --test-force-exit,
+ * as the database's connections outlive the tests.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -33,15 +36,17 @@ test("two servers sending with one key at once take turns under its lease, each 
 
 test("a lease another holder has is refused until it is given back; the next holder finds what it kept", async () => {
   const store = getStore();
-  assert.deepEqual(await store.takeLease("test:lease", "one", 60_000), {});
-  assert.equal(await store.takeLease("test:lease", "two", 60_000), null, "held by another");
-  await store.releaseLease("test:lease", "one", { nextNonce: 7 });
-  assert.deepEqual(await store.takeLease("test:lease", "two", 60_000), { nextNonce: 7 });
-  await store.releaseLease("test:lease", "two", { nextNonce: 7 });
+  const key = `test:lease:${Date.now()}`;
+  const stale = `test:stale:${Date.now()}`;
+  assert.deepEqual(await store.takeLease(key, "one", 60_000), {});
+  assert.equal(await store.takeLease(key, "two", 60_000), null, "held by another");
+  await store.releaseLease(key, "one", { nextNonce: 7 });
+  assert.deepEqual(await store.takeLease(key, "two", 60_000), { nextNonce: 7 });
+  await store.releaseLease(key, "two", { nextNonce: 7 });
   // A lease past its time is taken over, as when its server was stopped mid-send.
-  await store.takeLease("test:stale", "gone", 1);
+  await store.takeLease(stale, "gone", 1);
   await new Promise((r) => setTimeout(r, 20));
-  assert.notEqual(await store.takeLease("test:stale", "next", 60_000), null);
+  assert.notEqual(await store.takeLease(stale, "next", 60_000), null);
 });
 
 test("two workers asking for the same step at once: one runs it, the other leaves it; a failed step waits, and staff can stop the job", async () => {
@@ -57,4 +62,24 @@ test("two workers asking for the same step at once: one runs it, the other leave
   await jobs.stopJob(operator as any, job.id);
   assert.equal((await getStore().jobById(job.id))?.state, "stopped");
   await assert.rejects(jobs.stopJob(operator as any, job.id), /not running/);
+});
+
+test("the index holds every note's issuance and transfers, reads only new blocks, and answers as at a block", async () => {
+  const { syncIndex, indexed } = await import("../lib/chain/events.ts");
+  const { currentDeployment } = await import("../lib/store.ts");
+  const { loadManifest } = await import("../lib/chain/manifest.ts");
+  const m = loadManifest();
+  const head = await syncIndex(true);
+  assert.ok(head > 0, "read up to the chain's head");
+  const issued = await indexed({ addresses: [m.identity!.noteFactory!], names: ["NoteIssued"] });
+  assert.ok(issued.length >= 1, "the deployment's own note at least");
+  const own = issued.find((e) => String(e.args.token).toLowerCase() === m.assets.note!.address.toLowerCase())!;
+  assert.equal(own.note, m.assets.note!.address.toLowerCase(), "the factory's event belongs to the note it issued");
+  const transfers = await indexed({ note: m.assets.note!.address, names: ["Transfer"] });
+  assert.ok(transfers.length > 0 && transfers.every((e) => e.block >= own.block), "the note's transfers, from its issuance on");
+  assert.equal(transfers.filter((e) => e.block <= own.block).length, (await indexed({ note: m.assets.note!.address, names: ["Transfer"], toBlock: own.block })).length, "as at a block");
+  // Nothing new on the chain: a second read finds nothing more, and nothing twice.
+  const before = (await getStore().events(currentDeployment()!, {})).length;
+  await syncIndex(true);
+  assert.equal((await getStore().events(currentDeployment()!, {})).length, before);
 });

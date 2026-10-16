@@ -138,6 +138,26 @@ export type Job = {
   data: Record<string, unknown>;
 };
 
+/** An event of the programme's contracts, decoded, as the index holds it (workstream 11). */
+export type IndexedEvent = {
+  /** `block:logIndex`, unique within a deployment. */
+  id: string;
+  block: number;
+  logIndex: number;
+  tx: string;
+  /** The contract that emitted it, lower case. */
+  address: string;
+  /** The note it belongs to, lower case, where it belongs to one. */
+  note: string | null;
+  name: string;
+  /** Its arguments by name; integers as decimal strings. */
+  args: Record<string, unknown>;
+  /** The block's time, in Unix seconds. */
+  at: number;
+};
+
+export type EventQuery = { note?: string; addresses?: string[]; names?: string[]; toBlock?: number };
+
 export interface Store {
   registrantByEmail(email: string): Promise<Registrant | null>;
   registrantById(id: string): Promise<Registrant | null>;
@@ -205,6 +225,11 @@ export interface Store {
   /** Gives the lease back, keeping `data` with it for the next holder. */
   releaseLease(key: string, holder: string, data: Record<string, unknown>): Promise<void>;
 
+  /** Adds events to the index; one already there is left as it is. */
+  putEvents(deployment: string, events: IndexedEvent[]): Promise<void>;
+  /** The index's events matching `q`, in chain order. */
+  events(deployment: string, q: EventQuery): Promise<IndexedEvent[]>;
+
   /** Term sheets by the hash their notes carry (ADR 0095). Content-addressed, so never replaced. */
   putTermSheet(hash: string, record: unknown): Promise<void>;
   termSheet(hash: string): Promise<unknown | null>;
@@ -265,6 +290,19 @@ create table if not exists jobs (
   data jsonb not null
 );
 create index if not exists jobs_state on jobs (state, created_at);
+create table if not exists events (
+  deployment text not null,
+  id text not null,
+  block bigint not null,
+  log_index integer not null,
+  address text not null,
+  note text,
+  name text not null,
+  data jsonb not null,
+  primary key (deployment, id)
+);
+create index if not exists events_note on events (deployment, note, block);
+create index if not exists events_address on events (deployment, address, block);
 create table if not exists leases (
   key text primary key,
   holder text,
@@ -500,6 +538,24 @@ function postgresStore(url: string): Store {
         : await s`select data from jobs order by created_at desc limit ${limit}`;
       return rows.map((r) => toJson(r.data) as Job);
     },
+    async putEvents(deployment, events) {
+      const s = await q();
+      for (let i = 0; i < events.length; i += 500) {
+        const rows = events.slice(i, i + 500).map((e) => ({ deployment, id: e.id, block: e.block, log_index: e.logIndex, address: e.address, note: e.note, name: e.name, data: s.json(e as any) }));
+        await s`insert into events ${s(rows, "deployment", "id", "block", "log_index", "address", "note", "name", "data")} on conflict (deployment, id) do nothing`;
+      }
+    },
+    async events(deployment, qy) {
+      const s = await q();
+      const rows = await s`
+        select data from events where deployment = ${deployment}
+          ${qy.note ? s`and note = ${qy.note.toLowerCase()}` : s``}
+          ${qy.addresses ? s`and address = any(${qy.addresses.map((a) => a.toLowerCase())})` : s``}
+          ${qy.names ? s`and name = any(${qy.names})` : s``}
+          ${qy.toBlock !== undefined ? s`and block <= ${qy.toBlock}` : s``}
+        order by block, log_index`;
+      return rows.map((r) => toJson(r.data) as IndexedEvent);
+    },
     async takeLease(key, holder, ttlMs) {
       const s = await q();
       const until = new Date(Date.now() + ttlMs).toISOString();
@@ -569,6 +625,7 @@ type FileData = {
   termSheets?: Record<string, unknown>;
   jobs?: Job[];
   leases?: Record<string, { holder: string | null; expiresAt: number; data: Record<string, unknown> }>;
+  events?: Record<string, IndexedEvent[]>;
 };
 
 function fileStore(dir: string): Store {
@@ -733,6 +790,23 @@ function fileStore(dir: string): Store {
       return open
         ? all.filter((j) => j.state === "queued").sort((x, y) => x.createdAt.localeCompare(y.createdAt)).slice(0, limit)
         : [...all].sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, limit);
+    },
+    async putEvents(deployment, events) {
+      if (!events.length) return;
+      edit((d) => {
+        d.events ??= {};
+        const list = (d.events[deployment] ??= []);
+        const have = new Set(list.map((e) => e.id));
+        for (const e of events) if (!have.has(e.id)) list.push(e);
+        list.sort((x, y) => x.block - y.block || x.logIndex - y.logIndex);
+      });
+    },
+    async events(deployment, qy) {
+      const note = qy.note?.toLowerCase();
+      const addresses = qy.addresses && new Set(qy.addresses.map((a) => a.toLowerCase()));
+      return (load().events?.[deployment] ?? []).filter(
+        (e) => (!note || e.note === note) && (!addresses || addresses.has(e.address)) && (!qy.names || qy.names.includes(e.name)) && (qy.toBlock === undefined || e.block <= qy.toBlock),
+      );
     },
     async takeLease(key, holder, ttlMs) {
       return edit((d) => {

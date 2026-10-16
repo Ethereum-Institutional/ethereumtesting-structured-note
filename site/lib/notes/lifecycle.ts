@@ -1,11 +1,12 @@
 import "server-only";
-import { createPublicClient, defineChain, encodeFunctionData, http, parseAbi, parseAbiItem, type Address, type Hex } from "viem";
+import { defineChain, encodeFunctionData, parseAbi, type Address, type Hex } from "viem";
 import { loadManifest } from "../chain/manifest.ts";
 import { signers } from "../chain/signer.ts";
 import { execThroughWallet } from "../chain/safe.ts";
 import { until } from "../chain/until.ts";
 import { getStore, type DemoNote, type Job, type Registrant } from "../store.ts";
 import { createJob, jobsFor, runToEnd, type StepResult } from "../jobs.ts";
+import { indexed } from "../chain/events.ts";
 import { isOperator } from "../operators.ts";
 import { stretch } from "./calendar.ts";
 import { SCENARIOS } from "./issue.ts";
@@ -74,10 +75,6 @@ const CASH = parseAbi([
   "function allowance(address owner, address spender) view returns (uint256)",
   "function balanceOf(address account) view returns (uint256)",
 ]);
-const TRANSFER = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
-const PAID = parseAbiItem("event Paid(bytes32 indexed id, address indexed holder, uint256 units, uint256 amount)");
-const HELD = parseAbiItem("event Held(bytes32 indexed id, address indexed holder, uint256 units, uint256 amount)");
-const CLAIMED = parseAbiItem("event Claimed(bytes32 indexed id, address indexed holder, uint256 amount)");
 
 /** The two owners of the servicing wallet whose keys the site holds (ADR 0072). */
 const SERVICING_OWNERS = ["servicing1", "servicing2"];
@@ -93,10 +90,7 @@ function context() {
   const rpc = process.env.RPC_URL?.trim();
   if (!rpc) throw new Error("RPC_URL is not set");
   const chain = defineChain({ id: m.chainId, name: `chain ${m.chainId}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
-  // Events over the note's whole life are read where the Ledger reads them (ADR 0071): a public
-  // RPC may refuse so long a range.
-  const logsRpc = process.env.LEDGER_RPC_URL?.trim() || rpc;
-  return { m, s: signers(chain, rpc), logs: createPublicClient({ chain, transport: http(logsRpc) }) };
+  return { m, s: signers(chain, rpc) };
 }
 
 export type Outcome = { breached: boolean; couponPaid: boolean; couponPerCa: bigint; redeemed: boolean; redemptionPerCa: bigint; worstIndex: number };
@@ -143,14 +137,6 @@ const toOutcome = (o: { breached: boolean; couponPaid: boolean; couponPerCa: big
   worstIndex: o.worstIndex,
 });
 
-/** The block the note was deployed in: where its transfers and payments start. */
-async function fromBlock(s: { publicClient: ReturnType<typeof signers>["publicClient"] }, n: DemoNote): Promise<bigint> {
-  const hash = n.txs.note as Hex | undefined;
-  if (!hash) return 0n;
-  const r = await s.publicClient.getTransactionReceipt({ hash }).catch(() => null);
-  return r?.blockNumber ?? 0n;
-}
-
 const at = (t: number) => new Date(t * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 
 /**
@@ -158,25 +144,24 @@ const at = (t: number) => new Date(t * 1000).toISOString().slice(0, 16).replace(
  * at block `atBlock`, for a statement as at a moment past (ADR 0094).
  */
 export async function lifecycleOf(n: DemoNote, atBlock?: bigint): Promise<Lifecycle> {
-  const { s, logs } = context();
+  const { s } = context();
   const da = n.addresses.determinations as Address;
   const pa = n.addresses.payingAgent as Address;
   const c = s.publicClient;
   const pin = atBlock === undefined ? {} : { blockNumber: atBlock };
-  const to = atBlock ?? ("latest" as const);
-  const [count, next, terminated, block, start] = await Promise.all([
+  const [count, next, terminated, block] = await Promise.all([
     c.readContract({ address: da, abi: DETERMINATIONS, functionName: "observationCount", ...pin }),
     c.readContract({ address: da, abi: DETERMINATIONS, functionName: "nextDate", ...pin }),
     c.readContract({ address: da, abi: DETERMINATIONS, functionName: "terminated", ...pin }),
     c.getBlock(pin),
-    fromBlock(s, n),
   ]);
   const chainNow = Number(block.timestamp);
-  const [paid, held, claimed] = await Promise.all([
-    logs.getLogs({ address: pa, event: PAID, fromBlock: start, toBlock: to }),
-    logs.getLogs({ address: pa, event: HELD, fromBlock: start, toBlock: to }),
-    logs.getLogs({ address: pa, event: CLAIMED, fromBlock: start, toBlock: to }),
-  ]);
+  // Payments from the index of the programme's events, as at the block asked for.
+  const events = await indexed({ addresses: [pa], names: ["Paid", "Held", "Claimed"], toBlock: atBlock === undefined ? undefined : Number(atBlock), fresh: true });
+  const asLog = (e: (typeof events)[number]) => ({ args: e.args as { id?: Hex; holder?: Address; units?: string; amount?: string }, transactionHash: e.tx as Hex });
+  const paid = events.filter((e) => e.name === "Paid").map(asLog);
+  const held = events.filter((e) => e.name === "Held").map(asLog);
+  const claimed = events.filter((e) => e.name === "Claimed").map(asLog);
   const scenario = SCENARIOS.find((x) => x.name === n.scenario);
   const shape = scenario ? stretch(scenario, Number(count)) : null;
 
@@ -322,9 +307,9 @@ export async function determineDate(staff: Registrant, noteId: string, k: number
 }
 
 /** The holders of record at `time`: everyone the note was ever transferred to, with units then. */
-async function holdersAt(s: ReturnType<typeof signers>, logs: ReturnType<typeof context>["logs"], n: DemoNote, time: number, inventory: Address): Promise<Array<{ holder: Address; units: bigint }>> {
-  const transfers = await logs.getLogs({ address: n.addresses.note as Address, event: TRANSFER, fromBlock: await fromBlock(s, n), toBlock: "latest" });
-  const candidates = [...new Set(transfers.map((l) => l.args.to!.toLowerCase()))].filter((a) => a !== inventory.toLowerCase() && a !== "0x0000000000000000000000000000000000000000");
+async function holdersAt(s: ReturnType<typeof signers>, n: DemoNote, time: number, inventory: Address): Promise<Array<{ holder: Address; units: bigint }>> {
+  const transfers = await indexed({ addresses: [n.addresses.note as Address], names: ["Transfer"], fresh: true });
+  const candidates = [...new Set(transfers.map((l) => String(l.args.to).toLowerCase()))].filter((a) => a !== inventory.toLowerCase() && a !== "0x0000000000000000000000000000000000000000");
   const units = await Promise.all(
     candidates.map((h) => s.publicClient.readContract({ address: n.addresses.recordDates as Address, abi: RECORD_DATES, functionName: "balanceAt", args: [h as Address, BigInt(time)] })),
   );
@@ -368,7 +353,7 @@ export async function paymentStep(job: Job): Promise<StepResult> {
   const k = Number(job.data.date);
   const kind = job.data.event as "coupon" | "redemption";
   const txs = [...((job.data.txs as Hex[]) ?? [])];
-  const { m, s, logs } = context();
+  const { m, s } = context();
   const wallet = m.governance?.servicingWallet as Address | undefined;
   if (!wallet) throw new Error("The deployment has no servicing wallet.");
   const pa = n.addresses.payingAgent as Address;
@@ -423,7 +408,7 @@ export async function paymentStep(job: Job): Promise<StepResult> {
     return { done: false, data: { txs, released: true, step: "offers released" } };
   }
 
-  const holders = await holdersAt(s, logs, n, date.recordTime, s.address("issuer"));
+  const holders = await holdersAt(s, n, date.recordTime, s.address("issuer"));
   const settled = await Promise.all(holders.map((h) => c.readContract({ address: pa, abi: PAYING, functionName: "settled", args: [id, h.holder] })));
   const due = holders.filter((_, i) => !settled[i]).map((h) => h.holder);
   if (!due.length) {

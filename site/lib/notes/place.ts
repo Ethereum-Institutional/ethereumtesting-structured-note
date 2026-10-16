@@ -1,6 +1,7 @@
 import "server-only";
 import { createPublicClient, decodeEventLog, defineChain, encodeFunctionData, http, parseAbi, parseAbiItem, type Address, type Hex } from "viem";
 import { loadManifest } from "../chain/manifest.ts";
+import { indexed } from "../chain/events.ts";
 import { signers } from "../chain/signer.ts";
 import { getStore, type Admission, type DemoNote, type Registrant } from "../store.ts";
 import { hasRole } from "../operators.ts";
@@ -61,7 +62,6 @@ const SETTLEMENT = parseAbi([
   "error CashLegRefused(address buyer, address seller, uint256 price)",
 ]);
 const OFFERED = parseAbiItem("event Offered(uint256 indexed id, address indexed proposer, address indexed counterparty, uint8 side, uint256 units, uint256 price, uint256 deadline)");
-const SETTLED = parseAbiItem("event Settled(uint256 indexed id, address indexed seller, address indexed buyer, uint256 units, uint256 price)");
 const DEPOSIT = parseAbi(["function approve(address spender, uint256 value) returns (bool)", "function balanceOf(address) view returns (uint256)"]);
 const ALLOWANCE = parseAbi(["function allowance(address owner, address spender) view returns (uint256)"]);
 const ACCOUNT = parseAbi(["function execute((address target, uint256 value, bytes data)[] calls) returns (bytes[])"]);
@@ -142,27 +142,23 @@ async function admissionsByAddress(): Promise<Map<string, Admission>> {
   return map;
 }
 
-async function startBlock(s: Signers, n: DemoNote): Promise<bigint> {
-  const hash = (n.txs.settlement ?? n.txs.note) as Hex | undefined;
-  if (!hash) return 0n;
-  return (await s.publicClient.getTransactionReceipt({ hash }).catch(() => null))?.blockNumber ?? 0n;
-}
-
 /** Every offer on the note's settlement contract, newest first: at the latest block, or at block `at` (ADR 0094). */
 export async function offersOf(n: DemoNote, at?: bigint): Promise<Offer[]> {
   if (!lockedSettlement(n)) return [];
-  const { s, logs } = context();
+  const { s } = context();
   const settlement = n.addresses.settlement as Address;
-  const from = await startBlock(s, n);
-  const to = at ?? ("latest" as const);
-  const [offered, settled, byAddress] = await Promise.all([
-    logs.getLogs({ address: settlement, event: OFFERED, fromBlock: from, toBlock: to }),
-    logs.getLogs({ address: settlement, event: SETTLED, fromBlock: from, toBlock: to }),
+  // The settlement's offers from the index of the programme's events, as at the block asked for.
+  const [events, byAddress] = await Promise.all([
+    indexed({ addresses: [settlement], names: ["Offered", "Settled"], toBlock: at === undefined ? undefined : Number(at), fresh: true }),
     admissionsByAddress(),
   ]);
+  type OfferArgs = { id: string; proposer: Address; counterparty: Address; side: string; units: string; price: string; deadline: string; seller?: Address; buyer?: Address };
+  const asLog = (e: (typeof events)[number]) => ({ args: e.args as OfferArgs, transactionHash: e.tx as Hex });
+  const offered = events.filter((e) => e.name === "Offered").map(asLog);
+  const settled = events.filter((e) => e.name === "Settled").map(asLog);
   const issuer = s.address("issuer");
   const pin = at === undefined ? {} : { blockNumber: at };
-  const states = await Promise.all(offered.map((l) => s.publicClient.readContract({ address: settlement, abi: SETTLEMENT, functionName: "offers", args: [l.args.id!], ...pin })));
+  const states = await Promise.all(offered.map((l) => s.publicClient.readContract({ address: settlement, abi: SETTLEMENT, functionName: "offers", args: [BigInt(l.args.id)], ...pin })));
   const nameOf = (a: Address | null) => (!a ? null : same(a, issuer) ? "issuer" : byAddress.get(a.toLowerCase())?.id ?? null);
   return offered
     .map((l, i): Offer => {
