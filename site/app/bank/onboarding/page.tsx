@@ -12,6 +12,7 @@ import {
 } from "../../actions";
 import { ActionForm } from "../../staff/ActionForm";
 import { ClientReference, when } from "../../staff/parts";
+import { Address } from "../../Address";
 
 export const dynamic = "force-dynamic";
 
@@ -97,8 +98,8 @@ export default async function BankOnboarding() {
                   <tr key={a.id}>
                     <td>{nameOf(dataOf(a).kycReference)}{a.status === "offboarded" && <><br /><span className="pill revoked">offboarded</span></>}</td>
                     <td>{ROUTE_LABEL[a.route]}</td>
-                    <td><code>{p.wallet}</code></td>
-                    <td><code>{p.identity}</code></td>
+                    <td><Address value={p.wallet} /></td>
+                    <td><Address value={p.identity} /></td>
                     <td><span className={`pill ${deposit.pill}`}>{deposit.label}</span></td>
                     <td><span className={`pill ${note.pill}`}>{note.label}</span></td>
                     <td>

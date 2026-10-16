@@ -19,6 +19,7 @@ import { BrowserWallet } from "./BrowserWallet";
 import { PendingButton } from "../PendingButton";
 import { BringIdentityForm, NoteRequestForm } from "./Forms";
 import { accountOf } from "./account";
+import { Address } from "../Address";
 
 export const dynamic = "force-dynamic";
 
@@ -95,8 +96,8 @@ export default async function Account() {
           <section className="panel" key={p.admission.id} aria-label={routeLabel(p.admission.route)}>
             <p className="eyebrow">{routeLabel(p.admission.route)}</p>
             <dl className="facts">
-              <dt>{p.admission.route === "self-custody" || p.admission.route === "existing-identity" ? "Your wallet" : "Your account"}</dt><dd><code>{p.wallet}</code></dd>
-              <dt>Your identity</dt><dd><code>{p.identity}</code>{p.admission.route === "self-custody" && <span className="muted"> (managed by your wallet)</span>}</dd>
+              <dt>{p.admission.route === "self-custody" || p.admission.route === "existing-identity" ? "Your wallet" : "Your account"}</dt><dd><Address value={p.wallet} /></dd>
+              <dt>Your identity</dt><dd><Address value={p.identity} />{p.admission.route === "self-custody" && <span className="muted"> (managed by your wallet)</span>}</dd>
               <dt>The deposit</dt><dd><span className={`pill ${deposit.pill}`}>{p.eligible.deposit ? `eligible, ${deposit.label}` : `not eligible (${deposit.label})`}</span></dd>
               <dt>The note</dt>
               <dd>

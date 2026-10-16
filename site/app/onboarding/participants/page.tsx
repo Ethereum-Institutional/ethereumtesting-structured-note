@@ -2,6 +2,7 @@ import { ROUTE_LABEL, dataOf } from "@/lib/identity/onboarding";
 import { claimState, participants } from "@/lib/identity/participants";
 import { revokeNoteAction } from "../../actions";
 import { ActionForm } from "../../staff/ActionForm";
+import { Address } from "../../Address";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,8 @@ export default async function VouchedFor() {
                   <tr key={p.admission.id}>
                     <td>{d.request?.organisation}</td>
                     <td>{ROUTE_LABEL[p.admission.route]}</td>
-                    <td><code>{p.wallet}</code></td>
-                    <td><code>{p.identity}</code></td>
+                    <td><Address value={p.wallet} /></td>
+                    <td><Address value={p.identity} /></td>
                     <td><span className={`pill ${note.pill}`}>{note.label}</span>{d.note?.status === "declined" && <> <span className="muted">declined</span></>}</td>
                     <td>{p.eligible.note ? "Yes" : "No"}</td>
                     <td>

@@ -3,6 +3,7 @@ import { dataOf } from "@/lib/identity/onboarding";
 import { acceptExistingAction } from "../../actions";
 import { ActionForm } from "../../staff/ActionForm";
 import { when } from "../../staff/parts";
+import { Address } from "../../Address";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +29,8 @@ export default async function ExistingIdentities() {
             <p className="eyebrow">Brought {when(a.createdAt)}</p>
             <h3 style={{ margin: "0.25rem 0 1rem" }}>{d.request?.organisation}</h3>
             <dl className="facts">
-              <dt>Identity</dt><dd><code>{d.identity}</code></dd>
-              <dt>Wallet</dt><dd><code>{d.wallet}</code> <span className="muted">(signed)</span></dd>
+              <dt>Identity</dt><dd><Address value={d.identity} /></dd>
+              <dt>Wallet</dt><dd><Address value={d.wallet} /> <span className="muted">(signed)</span></dd>
             </dl>
             <ActionForm action={acceptExistingAction} hidden={{ id: a.id }} label="Register the wallet" working="Registering and checking the note's registry…" />
           </section>

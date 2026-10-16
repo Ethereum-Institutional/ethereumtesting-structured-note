@@ -4,6 +4,7 @@ import { claimState, participantOf } from "@/lib/identity/participants";
 import { decideNoteAction } from "../actions";
 import { ActionForm } from "../staff/ActionForm";
 import { when } from "../staff/parts";
+import { Address } from "../Address";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +28,8 @@ export default async function NoteRequests() {
             <p className="eyebrow">{ROUTE_LABEL[a.route]}, asked {when(d.note!.requestedAt)}</p>
             <h3 style={{ margin: "0.25rem 0 1rem" }}>{d.request?.organisation}</h3>
             <dl className="facts">
-              <dt>Wallet</dt><dd><code>{d.wallet}</code></dd>
-              <dt>Identity</dt><dd><code>{d.identity}</code></dd>
+              <dt>Wallet</dt><dd><Address value={d.wallet} /></dd>
+              <dt>Identity</dt><dd><Address value={d.identity} /></dd>
               <dt>The bank's claim</dt><dd>{bank ? <span className={`pill ${bank.pill}`}>{bank.label}</span> : "unreadable"}</dd>
               <dt>Not a U.S. person</dt><dd>{d.note!.answers.notUsPerson ? "Declared" : "Not declared"}</dd>
               <dt>Investor class declared</dt><dd>{d.note!.answers.investorClass || "none"}</dd>

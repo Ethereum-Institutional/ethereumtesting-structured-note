@@ -3,6 +3,7 @@ import { claimState, participants } from "@/lib/identity/participants";
 import { loadManifest } from "@/lib/chain/manifest";
 import { admitToPoolAction, revokePoolAction } from "../../actions";
 import { ActionForm } from "../../staff/ActionForm";
+import { Address } from "../../Address";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,7 @@ export default async function Pool() {
                   <tr key={p.admission.id} data-wallet={p.wallet}>
                     <td>{d.request?.organisation}</td>
                     <td>{ROUTE_LABEL[p.admission.route]}</td>
-                    <td><code>{p.wallet}</code></td>
+                    <td><Address value={p.wallet} /></td>
                     <td><span className={`pill ${claim.pill}`}>{claim.label}</span>{d.pool && <> <span className="muted">{d.pool.investorClass}</span></>}</td>
                     <td className="pool-standing">{p.pool}</td>
                     <td>

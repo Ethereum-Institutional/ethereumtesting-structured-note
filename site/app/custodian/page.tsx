@@ -5,6 +5,7 @@ import { claimState, participants } from "@/lib/identity/participants";
 import { custodyConvertAction, openAccountAction } from "../actions";
 import { ActionForm } from "../staff/ActionForm";
 import { when } from "../staff/parts";
+import { Address } from "../Address";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,9 @@ export default async function Accounts() {
   const held = await participants((a) => custodianOf(a) !== null);
   const names = (() => {
     try {
-      return { bank: `${custodian("bank").label} (${custodianAddress("bank")})`, "third-party": `${custodian("third-party").label} (${custodianAddress("third-party")})` };
+      return { bank: { label: custodian("bank").label, address: custodianAddress("bank") as string | null }, "third-party": { label: custodian("third-party").label, address: custodianAddress("third-party") as string | null } };
     } catch {
-      return { bank: "the bank's custody platform", "third-party": "the third-party custodian" };
+      return { bank: { label: "the bank's custody platform", address: null }, "third-party": { label: "the third-party custodian", address: null } };
     }
   })();
   return (
@@ -49,7 +50,8 @@ export default async function Accounts() {
         const rows = held.filter((p) => custodianOf(p.admission) === which);
         return (
           <section key={which}>
-            <h2 id={which}>Held by {names[which]}</h2>
+            <h2 id={which}>Held by {names[which].label}</h2>
+            {names[which].address && <p className="muted">Its operator key: <Address value={names[which].address} /></p>}
             {rows.length === 0 && <p className="muted panel">No account yet.</p>}
             {rows.length > 0 && (
               <div className="table-wrap panel">
@@ -64,8 +66,8 @@ export default async function Accounts() {
                         <tr key={p.admission.id}>
                           <td>{d.request?.organisation}</td>
                           <td>{d.clientRef}</td>
-                          <td><code>{p.wallet}</code></td>
-                          <td><code>{p.identity}</code></td>
+                          <td><Address value={p.wallet} /></td>
+                          <td><Address value={p.identity} /></td>
                           <td><span className={`pill ${dep.pill}`}>{dep.label}</span></td>
                           <td><span className={`pill ${note.pill}`}>{note.label}</span></td>
                           <td className="pool-standing">{p.pool ?? "no pool"}</td>

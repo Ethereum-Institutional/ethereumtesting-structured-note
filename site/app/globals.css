@@ -247,3 +247,10 @@ h1, h2, h3, .notice, .facts dd, code { overflow-wrap: anywhere; }
   table.labelled td:not([data-label])::before { content: none; }
   .table-wrap { overflow-x: visible; }
 }
+
+/* An address (ADR 0106): its start and end, the middle kept in the text but not shown. */
+code.addr { white-space: nowrap; font-size: 0.8125rem; }
+code.addr .addr-mid { font-size: 0; }
+code.addr .addr-mid::before { content: "…"; font-size: 0.8125rem; }
+a.addr-link { text-decoration-color: var(--border2); }
+a.addr-link:hover { text-decoration-color: var(--fg); }

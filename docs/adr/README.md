@@ -113,3 +113,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0103](0103-waiting-for-ethereum-sepolia.md) | Waiting long enough for Ethereum Sepolia, and an issuance safe to run again | Accepted |
 | [0104](0104-an-existing-identity-must-be-an-identity.md) | An identity brought to the site must be an ONCHAINID identity | Accepted |
 | [0105](0105-an-issuance-that-cannot-hang.md) | An issuance that cannot hang, and can be stopped | Accepted |
+| [0106](0106-addresses-shortened-and-linked.md) | Addresses shown short, and linked to the explorer | Accepted |

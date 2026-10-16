@@ -1,6 +1,7 @@
 import { ROUTE_LABEL } from "@/lib/identity/onboarding";
 import { claimState, participants } from "@/lib/identity/participants";
 import { vouchers } from "@/lib/identity/onchain";
+import { Address } from "../Address";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,8 @@ export default async function Participants() {
       <p className="muted panel">
         Every onboarded wallet, its identity, and the claims on it, as the chain holds them now. The facts behind each claim
         stay with the institution that verified them: the bank for the deposit
-        {issuers && <> (claim issuer <code>{issuers.deposit}</code>)</>}, the onboarding agent for the note
-        {issuers && <> (<code>{issuers.note}</code>)</>}.
+        {issuers && <> (claim issuer <Address value={issuers.deposit} />)</>}, the onboarding agent for the note
+        {issuers && <> (<Address value={issuers.note} />)</>}.
       </p>
       {rows.length > 0 && (
         <div className="table-wrap panel">
@@ -36,8 +37,8 @@ export default async function Participants() {
                 const note = claimState(p.claims.note);
                 return (
                   <tr key={p.admission.id}>
-                    <td><code>{p.wallet}</code></td>
-                    <td><code>{p.identity}</code></td>
+                    <td><Address value={p.wallet} /></td>
+                    <td><Address value={p.identity} /></td>
                     <td>{ROUTE_LABEL[p.admission.route]}</td>
                     <td><span className={`pill ${dep.pill}`}>{dep.label}</span></td>
                     <td><span className={`pill ${note.pill}`}>{note.label}</span></td>

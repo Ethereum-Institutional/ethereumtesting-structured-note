@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getStore } from "@/lib/store";
-import { explorerAddress, explorerTx } from "@/lib/explorer";
+import { explorerTx } from "@/lib/explorer";
 import { loadManifest } from "@/lib/chain/manifest";
 import { routeLabel } from "@/lib/routes";
 import { custodianOf, dataOf } from "@/lib/identity/onboarding";
@@ -28,6 +28,7 @@ import { AutoRefresh } from "../../../AutoRefresh";
 import { ActionForm } from "../../../staff/ActionForm";
 import { Linked, when } from "../../../staff/parts";
 import { PlaceForm, type Placeable } from "../PlaceForm";
+import { Address } from "../../../Address";
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +90,7 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
           <summary className="muted">Contracts</summary>
           <p style={{ whiteSpace: "nowrap", overflowX: "auto" }}>
             {Object.entries(n.addresses).filter(([k]) => k !== "implementation").map(([k, a]) => (
-              <span key={k}>{k}: <Linked href={explorerAddress(chainId, a)}>{a}</Linked><br /></span>
+              <span key={k}>{k}: <Address value={a} /><br /></span>
             ))}
           </p>
         </details>
