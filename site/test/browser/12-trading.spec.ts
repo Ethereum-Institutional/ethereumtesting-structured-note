@@ -125,7 +125,7 @@ test("transfers settle by locked offer: arranged by the bank, open offers taken,
   const cancel = staff.locator("form").filter({ has: staff.getByRole("button", { name: "Cancel units" }) });
   await cancel.getByLabel("Units").fill(String(before + 2));
   await cancel.getByRole("button", { name: "Cancel units" }).click();
-  await expect(cancel.getByRole("alert")).toContainText("cannot be cancelled (S-14)");
+  await expect(cancel.getByRole("alert")).toContainText("cannot be cancelled.");
   await cancel.getByLabel("Units").fill("1");
   await cancel.getByRole("button", { name: "Cancel units" }).click();
   await status(cancel, "Cancelled 1 units");

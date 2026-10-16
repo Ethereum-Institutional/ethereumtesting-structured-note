@@ -86,7 +86,11 @@ export type Client = {
 /** A note issued from the site (ADRs 0072, 0073): its terms, its contracts as they are deployed, and its life. */
 export type DemoNote = {
   id: string;
+  /** The number in the note's name, foreseen from the factory's series when issuance starts and
+   *  never reused; the factory's own series number is recorded in `data.series` once it lands. */
   series: number;
+  /** The note's ISIN, where it has one. */
+  isin?: string;
   name: string;
   symbol: string;
   scenario: string;

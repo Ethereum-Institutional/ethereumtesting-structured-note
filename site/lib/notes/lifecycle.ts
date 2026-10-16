@@ -11,15 +11,15 @@ import { SCENARIOS } from "./issue.ts";
 import { releaseOpenOffers } from "./place.ts";
 
 /**
- * A note's life after placement (ADR 0078): each scheduled date determined, then its coupon and
+ * A note's life after placement: each scheduled date determined, then its coupon and
  * any redemption paid to the holders of record, until the note is redeemed and closed.
  *
  * - **Determination.** The Calculation Agent signs the date's Levels and the outcome the
  *   Determination Agent computes from them; the contract recomputes it and accepts only an
  *   identical one. Levels come from the scenario, and staff may change them before determining.
- * - **Payment.** The Agent's servicing wallet, a two-of-three multi-signature wallet, opens each
- *   event after its payment date (debiting the whole amount from the Agent's deposit) and pays
- *   the holders of record in batches. Holders are found from the note's own transfers and their
+ * - **Payment.** The Agent approves the Paying Agent for exactly the event's amount, and the
+ *   servicing wallet, a two-of-three multi-signature wallet, opens the event after its payment
+ *   date (drawing that amount from the Agent's deposit) and pays the holders of record in batches. Holders are found from the note's own transfers and their
  *   units read at the Record Time, so the Register is the chain's.
  * - **The model.** On a four-date note, each outcome is checked against the independent payoff
  *   model's expected payments for the scenario.
@@ -63,7 +63,16 @@ const PAYING = parseAbi([
   "error NothingHeld(address holder)",
   "error CannotReceive(address holder)",
 ]);
-const RECORD_DATES = parseAbi(["function balanceAt(address account, uint256 time) view returns (uint256)"]);
+const RECORD_DATES = parseAbi([
+  "function balanceAt(address account, uint256 time) view returns (uint256)",
+  "function totalSupplyAt(uint256 time) view returns (uint256)",
+]);
+const PAYING_ROLES = parseAbi(["function FUNDER() view returns (address)", "function INVENTORY() view returns (address)"]);
+const CASH = parseAbi([
+  "function approve(address spender, uint256 value) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function balanceOf(address account) view returns (uint256)",
+]);
 const TRANSFER = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const PAID = parseAbiItem("event Paid(bytes32 indexed id, address indexed holder, uint256 units, uint256 amount)");
 const HELD = parseAbiItem("event Held(bytes32 indexed id, address indexed holder, uint256 units, uint256 amount)");
@@ -344,6 +353,26 @@ export async function payEvent(staff: Registrant, noteId: string, k: number, kin
   let d = await c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] });
   if (d[5]) throw new Error(`Date ${k + 1}'s ${kind} is already paid.`);
   if (!d[4]) {
+    // The funder approves exactly what opening the event draws: the amount per Calculation Amount
+    // times the units entitled at the Record Time, which is every unit outside the Issuer's inventory.
+    const [funder, inventory] = await Promise.all([
+      c.readContract({ address: pa, abi: PAYING_ROLES, functionName: "FUNDER" }),
+      c.readContract({ address: pa, abi: PAYING_ROLES, functionName: "INVENTORY" }),
+    ]);
+    const [supply, kept] = await Promise.all([
+      c.readContract({ address: n.addresses.recordDates as Address, abi: RECORD_DATES, functionName: "totalSupplyAt", args: [BigInt(date.recordTime)] }),
+      c.readContract({ address: n.addresses.recordDates as Address, abi: RECORD_DATES, functionName: "balanceAt", args: [inventory, BigInt(date.recordTime)] }),
+    ]);
+    const outcome = date.outcome!;
+    const amount = (kind === "coupon" ? outcome.couponPerCa : outcome.redemptionPerCa) * (supply - kept);
+    if (funder.toLowerCase() !== s.address("agent").toLowerCase()) throw new Error(`The funder of distributions is ${funder}, whose key the site does not hold.`);
+    const deposit = m.assets.deposit!.address as Address;
+    const held = await c.readContract({ address: deposit, abi: CASH, functionName: "balanceOf", args: [funder] });
+    if (held < amount) throw new Error(`The Agent holds ${held} cents of the deposit; date ${k + 1}'s ${kind} needs ${amount}. The bank credits the Agent first.`);
+    if (amount > 0n) {
+      sent.push(await s.send("agent", { address: deposit, abi: CASH, functionName: "approve", args: [pa, amount] }));
+      await until(() => c.readContract({ address: deposit, abi: CASH, functionName: "allowance", args: [funder, pa] }), (a) => a >= amount);
+    }
     sent.push(await through(encodeFunctionData({ abi: PAYING, functionName: "open", args: [BigInt(k), code] })));
     d = await until(() => c.readContract({ address: pa, abi: PAYING, functionName: "distributions", args: [id] }), (x) => x[4]);
   }

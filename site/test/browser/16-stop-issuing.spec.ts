@@ -27,7 +27,7 @@ test("an issuance whose step is in flight is left to finish, not marked issued; 
   await page.goto("/agent/notes");
   const row = page.getByRole("row").filter({ hasText: "Stuck Note, Series 9" });
   await expect(row.locator(".pill")).toHaveText("issuing");
-  await expect(row).toContainText("Step 1 of 4");
+  await expect(row).toContainText("Step 1 of 2");
   // The page polls every few seconds: the step in flight stays in flight.
   await page.waitForTimeout(7_000);
   await expect(row.locator(".pill")).toHaveText("issuing");

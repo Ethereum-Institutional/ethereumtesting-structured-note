@@ -36,7 +36,7 @@ async function issued(id: string) {
   return (await store.noteById(id))!;
 }
 
-test("a note is issued from the site in four steps, the Issuer's in one transaction through the note factory, as a T-REX suite on the deployment's fixed implementations", async () => {
+test("a note is issued from the site in two steps, the Issuer's wallet's one transaction through the note factory, then the bank's credit to the Agent", async () => {
   await assert.rejects(notes.startNote({ ...operator, email: "someone@corp.example" } as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 }), /Not permitted/);
   await assert.rejects(notes.startNote(operator as any, { scenario: "nope", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 }), /Choose a scenario/);
   const started = await notes.startNote(operator as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 });
@@ -45,8 +45,9 @@ test("a note is issued from the site in four steps, the Issuer's in one transact
 
   const n = await issued(started.id);
   assert.equal(n.status, "issued", n.error);
-  assert.equal(notes.ISSUANCE_STEPS.length, 4, "the Issuer's one act, the bank's two, the Agent's one");
-  assert.equal(new Set(Object.values(n.txs)).size, 4, "one transaction per step, each recorded");
+  assert.equal(notes.ISSUANCE_STEPS.length, 2, "the Issuer's wallet's one act, the bank's one");
+  assert.equal(new Set(Object.values(n.txs)).size, 2, "one transaction per step, each recorded");
+  assert.equal((n.data as any).series, 2, "the factory's second series");
 
   const m = loadManifest();
   const note = n.addresses.note as Address;
@@ -84,17 +85,22 @@ test("a note is issued from the site in four steps, the Issuer's in one transact
   assert.deepEqual([pa.disableBurn, pa.disablePause, pa.disableMint, pa.disableForceTransfer], [false, false, true, true], "the Paying Agent burns and pauses, nothing else");
   const st = await restricted(n.addresses.settlement as Address);
   assert.deepEqual([st.disablePartialFreeze, st.disableBurn, st.disableMint], [false, true, true], "the settlement contract only locks units");
-  const ag = await restricted(m.parties.agent as Address);
-  assert.deepEqual([ag.disableBurn, ag.disableMint, ag.disablePause], [false, true, true], "the Agent only cancels inventory");
+  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "isAgent", args: [m.parties.agent as Address] }), false, "the Agent's key holds no agent power");
+  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "isAgent", args: [m.parties.issuer as Address] }), false, "nor does the Issuer's");
 
-  // The factory owns the note for the Issuer, keeps no agent power, and records it (ADR 0091).
-  const FACTORY = parseAbi(["function holds(address) view returns (bool)", "function noteOf(address) view returns ((address token, address identity, address identityRegistry, address compliance, address trustedIssuers, address claimTopics, address determinations, address recordDates, address payingAgent, address settlement))"]);
+  // The factory records the note, keeps no agent power, and hands it to the controller, which governs it from the first block.
+  const FACTORY = parseAbi(["function noteOf(address) view returns ((uint256 series, address token, address identity, address identityRegistry, address compliance, address trustedIssuers, address claimTopics, address determinations, address recordDates, address payingAgent, address settlement, address inventory))"]);
   const factory = m.identity!.noteFactory as Address;
-  assert.equal(await client.readContract({ address: factory, abi: FACTORY, functionName: "holds", args: [note] }), true);
-  assert.equal((await client.readContract({ address: factory, abi: FACTORY, functionName: "noteOf", args: [note] })).payingAgent, n.addresses.payingAgent);
+  const record = await client.readContract({ address: factory, abi: FACTORY, functionName: "noteOf", args: [note] });
+  assert.equal(record.payingAgent, n.addresses.payingAgent);
+  assert.equal(record.series, 2n);
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "isAgent", args: [factory] }), false);
   const OWNED = parseAbi(["function owner() view returns (address)"]);
-  assert.equal(await client.readContract({ address: note, abi: OWNED, functionName: "owner" }), factory);
+  assert.equal(await client.readContract({ address: note, abi: OWNED, functionName: "owner" }), m.governance!.controller, "governed by the controller");
+  const ctl = await restricted(m.governance!.controller);
+  assert.deepEqual([ctl.disableForceTransfer, ctl.disableMint, ctl.disablePartialFreeze], [false, false, true], "the controller corrects, mints by Tier 2, and does not lock units");
+  const DEPOSIT = parseAbi(["function allowlisted(address) view returns (bool)"]);
+  assert.equal(await client.readContract({ address: m.assets.deposit!.address as Address, abi: DEPOSIT, functionName: "allowlisted", args: [n.addresses.payingAgent as Address] }), true, "allowlisted on the deposit at issuance");
   assert.ok(lagging.staleReads() > 0, "issued through a lagging RPC");
 });
 
@@ -360,7 +366,7 @@ test("S-13: the Issuer buys units back into its inventory; S-14: no more can be 
 
   // An offer of the inventory locks those units: they cannot be cancelled meanwhile.
   const offered = await place.placeUnits(operator as any, n.id, "adm_test_c", 1, 100_000n);
-  await assert.rejects(place.cancelFromInventory(operator as any, n.id, Number(inventory) + 1), /holds \d+ units not offered; \d+ cannot be cancelled \(S-14\)/);
+  await assert.rejects(place.cancelFromInventory(operator as any, n.id, Number(inventory) + 1), /holds \d+ units not offered; \d+ cannot be cancelled/);
   await place.cancelOffer(operator as any, n.id, offered.id);
   await place.cancelFromInventory(operator as any, n.id, 2);
   await new Promise((r) => setTimeout(r, 1600));

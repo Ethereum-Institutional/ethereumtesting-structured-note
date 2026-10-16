@@ -1,7 +1,7 @@
 import { test, expect, expectHealthy, signedIn, PEOPLE } from "./fixtures.ts";
 
 test("staff issue a note; the page carries the issuance to the end, and the Ledger names its contracts", async ({ browser }) => {
-  test.setTimeout(180_000); // issuance is four transactions, the Issuer's through the note factory
+  test.setTimeout(180_000); // issuance is two transactions: the Issuer's wallet's through the note factory, and the bank's credit
   const staff = await signedIn(browser, PEOPLE.operator);
   await staff.goto("/agent/notes");
   const form = staff.locator("#notes + .panel form");
@@ -21,6 +21,7 @@ test("staff issue a note; the page carries the issuance to the end, and the Ledg
   // chain's clock to each date instead.
   await form.getByLabel("Time between observations").fill("30");
   await form.getByLabel("Units").fill("10");
+  await form.getByLabel("ISIN (optional)").fill("XS0000001239");
   await form.getByRole("button", { name: "Issue" }).click();
 
   const row = staff.locator("#notes + .panel tbody tr").filter({ hasText: "EURWAN2" });
@@ -30,11 +31,13 @@ test("staff issue a note; the page carries the issuance to the end, and the Ledg
   // Each note opens on its own page, with its contracts (ADR 0078).
   await row.getByRole("link", { name: /Series 2/ }).click();
   await expect(staff).toHaveURL(/\/agent\/notes\/note_/);
+  await expect(staff.locator(".facts").first()).toContainText("XS0000001239");
+  await expect(staff.locator(".facts").first()).toContainText("as the note factory numbered it");
   await staff.getByText("Contracts").click();
   await expect(staff.locator("details").filter({ hasText: "Contracts" })).toContainText("payingAgent:");
 
   await staff.goto("/ledger");
-  await expect(staff.getByText("EURWAN2 Paying Agent").first()).toBeVisible();
+  await expect(staff.getByText("Issued a note whole, in one transaction").first()).toBeVisible();
   await expect(staff.getByText("unrecognised", { exact: true })).toHaveCount(0);
   await expectHealthy(staff);
 });

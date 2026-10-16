@@ -39,7 +39,6 @@ const NOTE = parseAbi([
   "function identityRegistry() view returns (address)",
   "function getFrozenTokens(address) view returns (uint256)",
   "function totalSupply() view returns (uint256)",
-  "function burn(address account, uint256 value)",
 ]);
 const DETERMINATIONS = parseAbi(["function transfersOpen() view returns (bool)"]);
 const SETTLEMENT = parseAbi([
@@ -389,8 +388,9 @@ export async function cancelFromInventory(staff: Registrant, noteId: string, uni
   const { s } = context();
   const issuer = s.address("issuer");
   const pending = await unlockedUnits(s, n, issuer);
-  if (BigInt(units) > pending) throw new Error(`The Issuer's inventory holds ${pending} units not offered; ${units} cannot be cancelled (S-14).`);
-  const tx = await s.send("agent", { address: n.addresses.note as Address, abi: NOTE, functionName: "burn", args: [issuer, BigInt(units)] });
+  if (BigInt(units) > pending) throw new Error(`The Issuer's inventory holds ${pending} units not offered; ${units} cannot be cancelled.`);
+  // A Tier 1 act of the Agent's governance wallet: the controller holds the note's agent powers.
+  const tx = await (await import("../governance.ts")).cancelInventoryTier1(n.addresses.note as Address, units, `Cancelled ${units} units from the Issuer's inventory at the Issuer's request`);
   await audit(staff.email, n, `cancelled ${units} units of ${n.symbol} from the Issuer's inventory`);
   return tx;
 }

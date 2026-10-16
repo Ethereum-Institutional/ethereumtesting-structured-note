@@ -46,7 +46,7 @@ export type Manifest = {
   identity?: {
     idFactory: Address;
     trexFactory: Address;
-    /** Issues each note in one transaction, and owns it for the Issuer (ADR 0091). */
+    /** Issues each note in one transaction; the Issuer's wallet owns it, and the controller governs every note it issues. */
     noteFactory?: Address;
     trexAuthority: Address;
     identityStorage: Address;
@@ -67,7 +67,12 @@ export type Manifest = {
   /** The deployment's term sheet, the record its note was issued from (ADR 0095). */
   termSheet?: unknown;
   /** The main note's T-REX suite. */
-  noteSuite?: { identityRegistry: Address; compliance: Address; trustedIssuers: Address; claimTopics: Address };
+  noteSuite?: { identityRegistry: Address; compliance: Address; trustedIssuers: Address; claimTopics: Address; identity?: Address; series?: number };
+  /** What every note shares: the implementations its lifecycle contracts are cloned from, and the sanctions module. */
+  programme?: {
+    implementations: { determinations: Address; recordDates: Address; payingAgent: Address; settlement: Address };
+    sanctions: Address;
+  };
   custody?: {
     custodian: Address;
     factory: Address;
@@ -215,6 +220,13 @@ export function addressBook(m: Manifest): Map<string, { key: string; label: stri
     put(m.noteSuite.compliance, "noteSuite.compliance", "Note compliance");
     put(m.noteSuite.trustedIssuers, "noteSuite.trustedIssuers", "Note trusted issuers");
     put(m.noteSuite.claimTopics, "noteSuite.claimTopics", "Note claim topics");
+  }
+  if (m.programme) {
+    put(m.programme.sanctions, "programme.sanctions", "Programme sanctions module");
+    put(m.programme.implementations.determinations, "programme.implementations.determinations", "Determination Agent (implementation)");
+    put(m.programme.implementations.recordDates, "programme.implementations.recordDates", "Record-date module (implementation)");
+    put(m.programme.implementations.payingAgent, "programme.implementations.payingAgent", "Paying Agent (implementation)");
+    put(m.programme.implementations.settlement, "programme.implementations.settlement", "Locked settlement (implementation)");
   }
   if (m.instruments) put(m.instruments.gateway, "instruments.gateway", "Deposit gateway");
   if (m.lifecycle) {

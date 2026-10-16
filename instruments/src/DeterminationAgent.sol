@@ -187,6 +187,16 @@ contract DeterminationAgent is IDeterminationAgent, EIP712 {
         return _compute(dateIndex, levels, missedCoupons, breached);
     }
 
+    /**
+     * @notice The outcome a correction of the latest date to `levels` would record, from the coupon
+     *         count and breach as they stood before that date was determined. Reads state; changes none.
+     */
+    function computeCorrection(uint256 dateIndex, uint256[] calldata levels) external view returns (Outcome memory out) {
+        if (nextDate == 0 || dateIndex != nextDate - 1) revert NotLatestDate(dateIndex, nextDate == 0 ? 0 : nextDate - 1);
+        Before memory b = _before[dateIndex];
+        (out,) = _compute(dateIndex, levels, b.missedCoupons, b.breached);
+    }
+
     /// @dev The outcome for `dateIndex` from the coupon count and breach given.
     function _compute(uint256 dateIndex, uint256[] calldata levels, uint256 missedIn, bool breachedIn)
         private

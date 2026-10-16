@@ -596,8 +596,9 @@ contract GovernanceTest is Stack {
         c.token = address(n.note);
         c.dateIndex = dateIndex;
         c.levels = lv;
-        // Recomputed as the contract will: from the state before the date.
+        // Recomputed as the contract will: from the state before the date, as it also reports.
         c.outcome = IDeterminationAgent.Outcome(false, bps >= 7_000, bps >= 7_000 ? 2_500 : 0, false, 0, 0);
+        assertEq(abi.encode(DeterminationAgent(address(n.determinations)).computeCorrection(dateIndex, lv)), abi.encode(c.outcome), "the correction as computed");
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(CA_KEY, n.determinations.digest(dateIndex, lv, c.outcome));
         c.signature = abi.encodePacked(r, s, v);
         c.holders = holders;

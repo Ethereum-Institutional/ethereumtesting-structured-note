@@ -262,3 +262,7 @@ a.addr-link:hover { text-decoration-color: var(--fg); }
 /* An action whose label has a tooltip says so with the cursor (ADR 0109). */
 summary[title] { cursor: help; }
 summary[title]:hover { color: var(--fg); }
+
+/* The note a governance page acts on, chosen first. */
+.note-picker { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; margin: 0 0 1rem; }
+.note-picker label { display: flex; flex-direction: column; gap: 0.25rem; min-width: min(28rem, 100%); }

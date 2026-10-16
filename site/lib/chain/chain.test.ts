@@ -197,9 +197,9 @@ test("party keys read as capacities", async () => {
 
 test("a supervisory freeze shows its reason whole", () => {
   const why = "Sanctions designation notified 24 September 2026; onboarded by the second onboarding agent";
-  const [row] = tape.describe(tx(A(0x60), call("function freezeAccount(address,bool,string)", [A(3), true, why])));
+  const [row] = tape.describe(tx(A(0x60), call("function freezeAccount(address[],address,bool,string)", [[A(0x40)], A(3), true, why])));
   assert.equal(row.tone, "control");
-  assert.deepEqual(row.args, ["Investor A", "true", JSON.stringify(why)]);
+  assert.deepEqual(row.args.slice(1), ["Investor A", "true", JSON.stringify(why)]);
 });
 
 test("a determination reads as its outcome, in euros per Calculation Amount", () => {
@@ -225,7 +225,7 @@ test("a distribution's opening and payment name the kind and the holders", () =>
 });
 
 test("a wallet transaction is shown as the governance act it carried", () => {
-  const inner = call("function correctRegister(address,address,uint256,string)", [A(3), A(4), 2n, "Register correction"]);
+  const inner = call("function correctRegister(address,address,address,uint256,string)", [A(0x40), A(3), A(4), 2n, "Register correction"]);
   const input = call(
     "function execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)",
     [A(0x60), 0n, inner, 0, 0n, 0n, 0n, A(0), A(0), "0x" + "22".repeat(130)],
@@ -233,8 +233,8 @@ test("a wallet transaction is shown as the governance act it carried", () => {
   const [row] = tape.describe(tx(A(0x62), input, A(0x70)));
   assert.equal(row.via, "Agent governance wallet");
   assert.equal(row.target, "Governance controller");
-  assert.equal(row.meaning, "Tier 1: corrected the register to match the Register");
-  assert.deepEqual(row.args, ["Investor A", "Bank custody platform", "2 EURWAN", '"Register correction"']);
+  assert.equal(row.meaning, "Tier 1: corrected a note's register to match the Register");
+  assert.deepEqual(row.args.slice(1), ["Investor A", "Bank custody platform", "2 EURWAN", '"Register correction"']);
 });
 
 test("reference renderings", () => {
@@ -259,10 +259,16 @@ test("a failed task does not stop the queue", async () => {
   assert.equal(await enqueue("issuer", async () => "next"), "next");
 });
 
-test("handing a note over through the factory reads as such", () => {
-  const [row] = tape.describe(tx(A(0x7a), call("function handOver(address,address)", [A(0x40), A(0x60)])));
+test("retiring a redeemed note through the factory reads as such", () => {
+  const [row] = tape.describe(tx(A(0x7a), call("function retire(address)", [A(0x40)])));
   assert.equal(row.target, "Note factory");
-  assert.equal(row.meaning, "Offered a note's contracts to a new owner, and moved its identity's management");
+  assert.equal(row.meaning, "Retired a redeemed note and released its identity registry");
+});
+
+test("a Tier 1 act names the notes it acts on", () => {
+  const [row] = tape.describe(tx(A(0x60), call("function freezeAccount(address[],address,bool,string)", [[A(0x40)], A(3), true, "Under review"])));
+  assert.equal(row.meaning, "Tier 1: froze or unfroze an account on the notes named, whichever institution vouched for it");
+  assert.equal(row.args[3], JSON.stringify("Under review"));
 });
 
 test("the pool gate's supervisory acts read with their reasons", () => {

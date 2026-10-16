@@ -83,6 +83,8 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
       <section className="panel">
         <dl className="facts">
           <dt>Symbol</dt><dd>{n.symbol}</dd>
+          {typeof n.data.series === "number" && <><dt>Series</dt><dd>{n.data.series}, as the note factory numbered it</dd></>}
+          {n.isin && <><dt>ISIN</dt><dd>{n.isin}</dd></>}
           <dt>Scenario</dt><dd>{sc?.summary}</dd>
           <dt>Status</dt><dd>{live?.closed ? "Redeemed and closed" : live?.terminated ? "Redeemed early; paying" : `Issued; ${inventory} of ${total} units in the Issuer's inventory`}</dd>
           {!locked && <><dt>Trading</dt><dd>Issued before locked settlement existed: its units can be placed, but not transferred or bought back through the site.</dd></>}

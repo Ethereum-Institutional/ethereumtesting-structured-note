@@ -5,7 +5,7 @@ import { calendar, calendarProblem, lifeOf, MAX_OBSERVATIONS, UNITS, type Unit }
 import { PendingButton } from "../../PendingButton";
 
 /**
- * Issuing a note (ADR 0073): the scenario, the number of observations (coupon dates) and the time
+ * Issuing a note: the scenario, the number of observations (coupon dates) and the time
  * between them. The calendar is previewed from now, as the server will fix it from the block that
  * fixes the terms: each date, its record and payment times, and the note's whole life.
  */
@@ -46,6 +46,10 @@ export function NoteForm({ action, scenarios }: { action: (f: FormData) => Promi
           </span>
         </label>
         <label>Units<input name="units" type="number" min={1} max={100} defaultValue={20} required /></label>
+        <label title="Optional. The note's ISIN, stated on its identity beside the series number the factory assigns.">
+          ISIN (optional)
+          <input name="isin" maxLength={12} pattern="[A-Za-z]{2}[A-Za-z0-9]{9}[0-9]" placeholder="XS0000000000" style={{ textTransform: "uppercase" }} />
+        </label>
       </div>
       {problem ? (
         <p role="alert" className="notice err">{problem}</p>

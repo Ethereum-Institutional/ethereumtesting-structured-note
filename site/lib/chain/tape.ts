@@ -61,7 +61,8 @@ export type ArgSpec =
   | "restrictions"
   | "topics"
   | "claimData"
-  | "issuance";
+  | "issuance"
+  | "correction";
 
 export type Entry = { signature: string; meaning: string; tone: Tone; args: ArgSpec[] };
 
@@ -231,9 +232,10 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function deployTREXSuite(string salt, (address owner, string name, string symbol, uint8 decimals, address irs, address ONCHAINID, address[] irAgents, address[] tokenAgents, address[] complianceModules, bytes[] complianceSettings) tokenDetails, (uint256[] claimTopics, address[] issuers, uint256[][] issuerClaims) claimDetails)", meaning: "Issued a note's T-REX suite: token, identity registry, compliance", tone: "control", args: ["text", "plan", "plan"] },
   ],
   noteFactory: [
-    { signature: `function issue((string salt, string name, string symbol, (uint256[] initialLevels, uint64 calculationAmountCents, uint32 couponBarrierBps, uint32 couponRateBps, bool memory_, uint32 barrierBps, (bool applies, uint32 upBps, uint32 downBps, uint32 capBps) twinWin, (uint48 date, uint48 recordTime, uint48 paymentDate, bool coupon, bool mer, bool barrier, bool isFinal, uint32 merTriggerBps)[] schedule) terms, address issuer, address calculationAgent, address funder, address payer, bytes32 termSheetHash, string termSheetUri, uint256 units, bool open, (address agent, (bool disableMint, bool disableBurn, bool disablePartialFreeze, bool disableAddressFreeze, bool disableRecovery, bool disableForceTransfer, bool disablePause) restrictions)[] agents) p)`, meaning: "Issued a note whole, in one transaction: terms, T-REX suite, term sheet, Paying Agent, settlement, agents, notional", tone: "control", args: ["issuance"] },
-    { signature: "function administer(address token, address target, bytes data)", meaning: "The Issuer acted as a note's owner, through the factory", tone: "control", args: ["account", "account", "plan"] },
-    { signature: "function handOver(address token, address newOwner)", meaning: "Offered a note's contracts to a new owner, and moved its identity's management", tone: "control", args: ["account", "account"] },
+    { signature: `function issue((string isin, string name, string symbol, (uint256[] initialLevels, uint64 calculationAmountCents, uint32 couponBarrierBps, uint32 couponRateBps, bool memory_, uint32 barrierBps, (bool applies, uint32 upBps, uint32 downBps, uint32 capBps) twinWin, (uint48 date, uint48 recordTime, uint48 paymentDate, bool coupon, bool mer, bool barrier, bool isFinal, uint32 merTriggerBps)[] schedule) terms, address issuer, bytes32 termSheetHash, string termSheetUri, uint256 units, bool open, uint256[] extraTopics, address[] extraIssuers) p)`, meaning: "Issued a note whole, in one transaction: terms, T-REX suite, term sheet, Paying Agent, settlement, notional, handed to the controller", tone: "control", args: ["issuance"] },
+    { signature: `function issueMany((string isin, string name, string symbol, (uint256[] initialLevels, uint64 calculationAmountCents, uint32 couponBarrierBps, uint32 couponRateBps, bool memory_, uint32 barrierBps, (bool applies, uint32 upBps, uint32 downBps, uint32 capBps) twinWin, (uint48 date, uint48 recordTime, uint48 paymentDate, bool coupon, bool mer, bool barrier, bool isFinal, uint32 merTriggerBps)[] schedule) terms, address issuer, bytes32 termSheetHash, string termSheetUri, uint256 units, bool open, uint256[] extraTopics, address[] extraIssuers)[] ps)`, meaning: "Issued several notes in one transaction, each a series of its own", tone: "control", args: ["items"] },
+    { signature: "function retire(address token)", meaning: "Retired a redeemed note and released its identity registry", tone: "control", args: ["account"] },
+    { signature: "function releaseTrexFactory(address successor)", meaning: "Handed the T-REX factory to a successor", tone: "control", args: ["account"] },
     ...OWNABLE,
   ],
   recordDates: [
@@ -245,6 +247,7 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function debit(address account, uint256 amount, bytes32 bookingRef)", meaning: "Extinguished deposit on debit from an account", tone: "onboard", args: ["account", { amountIn: "deposit" }, "ref"] },
   ],
   determinations: [
+    { signature: "function correct(uint256 dateIndex, uint256[] levels, (bool breached, bool couponPaid, uint64 couponPerCa, bool redeemed, uint64 redemptionPerCa, uint8 worstIndex) claimed, bytes signature)", meaning: "Corrected the latest determination, as the Calculation Agent signed it again", tone: "control", args: ["number", "levels", "outcome", "signature"] },
     { signature: "function determine(uint256 dateIndex, uint256[] levels, (bool breached, bool couponPaid, uint64 couponPerCa, bool redeemed, uint64 redemptionPerCa, uint8 worstIndex) claimed, bytes signature)", meaning: "Accepted the Calculation Agent's determination: two computations agreed", tone: "control", args: ["number", "levels", "outcome", "signature"] },
   ],
   payingAgent: [
@@ -264,16 +267,24 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function release(uint256 id)", meaning: "Released an offer's lock, past its deadline or with the note paused", tone: "ops", args: ["number"] },
   ],
   controller: [
-    { signature: "function correctRegister(address from, address to, uint256 units, string reason)", meaning: "Tier 1: corrected the register to match the Register", tone: "control", args: ["account", "account", { amountIn: "note" }, "text"] },
-    { signature: "function freezeAccount(address account, bool frozen, string reason)", meaning: "Tier 1: froze or unfroze an account on the note, whichever institution vouched for it", tone: "control", args: ["account", "flag", "text"] },
-    { signature: "function recoverWallet(address lostWallet, address newWallet, address identity, string reason)", meaning: "Tier 1: recovered a lost wallet's units to its new wallet", tone: "control", args: ["account", "account", "account", "text"] },
-    { signature: "function acceptOwnerships(address[] owned)", meaning: "Accepted ownership of the note's suite (and the venue's, where there is one)", tone: "control", args: ["accounts"] },
-    { signature: "function proposeAmendNotional(bool increase, uint256 units, string reason)", meaning: "Tier 2 proposal: amend the notional in the Issuer's inventory", tone: "control", args: ["flag", { amountIn: "note" }, "text"] },
-    { signature: "function proposeReverseDistribution(bytes32 distribution, address[] holders, string reason)", meaning: "Tier 2 proposal: reverse a distribution", tone: "control", args: ["ref", "accounts", "text"] },
-    { signature: "function proposeRestateDistribution(bytes32 original, uint48 recordTime, string reason)", meaning: "Tier 2 proposal: restate a distribution", tone: "control", args: ["ref", "time", "text"] },
-    { signature: "function proposeSetTrustedIssuer(address issuer, uint256[] topics, string reason)", meaning: "Tier 2 proposal: trust a claim issuer for the note, or cease to", tone: "control", args: ["account", "topics", "text"] },
-    { signature: "function proposeReplaceServicingWallet(address newWallet, string reason)", meaning: "Tier 2 proposal: replace the Agent's servicing wallet", tone: "control", args: ["account", "text"] },
+    { signature: "function bindFactory(address f)", meaning: "Bound the note factory whose notes the controller governs, once", tone: "control", args: ["account"] },
+    { signature: "function correctRegister(address token, address from, address to, uint256 units, string reason)", meaning: "Tier 1: corrected a note's register to match the Register", tone: "control", args: ["account", "account", "account", { amountOf: 0 }, "text"] },
+    { signature: "function freezeAccount(address[] tokens, address account, bool frozen, string reason)", meaning: "Tier 1: froze or unfroze an account on the notes named, whichever institution vouched for it", tone: "control", args: ["accounts", "account", "flag", "text"] },
+    { signature: "function recoverWallet(address[] tokens, address lostWallet, address newWallet, address identity, string reason)", meaning: "Tier 1: recovered a lost wallet's units of every note named to its new wallet", tone: "control", args: ["accounts", "account", "account", "account", "text"] },
+    { signature: "function designate(address account, bool on, string reason)", meaning: "Tier 1: designated an account under the programme's sanctions, or lifted it, on every note", tone: "control", args: ["account", "flag", "text"] },
+    { signature: "function cancelInventory(address token, uint256 units, string reason)", meaning: "Tier 1: cancelled units from the Issuer's inventory of a note", tone: "control", args: ["account", { amountOf: 0 }, "text"] },
+    { signature: "function setNotePaused(address token, bool paused)", meaning: "Servicing: paused or unpaused a note's transfers", tone: "control", args: ["account", "flag"] },
+    { signature: "function acceptOwnerships(address[] owned)", meaning: "Accepted ownership of the venue's contracts", tone: "control", args: ["accounts"] },
+    { signature: "function proposeAmendNotional(address token, bool increase, uint256 units, string reason)", meaning: "Tier 2 proposal: amend the notional in the Issuer's inventory of a note", tone: "control", args: ["account", "flag", { amountOf: 0 }, "text"] },
+    { signature: "function proposeReverseDistribution(address token, bytes32 distribution, address[] holders, string reason)", meaning: "Tier 2 proposal: reverse a distribution", tone: "control", args: ["account", "ref", "accounts", "text"] },
+    { signature: "function proposeRestateDistribution(address token, bytes32 original, uint48 recordTime, string reason)", meaning: "Tier 2 proposal: restate a distribution", tone: "control", args: ["account", "ref", "time", "text"] },
+    { signature: "function proposeCorrectDetermination((address token, uint256 dateIndex, uint256[] levels, (bool breached, bool couponPaid, uint64 couponPerCa, bool redeemed, uint64 redemptionPerCa, uint8 worstIndex) outcome, bytes signature, address[] holders) c, string reason)", meaning: "Tier 2 proposal: correct a note's latest determination, reversing and restating its coupon where paid", tone: "control", args: ["correction", "text"] },
+    { signature: "function proposeSetTrustedIssuer(address token, address issuer, uint256[] topics, string reason)", meaning: "Tier 2 proposal: trust a claim issuer for a note, or cease to", tone: "control", args: ["account", "account", "topics", "text"] },
+    { signature: "function proposeReplaceRole(uint8 role, address newHolder, string reason)", meaning: "Tier 2 proposal: replace the servicing wallet, the Calculation Agent or the funder, for every note", tone: "control", args: ["number", "account", "text"] },
     { signature: "function proposeReplaceInstitution(address oldWallet, address newWallet, string reason)", meaning: "Recovery proposal: replace an institution's wallet", tone: "control", args: ["account", "account", "text"] },
+    { signature: "function proposeSetDepositRole(address target, bytes32 role, address account, bool grant, string reason)", meaning: "Tier 2 proposal: grant or revoke a role on the deposit", tone: "control", args: ["account", "role", "account", "flag", "text"] },
+    { signature: "function proposeRetireNote(address token, string reason)", meaning: "Tier 2 proposal: retire a redeemed note", tone: "control", args: ["account", "text"] },
+    { signature: "function proposeReleaseFactory(address successor, string reason)", meaning: "Tier 2 proposal: hand the T-REX factory to a successor", tone: "control", args: ["account", "text"] },
     { signature: "function withdrawPoolAccess(address account, string reason)", meaning: "Tier 1: withdrew an account's pool access under supervisory authority", tone: "control", args: ["account", "text"] },
     { signature: "function restorePoolAccess(address account, string reason)", meaning: "Tier 1: restored an account's pool access", tone: "control", args: ["account", "text"] },
     { signature: "function setVenueSwapping(bool enabled)", meaning: "Servicing: switched swapping in the conversion pool on or off", tone: "control", args: ["flag"] },
@@ -285,6 +296,10 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function approve(uint256 id)", meaning: "Approved a Tier 2 proposal", tone: "control", args: ["number"] },
     { signature: "function execute(uint256 id)", meaning: "Executed a Tier 2 proposal after its delay", tone: "control", args: ["number"] },
     { signature: "function cancel(uint256 id)", meaning: "Cancelled a Tier 2 proposal", tone: "control", args: ["number"] },
+  ],
+  sanctions: [
+    { signature: "function bindGovernance(address g)", meaning: "Bound the governance controller that designates accounts, once", tone: "control", args: ["account"] },
+    { signature: "function designate(address account, bool on)", meaning: "Designated an account under the programme's sanctions, or lifted it", tone: "control", args: ["account", "flag"] },
   ],
   wallet: [
     { signature: "function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures)", meaning: "A multi-signature wallet acted", tone: "control", args: ["account", "number", "plan", "number", "number", "number", "number", "account", "account", "signature"] },
@@ -341,6 +356,7 @@ const KIND_OF_KEY: Record<string, string> = {
   "governance.issuerGovernance": "wallet",
   "governance.cosigner": "wallet",
   "governance.servicingWallet": "wallet",
+  "programme.sanctions": "sanctions",
 };
 
 /**
@@ -504,6 +520,10 @@ export class Tape {
     if (spec === "topics") return (Array.isArray(value) ? (value as bigint[]) : [value as bigint]).map(topicName).join(", ") || "none";
     if (spec === "claimData") return claimData(value as Hex);
     if (spec === "issuance") return this.issuance(value as Issuance);
+    if (spec === "correction") {
+      const c = value as { token: Address; dateIndex: bigint; levels: bigint[]; outcome: Record<string, unknown>; holders: Address[] };
+      return `${this.label(c.token)}, date ${Number(c.dateIndex) + 1}, Levels [${c.levels.map(String).join(", ")}]: ${outcome(c.outcome)}${c.holders.length ? `; reverses ${c.holders.length} holder${c.holders.length === 1 ? "" : "s"}` : ""}`;
+    }
     if (spec === "levels") return `[${(value as bigint[]).map(String).join(", ")}]`;
     if (spec === "outcome") return outcome(value as Record<string, unknown>);
     if (spec === "signature") return `«signature, ${((value as Hex).length - 2) / 2} bytes»`;
@@ -531,7 +551,7 @@ export class Tape {
       `${p.name} (${p.symbol})`,
       `${p.units.toString()} units to ${this.label(p.issuer)}${p.open ? ", opened" : ", paused"}`,
       `${p.terms.schedule.length} observations, the first ${new Date(Number(p.terms.schedule[0]?.date ?? 0) * 1000).toISOString()}`,
-      `paid by ${this.label(p.payer)}, funded by ${this.label(p.funder)}, determined by ${this.label(p.calculationAgent)}`,
+      p.isin ? `ISIN ${p.isin}` : "no ISIN",
       `term sheet ${p.termSheetHash} at ${JSON.stringify(p.termSheetUri)}`,
     ].join("; ");
   }
@@ -565,9 +585,7 @@ type Issuance = {
   units: bigint;
   open: boolean;
   issuer: Address;
-  payer: Address;
-  funder: Address;
-  calculationAgent: Address;
+  isin: string;
   termSheetHash: Hex;
   termSheetUri: string;
   terms: { schedule: Array<{ date: number | bigint }> };

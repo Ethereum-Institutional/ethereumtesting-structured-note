@@ -562,6 +562,7 @@ export async function startNoteAction(f: FormData) {
       observations: Number(field(f, "observations")),
       interval: { value: Number(field(f, "intervalValue")), unit },
       units: Number(field(f, "units")),
+      isin: field(f, "isin"),
     });
     await advanceIssuance(n.id);
   }, "/agent/notes");
@@ -802,12 +803,12 @@ export async function topUpAction(_prev: { ok?: string; error?: string }, f: For
   });
 }
 
-// --- governance (ADR 0082) ---
+// --- governance ---
 
 export async function correctRegisterAction(_prev: { ok?: string; error?: string }, f: FormData) {
   return lifecycleStep(async (op) => {
     const units = Number(field(f, "units"));
-    await (await import("@/lib/governance")).correctRegister(op, { from: field(f, "from") as `0x${string}`, to: field(f, "to") as `0x${string}`, units, reason: field(f, "reason") });
+    await (await import("@/lib/governance")).correctRegister(op, { token: field(f, "token") as `0x${string}`, from: field(f, "from") as `0x${string}`, to: field(f, "to") as `0x${string}`, units, reason: field(f, "reason") });
     return `Corrected: ${units} unit${units === 1 ? "" : "s"} moved, the reason recorded on-chain.`;
   });
 }
@@ -815,11 +816,19 @@ export async function correctRegisterAction(_prev: { ok?: string; error?: string
 export async function tier1WithdrawAction(_prev: { ok?: string; error?: string }, f: FormData) {
   return lifecycleStep(async (op) => {
     const w = field(f, "what");
-    const what = w === "pool" || w === "restore-pool" || w === "unfreeze" ? w : "freeze";
-    await (await import("@/lib/governance")).withdraw(op, { what, account: field(f, "account") as `0x${string}`, reason: field(f, "reason") });
+    const what = (["pool", "restore-pool", "unfreeze", "designate", "undesignate"] as const).find((x) => x === w) ?? "freeze";
+    await (await import("@/lib/governance")).withdraw(op, {
+      what,
+      account: field(f, "account") as `0x${string}`,
+      token: field(f, "token") as `0x${string}`,
+      everyNote: field(f, "scope") === "every",
+      reason: field(f, "reason"),
+    });
     return {
       freeze: "Frozen: the account can neither send nor receive the note.",
       unfreeze: "Unfrozen.",
+      designate: "Designated: no note moves to or from the account.",
+      undesignate: "The designation is lifted.",
       pool: "Withdrawn: the account can no longer use the pool.",
       "restore-pool": "Restored: the account uses the pool again while its pool-access claim stands.",
     }[what];
@@ -829,7 +838,7 @@ export async function tier1WithdrawAction(_prev: { ok?: string; error?: string }
 export async function recoverWalletAction(_prev: { ok?: string; error?: string }, f: FormData) {
   return lifecycleStep(async (op) => {
     await (await import("@/lib/governance")).recoverWallet(op, { lost: field(f, "lost") as `0x${string}`, replacement: field(f, "replacement").trim() as `0x${string}`, reason: field(f, "reason") });
-    return "Recovered: the units and the identity are on the new wallet, the reason recorded on-chain.";
+    return "Recovered: the units of every note it held and its identity are on the new wallet, the reason recorded on-chain.";
   });
 }
 
@@ -837,9 +846,13 @@ export async function proposeAction(_prev: { ok?: string; error?: string }, f: F
   return lifecycleStep(async (op) => {
     const g = await import("@/lib/governance");
     const kind = field(f, "kind") as import("@/lib/governance").Kind;
+    const levels = field(f, "levels").split(/[\s,]+/).filter(Boolean);
+    if (levels.some((l) => !/^\d+$/.test(l))) throw new Error("Give each Level as a whole number, separated by commas.");
     const { id } = await g.propose(op, {
       by: field(f, "by") as import("@/lib/governance").InstitutionKey,
       kind,
+      token: (field(f, "token") || undefined) as `0x${string}` | undefined,
+      levels: levels.map((l) => BigInt(l)),
       reason: field(f, "reason"),
       increase: field(f, "direction") !== "reduce",
       units: Number(field(f, "units")),
@@ -871,6 +884,6 @@ export async function cancelProposalAction(_prev: { ok?: string; error?: string 
   });
 }
 
-export async function attemptForcedTransferAction(_prev: { ok?: string; error?: string }) {
-  return lifecycleStep(async (op) => (await import("@/lib/governance")).attemptAgentForcedTransfer(op));
+export async function attemptForcedTransferAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => (await import("@/lib/governance")).attemptAgentForcedTransfer(op, (field(f, "token") || undefined) as `0x${string}` | undefined));
 }

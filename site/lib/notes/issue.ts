@@ -1,8 +1,9 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { defineChain, keccak256, maxUint256, parseAbi, parseEventLogs, toBytes, type Address, type Hex } from "viem";
+import { defineChain, encodeFunctionData, keccak256, parseAbi, parseEventLogs, toBytes, type Address, type Hex } from "viem";
 import { loadManifest, type Manifest } from "../chain/manifest.ts";
 import { signers } from "../chain/signer.ts";
+import { execThroughWallet } from "../chain/safe.ts";
 import { getStore, type DemoNote, type Registrant } from "../store.ts";
 import { hasRole } from "../operators.ts";
 import scenarios from "./scenarios.json" with { type: "json" };
@@ -11,17 +12,18 @@ import { termSheetFrom, toTerms } from "./termsheet.ts";
 import { keepTermSheet, termSheetOfNote, termSheetUri } from "./termsheets.ts";
 
 /**
- * Issuing a note (ADRs 0072, 0073, 0091): the same contracts as the note under review, a scenario's
- * terms, and a calendar staff choose at issuance. The Issuer issues the note whole through the note
- * factory, in one transaction: its terms, record dates, T-REX suite on the deployment's identity
- * storage, term sheet, Paying Agent and settlement contract, each agent restricted to its own
- * powers (ADR 0085), the notional minted to the Issuer's inventory, and the note opened. The bank
- * and the Agent then do their own parts. Each step is recorded as it lands, so the page that starts
- * it can follow it to the end and a failed step can be run again.
+ * Issuing a note: the same contracts as the deployment's own note, a scenario's terms, and a
+ * calendar staff choose at issuance. The Issuer's governance wallet issues the note whole through
+ * the note factory, in one transaction: its terms and record dates, its T-REX suite on the
+ * deployment's identity storage, its term sheet and series claims, its Paying Agent and settlement
+ * contract, each allowlisted on the deposit, the notional minted to the Issuer's inventory, and the
+ * note opened and handed to the governance controller. The bank then funds the Agent. Each step is
+ * recorded as it lands, so the page that starts it can follow it to the end and a failed step can
+ * be run again.
  *
- * Roles follow the issuance script: the factory owns the note for the Issuer, which mints into its
- * inventory and holds it; the Agent funds and may cancel units from the inventory; the Calculation
- * Agent determines; the Agent's servicing wallet pays.
+ * Roles are the programme's, not the note's: the controller holds the note's agent powers; the
+ * Calculation Agent determines; the servicing wallet pays; the Agent funds each distribution, by an
+ * approval of exactly its amount when it opens.
  */
 export type Scenario = (typeof scenarios)[number];
 export const SCENARIOS: Scenario[] = scenarios;
@@ -31,23 +33,20 @@ const NOTE = parseAbi([
   "function symbol() view returns (string)",
   "function onchainID() view returns (address)",
 ]);
-const RESTRICTIONS = "(bool disableMint, bool disableBurn, bool disablePartialFreeze, bool disableAddressFreeze, bool disableRecovery, bool disableForceTransfer, bool disablePause)";
 // As IDeterminationAgent declares them, field for field.
 const OBSERVATION = "(uint48 date, uint48 recordTime, uint48 paymentDate, bool coupon, bool mer, bool barrier, bool isFinal, uint32 merTriggerBps)";
 const TERMS = `(uint256[] initialLevels, uint64 calculationAmountCents, uint32 couponBarrierBps, uint32 couponRateBps, bool memory_, uint32 barrierBps, (bool applies, uint32 upBps, uint32 downBps, uint32 capBps) twinWin, ${OBSERVATION}[] schedule)`;
-const NOTE_RECORD = "(address token, address identity, address identityRegistry, address compliance, address trustedIssuers, address claimTopics, address determinations, address recordDates, address payingAgent, address settlement)";
-const FACTORY = parseAbi([
-  `function issue((string salt, string name, string symbol, ${TERMS} terms, address issuer, address calculationAgent, address funder, address payer, bytes32 termSheetHash, string termSheetUri, uint256 units, bool open, (address agent, ${RESTRICTIONS} restrictions)[] agents) p) returns (${NOTE_RECORD})`,
-  `event NoteIssued(address indexed token, string salt, ${NOTE_RECORD} note)`,
-]);
-const DEPOSIT = parseAbi([
-  "function setAllowlistedMany(address[] accounts, bool allowed)",
-  "function approve(address spender, uint256 value) returns (bool)",
+export const NOTE_RECORD = "(uint256 series, address token, address identity, address identityRegistry, address compliance, address trustedIssuers, address claimTopics, address determinations, address recordDates, address payingAgent, address settlement, address inventory)";
+export const FACTORY = parseAbi([
+  `function issue((string isin, string name, string symbol, ${TERMS} terms, address issuer, bytes32 termSheetHash, string termSheetUri, uint256 units, bool open, uint256[] extraTopics, address[] extraIssuers) p) returns (${NOTE_RECORD})`,
+  `event NoteIssued(address indexed token, uint256 indexed series, string isin, ${NOTE_RECORD} note)`,
+  "function seriesCount() view returns (uint256)",
+  "error InvalidArgument()",
 ]);
 const GATEWAY = parseAbi(["function credit(address account, uint256 amount, bytes32 bookingRef)"]);
 
-/** Burning alone: the Agent cancels units from the Issuer's inventory (ADR 0085). */
-const BURN_ONLY = { disableMint: true, disableBurn: false, disablePartialFreeze: true, disableAddressFreeze: true, disableRecovery: true, disableForceTransfer: true, disablePause: true };
+/** The two owners of the Issuer's governance wallet whose keys the site holds. */
+const ISSUER_OWNERS = ["issuerGov1", "issuerGov2"];
 
 const now = () => new Date().toISOString();
 
@@ -55,7 +54,7 @@ function context() {
   const m = loadManifest();
   const rpc = process.env.RPC_URL?.trim();
   if (!rpc) throw new Error("RPC_URL is not set");
-  if (!m.identity?.noteFactory) throw new Error("the manifest has no note factory: deploy 0.2.0");
+  if (!m.identity?.noteFactory) throw new Error("The deployment has no note factory.");
   const chain = defineChain({ id: m.chainId, name: `chain ${m.chainId}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
   return { m, id: m.identity, factory: m.identity.noteFactory as Address, s: signers(chain, rpc) };
 }
@@ -70,7 +69,7 @@ type Step = { label: string; run: (c: Ctx) => Promise<Partial<DemoNote> | void> 
 /** What the site records of an issued note: its contracts, calendar, term sheet and transaction. */
 function issuedPatch(
   c: Ctx,
-  n: { token: Address; identity: Address; identityRegistry: Address; compliance: Address; determinations: Address; recordDates: Address; payingAgent: Address; settlement: Address },
+  n: IssuedNote,
   hash: Hex,
   calendar: Array<{ date: number; recordTime: number; paymentDate: number }>,
   sheetHash: Hex | undefined,
@@ -88,33 +87,44 @@ function issuedPatch(
       payingAgent: n.payingAgent,
       settlement: n.settlement,
     },
-    data: { ...c.n.data, settlement: "locked", ...(sheetHash ? { termSheet: sheetHash } : {}) },
+    data: { ...c.n.data, settlement: "locked", series: Number(n.series), ...(sheetHash ? { termSheet: sheetHash } : {}) },
     txs: { ...c.n.txs, note: hash, settlement: hash },
   } as Partial<DemoNote>;
 }
+
+type IssuedNote = { series: bigint; token: Address; identity: Address; identityRegistry: Address; compliance: Address; determinations: Address; recordDates: Address; payingAgent: Address; settlement: Address };
 
 const tx = (key: string, hash: Hex) => (n: DemoNote) => ({ txs: { ...n.txs, [key]: hash } });
 
 const SCHEDULE = parseAbi([`function terms() view returns (${TERMS} t)`]);
 
 /**
- * A note this series already issued, found by its salt in the factory's events (ADR 0103). The
- * issuance can land after the site stopped waiting for it; run again, the step then picks the note
- * up rather than issuing a second, which the factory would refuse.
+ * A note this issuance already made, found by its name and symbol among the factory's events since
+ * it started. The issuance can land after the site stopped waiting for it; run again, the step then
+ * picks the note up rather than issuing a second.
  */
 async function issuedEarlier(c: Ctx) {
   const head = await c.s.publicClient.getBlockNumber();
   const ageBlocks = BigInt(Math.ceil((Date.now() - Date.parse(c.n.createdAt)) / 1000 / 2) + 600); // block times of 2 s or more
   const fromBlock = head > ageBlocks ? head - ageBlocks : 0n;
-  const logs = await c.s.publicClient.getLogs({ address: c.factory, event: FACTORY.find((x) => x.type === "event" && x.name === "NoteIssued") as any, fromBlock, toBlock: head });
-  const found = (logs as any[]).find((l) => l.args?.salt === c.n.id);
-  return found ? { hash: found.transactionHash as Hex, block: found.blockNumber as bigint, note: found.args.note as { token: Address; identity: Address; identityRegistry: Address; compliance: Address; determinations: Address; recordDates: Address; payingAgent: Address; settlement: Address } } : null;
+  const event = FACTORY.find((x) => x.type === "event" && x.name === "NoteIssued") as any;
+  const logs = (await c.s.publicClient.getLogs({ address: c.factory, event, fromBlock, toBlock: head })) as any[];
+  for (const l of logs.reverse()) {
+    const token = l.args.token as Address;
+    // A name and symbol never change. Read at the event's block, which every RPC that returned the
+    // event has seen; where the node keeps no state that old, at the latest.
+    const read = (functionName: "name" | "symbol") =>
+      c.s.publicClient.readContract({ address: token, abi: NOTE, functionName, blockNumber: l.blockNumber }).catch(() => c.s.publicClient.readContract({ address: token, abi: NOTE, functionName }));
+    const [name, symbol] = await Promise.all([read("name"), read("symbol")]);
+    if (name === c.n.name && symbol === c.n.symbol) return { hash: l.transactionHash as Hex, block: l.blockNumber as bigint, note: l.args.note as IssuedNote };
+  }
+  return null;
 }
 
-/** The issuance: the Issuer's one transaction, then the bank's two and the Agent's one. */
+/** The issuance: the Issuer's wallet's one transaction, then the bank's credit to the Agent. */
 const STEPS: Step[] = [
   {
-    label: "Issue the note through the factory: terms, T-REX suite, term sheet, Paying Agent, settlement, agents, notional, open (Issuer, one transaction)",
+    label: "Issue the note through the factory: terms, T-REX suite, term sheet, Paying Agent, settlement, notional, open, governed (the Issuer's wallet, one transaction)",
     run: async (c) => {
       const earlier = await issuedEarlier(c);
       if (earlier) {
@@ -124,8 +134,8 @@ const STEPS: Step[] = [
         const sheet = await termSheetOfNote(earlier.note.token, earlier.note.determinations, earlier.block);
         return issuedPatch(c, earlier.note, earlier.hash, t.schedule.map((o: any) => ({ date: Number(o.date), recordTime: Number(o.recordTime), paymentDate: Number(o.paymentDate) })), sheet?.hash);
       }
-      const payer = c.m.governance?.servicingWallet;
-      if (!payer) throw new Error("the deployment has no servicing wallet");
+      const issuerWallet = c.m.governance?.issuerGovernance;
+      if (!issuerWallet) throw new Error("The deployment has no Issuer's wallet.");
       const block = await c.s.publicClient.getBlock();
       const shape = shapeOf(c.n);
       const calendar = calendarOf(Number(block.timestamp), shape.observations, shape.interval);
@@ -151,21 +161,24 @@ const STEPS: Step[] = [
       const sheetHash = await keepTermSheet(record);
       const terms = toTerms(record);
       const params = {
-        salt: c.n.id,
+        isin: c.n.isin ?? "",
         name: c.n.name,
         symbol: c.n.symbol,
         terms,
         issuer: c.s.address("issuer"),
-        calculationAgent: c.s.address("calculationAgent"),
-        funder: c.s.address("agent"),
-        payer,
         termSheetHash: sheetHash,
         termSheetUri: termSheetUri(sheetHash),
         units: BigInt(c.n.units),
         open: true,
-        agents: [{ agent: c.s.address("agent"), restrictions: BURN_ONLY }],
+        extraTopics: [],
+        extraIssuers: [],
       };
-      const hash = await c.s.send("issuer", { address: c.factory, abi: FACTORY, functionName: "issue", args: [params] });
+      const data = encodeFunctionData({ abi: FACTORY, functionName: "issue", args: [params] });
+      // Simulated from the Issuer's wallet first, so a refusal is the factory's own reason.
+      await c.s.publicClient.call({ account: issuerWallet, to: c.factory, data }).catch((e) => {
+        throw new Error(`the factory refuses this note: ${(e as Error).message.split("\n")[0]}`);
+      });
+      const hash = await execThroughWallet(c.s, issuerWallet, ISSUER_OWNERS, "issuer", c.factory, data);
       const receipt = await c.s.publicClient.waitForTransactionReceipt({ hash });
       const [issued] = parseEventLogs({ abi: FACTORY, eventName: "NoteIssued", logs: receipt.logs });
       if (receipt.status !== "success" || !issued) throw new Error(`the issuance reverted (${hash})`);
@@ -173,42 +186,58 @@ const STEPS: Step[] = [
     },
   },
   {
-    label: "The bank allowlists the Paying Agent and the settlement contract for its deposit",
-    run: async (c) =>
-      tx("allowlist", await c.s.send("depositAgent", { address: c.m.assets.deposit!.address, abi: DEPOSIT, functionName: "setAllowlistedMany", args: [[c.n.addresses.payingAgent, c.n.addresses.settlement], true] }))(c.n),
-  },
-  {
     label: "The bank funds the Agent for coupons and redemptions",
     run: async (c) => {
       // Enough to pay every coupon and redeem at the most the scenario can pay: twice the Calculation Amount per unit.
+      // The Agent approves the Paying Agent for each distribution's exact amount when it opens.
       const amount = BigInt(c.n.units) * BigInt(c.scenario.terms.calculationAmountCents) * 2n;
       const h = await c.s.send("depositAgent", { address: c.m.instruments!.gateway, abi: GATEWAY, functionName: "credit", args: [c.s.address("agent"), amount, keccak256(toBytes(`${c.n.symbol}/funding/${randomBytes(4).toString("hex")}`))] });
       return tx("funding", h)(c.n);
     },
-  },
-  {
-    label: "The Agent lets the Paying Agent draw its funds",
-    run: async (c) => tx("allowance", await c.s.send("agent", { address: c.m.assets.deposit!.address, abi: DEPOSIT, functionName: "approve", args: [c.n.addresses.payingAgent, maxUint256] }))(c.n),
   },
 ];
 
 export const ISSUANCE_STEPS = STEPS.map((s) => s.label);
 
 /** Starts a note; the first step runs at once, the rest as the page asks. */
-export async function startNote(staff: Registrant, input: { scenario: string; observations: number; interval: Interval; units: number }): Promise<DemoNote> {
+/** An ISIN: a country code, nine characters, and a check digit (ISO 6166). */
+export function isinProblem(isin: string): string | null {
+  if (!isin) return null;
+  if (!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(isin)) return "An ISIN is twelve characters: two letters for the country, nine letters or digits, and a check digit.";
+  // The check digit: letters become numbers (A = 10), then the Luhn sum.
+  const digits = isin.slice(0, 11).replace(/[A-Z]/g, (ch) => String(ch.charCodeAt(0) - 55));
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) {
+    let d = Number(digits[digits.length - 1 - i]);
+    if (i % 2 === 0) d *= 2;
+    sum += d > 9 ? d - 9 : d;
+  }
+  return (10 - (sum % 10)) % 10 === Number(isin[11]) ? null : "That ISIN's check digit does not match: check it against the term sheet.";
+}
+
+export async function startNote(staff: Registrant, input: { scenario: string; observations: number; interval: Interval; units: number; isin?: string }): Promise<DemoNote> {
   if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
   const scenario = SCENARIOS.find((s) => s.name === input.scenario);
   if (!scenario) throw new Error("Choose a scenario.");
   const problem = calendarProblem(input.observations, input.interval);
   if (problem) throw new Error(problem);
   if (!Number.isInteger(input.units) || input.units < 1 || input.units > 100) throw new Error("Issue between 1 and 100 units.");
+  const isin = (input.isin ?? "").trim().toUpperCase();
+  const bad = isinProblem(isin);
+  if (bad) throw new Error(bad);
   const store = getStore();
   const m: Manifest = loadManifest();
   const live = { name: await readLive(m, "name"), symbol: await readLive(m, "symbol") };
-  const series = (await store.listNotes()).length + 2; // the live note is series 1
+  // The next series the factory will number, past any the site has started and not yet issued,
+  // so two issuances started together carry different names.
+  const stored = await store.listNotes();
+  if (isin && stored.some((x) => x.isin === isin && x.status !== "failed")) throw new Error("A note with that ISIN is already issued or being issued.");
+  const onChain = Number(await context().s.publicClient.readContract({ address: context().factory, abi: FACTORY, functionName: "seriesCount" }));
+  const series = Math.max(onChain, ...stored.map((x) => x.series)) + 1;
   const n: DemoNote = {
     id: `note_${randomBytes(9).toString("base64url")}`,
     series,
+    ...(isin ? { isin } : {}),
     name: `${live.name}, Series ${series}`,
     symbol: `${live.symbol}${series}`,
     scenario: scenario.name,

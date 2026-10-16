@@ -4,27 +4,27 @@ import { loadManifest } from "../chain/manifest.ts";
 import { getStore, type DemoNote } from "../store.ts";
 
 /**
- * Every note on record (ADRs 0091, 0094): the notes the note factory issued, read from its own
- * record on the chain, the deployment's note under review and each note issued from the site
- * alike. Each is given in the shape the lifecycle readers take, with the site's own record of it
- * where there is one.
+ * Every note on record: the notes the note factory issued, read from its own record on the chain,
+ * the deployment's own note and each note issued from the site alike. Each is given in the shape
+ * the lifecycle readers take, with the site's own record of it where there is one.
  */
 
+const RECORD = "(uint256 series, address token, address identity, address identityRegistry, address compliance, address trustedIssuers, address claimTopics, address determinations, address recordDates, address payingAgent, address settlement, address inventory)";
 const FACTORY = parseAbi([
   "function notes() view returns (address[])",
-  "function noteOf(address token) view returns ((address token, address identity, address identityRegistry, address compliance, address trustedIssuers, address claimTopics, address determinations, address recordDates, address payingAgent, address settlement))",
+  `function noteOf(address token) view returns (${RECORD})`,
 ]);
-const ISSUED = parseAbiItem(
-  "event NoteIssued(address indexed token, string salt, (address token, address identity, address identityRegistry, address compliance, address trustedIssuers, address claimTopics, address determinations, address recordDates, address payingAgent, address settlement) note)",
-);
+const ISSUED = parseAbiItem(`event NoteIssued(address indexed token, uint256 indexed series, string isin, ${RECORD} note)`);
 const TOKEN = parseAbi(["function name() view returns (string)", "function symbol() view returns (string)"]);
 
 export type NoteOnRecord = {
   token: Address;
   name: string;
   symbol: string;
-  /** The deployment's own note, which the controller governs. */
+  /** The deployment's own note, issued with it. */
   underReview: boolean;
+  series: number;
+  isin: string;
   issuedBlock: bigint;
   issuedAt: number;
   issuedTx: Hex;
@@ -43,7 +43,7 @@ export function chainClient() {
 export async function notesOnRecord(): Promise<NoteOnRecord[]> {
   const { m, c } = chainClient();
   const factory = m.identity?.noteFactory as Address | undefined;
-  if (!factory) throw new Error("the manifest has no note factory: deploy 0.2.0");
+  if (!factory) throw new Error("The deployment has no note factory.");
   const [tokens, issued, stored] = await Promise.all([
     c.readContract({ address: factory, abi: FACTORY, functionName: "notes" }),
     c.getLogs({ address: factory, event: ISSUED, fromBlock: 0n, toBlock: "latest" }),
@@ -63,7 +63,8 @@ export async function notesOnRecord(): Promise<NoteOnRecord[]> {
       const site = stored.find((n) => n.addresses.note?.toLowerCase() === token.toLowerCase());
       const note: DemoNote = site ?? {
         id: token,
-        series: 1,
+        series: Number(record.series),
+        ...(log.args.isin ? { isin: log.args.isin } : {}),
         name,
         symbol,
         scenario: "",
@@ -85,7 +86,7 @@ export async function notesOnRecord(): Promise<NoteOnRecord[]> {
         txs: { note: log.transactionHash!, settlement: log.transactionHash! },
         data: { settlement: "locked" },
       };
-      return { token, name, symbol, underReview: token.toLowerCase() === underReview, issuedBlock: log.blockNumber!, issuedAt: Number(block.timestamp), issuedTx: log.transactionHash!, note };
+      return { token, name, symbol, underReview: token.toLowerCase() === underReview, series: Number(record.series), isin: log.args.isin ?? "", issuedBlock: log.blockNumber!, issuedAt: Number(block.timestamp), issuedTx: log.transactionHash!, note };
     }),
   );
 }
