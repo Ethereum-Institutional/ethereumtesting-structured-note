@@ -3,7 +3,6 @@ pragma solidity 0.8.30;
 
 import {Vm} from "forge-std/Vm.sol";
 import {IdFactory} from "@onchain-id/solidity/contracts/factory/IdFactory.sol";
-import {TREXFactory} from "t-rex/factory/TREXFactory.sol";
 import {IdentityRegistry} from "t-rex/registry/implementation/IdentityRegistry.sol";
 import {IdentityRegistryStorage} from "t-rex/registry/implementation/IdentityRegistryStorage.sol";
 import {ClaimTopicsRegistry} from "t-rex/registry/implementation/ClaimTopicsRegistry.sol";
@@ -19,8 +18,12 @@ import {RecordDateModule} from "../src/compliance/RecordDateModule.sol";
 import {PayingAgent} from "../src/PayingAgent.sol";
 import {LockedSettlement} from "../src/LockedSettlement.sol";
 import {NoteFactory} from "../src/factory/NoteFactory.sol";
+import {ProgrammeTREXFactory} from "../src/factory/ProgrammeTREXFactory.sol";
+import {GovernanceController} from "../src/GovernanceController.sol";
+import {ProgrammeSanctions} from "../src/compliance/ProgrammeSanctions.sol";
 import {Scaffolding} from "./Scaffolding.sol";
 import {Issuance} from "./Issuance.sol";
+import {Programme} from "./Programme.sol";
 
 /// The deployment as the manifest records it, for the scripts that run after it.
 library Manifest {
@@ -28,7 +31,7 @@ library Manifest {
 
     function scaffolding(string memory j) internal pure returns (Scaffolding.Deployed memory d) {
         d.idFactory = IdFactory(vm.parseJsonAddress(j, ".identity.idFactory"));
-        d.trexFactory = TREXFactory(vm.parseJsonAddress(j, ".identity.trexFactory"));
+        d.trexFactory = ProgrammeTREXFactory(vm.parseJsonAddress(j, ".identity.trexFactory"));
         d.trexAuthority = FixedImplementationAuthority(vm.parseJsonAddress(j, ".identity.trexAuthority"));
         d.bankIssuer = ExpiringClaimIssuer(vm.parseJsonAddress(j, ".identity.bankIssuer"));
         d.onboardingIssuer = ExpiringClaimIssuer(vm.parseJsonAddress(j, ".identity.onboardingIssuer"));
@@ -41,10 +44,22 @@ library Manifest {
         d.poolIssuers = TrustedIssuersRegistry(vm.parseJsonAddress(j, ".identity.poolIssuers"));
         d.deposit = DepositToken(vm.parseJsonAddress(j, ".instruments.deposit"));
         d.gateway = DepositGateway(vm.parseJsonAddress(j, ".instruments.gateway"));
-        d.noteFactory = NoteFactory(vm.parseJsonAddress(j, ".identity.noteFactory"));
+        d.implementations = NoteFactory.Implementations({
+            determinations: vm.parseJsonAddress(j, ".programme.implementations.determinations"),
+            recordDates: vm.parseJsonAddress(j, ".programme.implementations.recordDates"),
+            payingAgent: vm.parseJsonAddress(j, ".programme.implementations.payingAgent"),
+            settlement: vm.parseJsonAddress(j, ".programme.implementations.settlement")
+        });
+    }
+
+    function programme(string memory j) internal pure returns (Programme.Deployed memory p) {
+        p.controller = GovernanceController(vm.parseJsonAddress(j, ".governance.controller"));
+        p.factory = NoteFactory(vm.parseJsonAddress(j, ".identity.noteFactory"));
+        p.sanctions = ProgrammeSanctions(vm.parseJsonAddress(j, ".programme.sanctions"));
     }
 
     function issued(string memory j) internal pure returns (Issuance.Issued memory l) {
+        l.series = vm.parseJsonUint(j, ".noteSuite.series");
         l.note = INote(vm.parseJsonAddress(j, ".instruments.note"));
         l.identityRegistry = IERC3643IdentityRegistry(vm.parseJsonAddress(j, ".noteSuite.identityRegistry"));
         l.compliance = vm.parseJsonAddress(j, ".noteSuite.compliance");

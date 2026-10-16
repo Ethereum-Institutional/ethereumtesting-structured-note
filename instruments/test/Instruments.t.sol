@@ -161,7 +161,7 @@ contract InstrumentsTest is Stack {
         _determine(0, 10_500); // MER
         _revokeNote(a);
         vm.warp(_obs(0).paymentDate);
-        vm.startPrank(agent);
+        vm.startPrank(address(servicing));
         bytes32 id = l.payingAgent.open(0, PayingAgent.Kind.Redemption);
         address[] memory one = new address[](1);
         one[0] = a;
@@ -173,17 +173,19 @@ contract InstrumentsTest is Stack {
 
     // --- agents, each restricted (ADR 0085) ---
 
-    function test_theIssuerMintsAndUnpausesOnly() public {
+    /// The Issuer issues through the factory and holds no power over a note once issued: its
+    /// inventory is a holder like any other (ADR 0115).
+    function test_theIssuerHoldsNoAgentPower() public {
+        assertFalse(l.note.isAgent(inventory));
         vm.startPrank(inventory);
+        vm.expectRevert();
+        l.note.mint(inventory, 1);
+        vm.expectRevert();
+        l.note.pause();
         vm.expectRevert();
         l.note.burn(inventory, 1);
         vm.expectRevert();
         l.note.forcedTransfer(inventory, a, 1);
-        vm.expectRevert();
-        l.note.freezePartialTokens(inventory, 1);
-        vm.expectRevert();
-        l.note.setAddressFrozen(a, true);
-        l.note.mint(inventory, 1);
         vm.stopPrank();
     }
 

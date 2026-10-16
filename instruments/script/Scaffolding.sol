@@ -10,7 +10,6 @@ import {IdentityRegistryStorage} from "t-rex/registry/implementation/IdentityReg
 import {ClaimTopicsRegistry} from "t-rex/registry/implementation/ClaimTopicsRegistry.sol";
 import {TrustedIssuersRegistry} from "t-rex/registry/implementation/TrustedIssuersRegistry.sol";
 import {ModularCompliance} from "t-rex/compliance/modular/ModularCompliance.sol";
-import {TREXFactory} from "t-rex/factory/TREXFactory.sol";
 import {ClaimTopicsRegistryProxy} from "t-rex/proxy/ClaimTopicsRegistryProxy.sol";
 import {TrustedIssuersRegistryProxy} from "t-rex/proxy/TrustedIssuersRegistryProxy.sol";
 import {IdentityRegistryProxy} from "t-rex/proxy/IdentityRegistryProxy.sol";
@@ -18,8 +17,11 @@ import {IdentityRegistryStorageProxy} from "t-rex/proxy/IdentityRegistryStorageP
 
 import {FixedImplementationAuthority} from "../src/FixedImplementationAuthority.sol";
 import {NoteFactory} from "../src/factory/NoteFactory.sol";
-import {TermsDeployer} from "../src/factory/TermsDeployer.sol";
-import {ServicingDeployer} from "../src/factory/ServicingDeployer.sol";
+import {ProgrammeTREXFactory} from "../src/factory/ProgrammeTREXFactory.sol";
+import {DeterminationAgent} from "../src/DeterminationAgent.sol";
+import {RecordDateModule} from "../src/compliance/RecordDateModule.sol";
+import {PayingAgent} from "../src/PayingAgent.sol";
+import {LockedSettlement} from "../src/LockedSettlement.sol";
 import {ExpiringClaimIssuer} from "../src/claims/ExpiringClaimIssuer.sol";
 import {ClaimTopics} from "../src/claims/ClaimTopics.sol";
 import {DepositToken} from "../src/DepositToken.sol";
@@ -36,9 +38,10 @@ import {IVerifies} from "../src/interfaces/INote.sol";
  *   fixed for good: its authority's owner renounces. The bank creates every identity, so the
  *   factory is handed to the bank.
  * - **T-REX.** One implementation of each contract, behind a fixed implementation authority, and
- *   T-REX's factory, which the note factory owns.
- * - **The note factory** (ADR 0091), owned by the Issuer, which issues each note on this
- *   scaffolding in one transaction.
+ *   the programme's extension of T-REX's factory, which the note factory comes to own.
+ * - **The lifecycle implementations** (ADR 0115): the Determination Agent, the record-date module,
+ *   the Paying Agent and the settlement contract, each deployed once and cloned for every note.
+ *   The note factory and the governance controller follow, in script/Programme.sol.
  * - **Claim issuers.** The bank's, which vouches that a client may hold its deposit, and the
  *   onboarding agent's, which vouches that a client may hold the note. Each is managed by its
  *   institution's key.
@@ -68,7 +71,7 @@ library Scaffolding {
 
     struct Deployed {
         IdFactory idFactory;
-        TREXFactory trexFactory;
+        ProgrammeTREXFactory trexFactory;
         FixedImplementationAuthority trexAuthority;
         ExpiringClaimIssuer bankIssuer;
         ExpiringClaimIssuer onboardingIssuer;
@@ -84,7 +87,8 @@ library Scaffolding {
         TrustedIssuersRegistry poolIssuers;
         DepositToken deposit;
         DepositGateway gateway;
-        NoteFactory noteFactory;
+        /// @dev What each note's lifecycle contracts are cloned from.
+        NoteFactory.Implementations implementations;
     }
 
     /// @dev Investors' and the institutions' country in the identity storage (ISO 3166 numeric).
@@ -106,7 +110,7 @@ library Scaffolding {
             address(new TrustedIssuersRegistry()),
             address(new ModularCompliance())
         );
-        d.trexFactory = new TREXFactory(address(d.trexAuthority), address(d.idFactory));
+        d.trexFactory = new ProgrammeTREXFactory(address(d.trexAuthority), address(d.idFactory));
         d.idFactory.addTokenFactory(address(d.trexFactory));
 
         // The institutions' claim issuers.
@@ -166,20 +170,13 @@ library Scaffolding {
         d.deposit.grantRole(d.deposit.FREEZER_ROLE(), c.bank);
         d.deposit.grantRole(d.deposit.ENFORCER_ROLE(), c.bank);
 
-        // The note factory, owned by the Issuer, and T-REX's factory handed to it.
-        d.noteFactory = new NoteFactory(
-            c.deployer,
-            NoteFactory.Scaffold({
-                trexFactory: address(d.trexFactory),
-                identityStorage: address(d.identities),
-                deposit: address(d.deposit),
-                noteClaimIssuer: address(d.onboardingIssuer),
-                onboardingAgent: c.onboardingAgent,
-                terms: new TermsDeployer(),
-                servicing: new ServicingDeployer()
-            })
-        );
-        d.trexFactory.transferOwnership(address(d.noteFactory));
+        // The implementations every note's lifecycle contracts are cloned from.
+        d.implementations = NoteFactory.Implementations({
+            determinations: address(new DeterminationAgent()),
+            recordDates: address(new RecordDateModule()),
+            payingAgent: address(new PayingAgent()),
+            settlement: address(new LockedSettlement())
+        });
 
         // The deposit's eligibility is the bank's to keep: it accepts each registry once offered.
         d.depositTopics.transferOwnership(c.bank);

@@ -31,7 +31,8 @@ interface IBalances {
  *   what is true.
  *
  * One module for one note: it binds to the first compliance that binds it, and to that
- * compliance's token, and to no other. Not upgradeable.
+ * compliance's token, and to no other. Deployed once as an implementation and cloned for each
+ * note, initialised in the transaction that creates it (ADR 0115). Not upgradeable.
  *
  * Licensed GPL-3.0 because it implements T-REX's module interface (ADR 0087).
  */
@@ -41,7 +42,7 @@ contract RecordDateModule is IModule {
         uint208 value;
     }
 
-    IDeterminationAgent public immutable DETERMINATIONS;
+    IDeterminationAgent public DETERMINATIONS;
 
     /// @notice The compliance this module is bound to.
     address public compliance;
@@ -57,8 +58,16 @@ contract RecordDateModule is IModule {
     error NotTheCompliance(address caller);
     error AlreadyBound(address compliance);
     error TransfersClosed();
+    error AlreadyInitialized();
 
-    constructor(IDeterminationAgent determinations) {
+    /// @dev The implementation itself is never initialised: only its clones are.
+    constructor() {
+        DETERMINATIONS = IDeterminationAgent(address(1));
+    }
+
+    /// @notice Points a clone at its note's Determination Agent, once.
+    function initialize(IDeterminationAgent determinations) external {
+        if (address(DETERMINATIONS) != address(0)) revert AlreadyInitialized();
         DETERMINATIONS = determinations;
     }
 

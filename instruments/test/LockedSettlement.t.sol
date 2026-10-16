@@ -34,7 +34,7 @@ contract LockedSettlementTest is Stack {
             vm.prank(who);
             IERC20Like(address(d.deposit)).approve(address(s), type(uint256).max);
         }
-        vm.startPrank(inventory);
+        vm.startPrank(address(p.controller));
         l.note.mint(a, 5);
         l.note.mint(b, 5);
         l.note.unpause();

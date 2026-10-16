@@ -43,6 +43,14 @@ def artifact_index(unit):
     return {n: (p, j) for n, (p, j, _) in index.items()}
 
 
+def libraries(unit):
+    """The linked libraries the unit's broadcasts deployed, as forge's --libraries takes them."""
+    out = set()
+    for f in glob.glob(os.path.join(ROOT, unit, "broadcast", "*", str(CHAIN), "run-latest.json")):
+        out |= set(json.load(open(f)).get("libraries") or [])
+    return sorted(out)
+
+
 def created(unit):
     """Every contract a broadcast in this unit created: (name, address, transaction hash)."""
     out = []
@@ -91,6 +99,9 @@ def verify(unit, name, address, tx_hash, index):
     path, art = index[name]
     args = constructor_args(tx_hash, art["bytecode"]["object"])
     cmd = [FORGE, "verify-contract", address, f"{path}:{name}", "--chain", str(CHAIN), "--etherscan-api-key", KEY, "--watch"]
+    if art["bytecode"].get("linkReferences"):
+        for lib in libraries(unit):
+            cmd += ["--libraries", lib]
     if args is None:
         cmd += ["--guess-constructor-args", "--rpc-url", RPC]
     elif args != "0x":
@@ -108,6 +119,9 @@ def verify(unit, name, address, tx_hash, index):
 # T-REX's factory deploys through a 21-byte stub that creates whatever code it is sent (CREATE3): raw
 # bytecode with no source to publish.
 STUB = "0x365f5f37365f34f03d5f5f3e5f3d91601357fd5bf3"
+# Each note's lifecycle contracts are minimal clones (EIP-1167) of verified implementations: 45 bytes
+# that forward every call, with no source of their own; the explorer shows the implementation's.
+CLONE = re.compile(r"^0x363d3d373d3d3d363d73[0-9a-f]{40}5af43d82803e903d91602b57fd5bf3$")
 
 
 def rpc(method, params):
@@ -205,8 +219,11 @@ if __name__ == "__main__":
             if address.lower() in seen:
                 continue
             seen.add(address.lower())
-            if rpc("eth_getCode", [address, "latest"]).lower() == STUB:
+            code = rpc("eth_getCode", [address, "latest"]).lower()
+            if code == STUB:
                 status, name = "stub", "(deployment stub, no source)"
+            elif CLONE.match(code):
+                status, name = "clone", "(clone of " + code[22:62] + ")"
             elif verified(address):
                 status, name = "already verified", "(matched)"
             else:
@@ -220,5 +237,6 @@ if __name__ == "__main__":
             print(f"{status[:10]:10s} {name:34s} {address}  {status if status.startswith('FAILED') else ''}", flush=True)
     failed = [r for r in results if r[0].startswith("FAILED") or r[0] == "no artifact"]
     stubs = sum(1 for r in results if r[0] == "stub")
-    print(f"\n{len(results) - len(failed) - stubs} verified, {stubs} deployment stubs with no source, {len(failed)} not verified, of {len(results)} contracts")
+    clones = sum(1 for r in results if r[0] == "clone")
+    print(f"\n{len(results) - len(failed) - stubs - clones} verified, {clones} clones of verified implementations, {stubs} deployment stubs with no source, {len(failed)} not verified, of {len(results)} contracts")
     sys.exit(1 if failed else 0)

@@ -5,16 +5,10 @@ import {AgentRestrictions} from "../interfaces/INote.sol";
 
 /**
  * Each agent's powers on a note, as restrictions T-REX applies (ADR 0085): every power off, then
- * those the agent needs on. Used by the factory at issuance, by the ceremony, and by the tests.
+ * those the agent needs on. A note has three agents, all set by the factory at issuance: its own
+ * Paying Agent and settlement contract, and the programme's governance controller.
  */
 library AgentPowers {
-    /// The Issuer: mints into its inventory, and pauses and unpauses.
-    function issuer() internal pure returns (AgentRestrictions memory r) {
-        r = none();
-        r.disableMint = false;
-        r.disablePause = false;
-    }
-
     /// The Paying Agent: burns at redemption, and pauses at a redemption.
     function payingAgent() internal pure returns (AgentRestrictions memory r) {
         r = none();
@@ -28,8 +22,9 @@ library AgentPowers {
         r.disablePartialFreeze = false;
     }
 
-    /// The governance controller: notional amendments, register correction, the supervisory
-    /// freeze and wallet recovery.
+    /// The governance controller, the only other agent (ADR 0115): notional amendments and
+    /// cancelling the Issuer's inventory, register correction, the supervisory freeze, wallet
+    /// recovery, and pausing on the servicing wallet's word.
     function controller() internal pure returns (AgentRestrictions memory r) {
         r = none();
         r.disableMint = false;
@@ -37,12 +32,7 @@ library AgentPowers {
         r.disableForceTransfer = false;
         r.disableAddressFreeze = false;
         r.disableRecovery = false;
-    }
-
-    /// Cancelling units from the Issuer's inventory: burning alone.
-    function burnOnly() internal pure returns (AgentRestrictions memory r) {
-        r = none();
-        r.disableBurn = false;
+        r.disablePause = false;
     }
 
     function none() internal pure returns (AgentRestrictions memory) {

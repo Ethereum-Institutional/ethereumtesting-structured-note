@@ -7,9 +7,15 @@ import {IDeterminationAgent} from "../src/interfaces/IDeterminationAgent.sol";
 import {INote} from "../src/interfaces/INote.sol";
 import {LockedSettlement} from "../src/LockedSettlement.sol";
 import {ClaimTopics} from "../src/claims/ClaimTopics.sol";
+import {PayingAgent} from "../src/PayingAgent.sol";
+import {DeterminationAgent} from "../src/DeterminationAgent.sol";
+import {IProgrammeRoles} from "../src/interfaces/IProgrammeRoles.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Scaffolding} from "../script/Scaffolding.sol";
 import {Issuance} from "../script/Issuance.sol";
 import {Onboarding} from "../script/Onboarding.sol";
+import {Programme} from "../script/Programme.sol";
+import {MockWallet} from "./Mocks.sol";
 
 interface IERC20Like {
     function approve(address spender, uint256 value) external returns (bool);
@@ -18,15 +24,22 @@ interface IERC20Like {
 
 /**
  * The deployment the tests run against, built by the same libraries as the deploy scripts: the
- * scaffolding, one note issued on it, and its cast onboarded by role (ADR 0088).
+ * scaffolding, the programme (its controller and note factory, ADR 0115), one note issued by the
+ * Issuer's wallet into the controller's care, and its cast onboarded by role.
  *
- * The Issuer's inventory is the Issuer's key, the note's minting agent. The Agent funds and pays
- * distributions. A client onboarded for the note carries both the bank's claim and the
+ * The institutions' wallets are stand-ins. The Issuer's inventory is a holder like any other; the
+ * controller mints into it. The servicing wallet opens and pays distributions, funded from the
+ * Agent's deposit account. A client onboarded for the note carries both the bank's claim and the
  * onboarding agent's; one onboarded for cash only carries the bank's.
  */
 abstract contract Stack is Test {
     Scaffolding.Deployed d;
+    Programme.Deployed p;
     Issuance.Issued l;
+    MockWallet agentGov;
+    MockWallet issuerGov;
+    MockWallet cosigner;
+    MockWallet servicing;
 
     uint256 constant BANK_KEY = 0xBA4C;
     uint256 constant ONBOARDING_KEY = 0x0B0A;
@@ -49,10 +62,15 @@ abstract contract Stack is Test {
     function _deployStack() internal {
         vm.warp(T0);
         _deployScaffolding();
+        _deployProgramme(Programme.Venue(address(0), address(0), address(0)));
         initial = [uint256(451_200), 1_820_300, 25_000];
-        l = _issueNote("note", _terms());
+        l = _issueNote("N", _terms());
         _onboard(inventory, true);
         _onboard(agent, true);
+        // The Agent's account funds distributions; the tests approve once, where operation
+        // approves each distribution's amount as it opens.
+        vm.prank(agent);
+        IERC20Like(address(d.deposit)).approve(address(l.payingAgent), type(uint256).max);
     }
 
     function _deployScaffolding() internal {
@@ -62,32 +80,55 @@ abstract contract Stack is Test {
         vm.stopPrank();
     }
 
-    /// Issues a note on the scaffolding, as the Issuer does, and has the bank allowlist its
-    /// lifecycle contracts for the deposit.
-    function _issueNote(string memory salt, IDeterminationAgent.Terms memory terms)
+    /// The programme on the scaffolding: stand-in wallets for the institutions and the servicing
+    /// wallet, the Calculation Agent's key, the Agent's account as funder.
+    function _deployProgramme(Programme.Venue memory venue) internal {
+        agentGov = new MockWallet(2);
+        issuerGov = new MockWallet(2);
+        cosigner = new MockWallet(2);
+        servicing = new MockWallet(2);
+        address[] memory institutions = new address[](3);
+        (institutions[0], institutions[1], institutions[2]) = (address(agentGov), address(issuerGov), address(cosigner));
+        p = Programme.deploy(
+            d,
+            Programme.Config({
+                deployer: address(this),
+                issuerWallet: address(issuerGov),
+                institutions: institutions,
+                agentGovernance: address(agentGov),
+                servicingWallet: address(servicing),
+                calculationAgent: vm.addr(CA_KEY),
+                funder: agent,
+                minInstitutions: 2,
+                minSignatures: 4,
+                tier2Delay: 1 hours,
+                recoveryDelay: 4 hours,
+                executionWindow: 1 days,
+                venue: venue
+            })
+        );
+    }
+
+    /// Issues a note, as the Issuer's wallet does, into the controller's care.
+    function _issueNote(string memory symbol, IDeterminationAgent.Terms memory terms)
         internal
         returns (Issuance.Issued memory issued)
     {
+        vm.prank(address(issuerGov));
         issued = Issuance.issue(
-            d,
+            p.factory,
             terms,
             Issuance.Config({
                 issuer: inventory,
-                calculationAgent: vm.addr(CA_KEY),
-                payer: agent,
-                funder: agent,
-                name: "N",
-                symbol: "N",
-                salt: salt,
+                isin: "",
+                name: symbol,
+                symbol: symbol,
                 termSheetHash: keccak256("term sheet"),
                 termSheetUri: "ipfs://term-sheet",
                 units: 0,
                 open: false
             })
         );
-        vm.startPrank(bank);
-        Issuance.allowlist(d, issued);
-        vm.stopPrank();
     }
 
     // --- onboarding ---
@@ -138,18 +179,37 @@ abstract contract Stack is Test {
         d.gateway.credit(wallet, cents, keccak256(abi.encode(wallet, cents, block.timestamp, gasleft())));
     }
 
-    /// Adds an agent with every power, as the note's owner, through the factory that owns the note
-    /// for the Issuer until the ceremony (ADR 0091).
+    /// Adds an agent with every power, as the note's owner does: the controller (ADR 0115).
     function _addAgent(address who) internal {
-        d.noteFactory.administer(address(l.note), address(l.note), abi.encodeCall(INote.addAgent, (who)));
+        vm.prank(address(p.controller));
+        l.note.addAgent(who);
     }
 
-    /// Mints into the inventory and opens the note for transfers, as issuance does.
+    /// Mints into the inventory and opens the note for transfers, as issuance does; the controller
+    /// is the note's minting agent.
     function _issueUnits(uint256 units) internal {
-        vm.startPrank(inventory);
+        vm.startPrank(address(p.controller));
         l.note.mint(inventory, units);
         if (l.note.paused()) l.note.unpause();
         vm.stopPrank();
+    }
+
+    /// A Determination Agent on the given terms, cloned and initialised as the factory does.
+    function _newDeterminations(IDeterminationAgent.Terms memory t) internal returns (DeterminationAgent da) {
+        da = DeterminationAgent(Clones.clone(d.implementations.determinations));
+        da.initialize(t, IProgrammeRoles(address(p.controller)));
+    }
+
+    // --- distributions, as the servicing wallet makes them ---
+
+    function _openDistribution(uint256 dateIndex, PayingAgent.Kind kind) internal returns (bytes32) {
+        vm.prank(address(servicing));
+        return l.payingAgent.open(dateIndex, kind);
+    }
+
+    function _payHolders(bytes32 id, address[] memory holders) internal {
+        vm.prank(address(servicing));
+        l.payingAgent.pay(id, holders);
     }
 
     /// Placement: the inventory offers to sell to `to` at par, and `to` accepts.

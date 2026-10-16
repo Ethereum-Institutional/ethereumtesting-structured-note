@@ -60,6 +60,9 @@ fi
 step "custodians and segregated client accounts, onboarded by role"
 forge script script/04_DeployCustody.s.sol:DeployCustody $FS >/dev/null
 
+step "the programme: the institutions' wallets, the sanctions module, the governance controller and the note factory"
+( cd instruments && forge script script/DeployProgramme.s.sol:DeployProgramme $FS >/dev/null )
+
 step "the term sheet: the record the note is issued from, dated from the chain's clock"
 ( cd site && RPC="$RPC" node scripts/term-sheet.ts )
 
@@ -69,5 +72,5 @@ step "issuance: the note from its term sheet, through the note factory, units pl
 M="${MANIFEST:-ops/addresses.json}"
 jq --slurpfile t "${TERM_SHEET_FILE:-ops/term-sheet.json}" '.termSheet = $t[0].record' "$M" > "$M.tmp" && mv "$M.tmp" "$M"
 
-step "governance ceremony: wallets, controller, ownership and roles moved, deployer renounces"
+step "governance ceremony: the pool and venue handed to the controller, the deployer renounces"
 ( cd instruments && forge script script/Ceremony.s.sol:Ceremony $FS >/dev/null )

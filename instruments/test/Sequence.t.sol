@@ -38,7 +38,7 @@ contract SequenceTest is Stack {
     function _pay(bytes32 id, address holder) internal {
         address[] memory batch = new address[](1);
         batch[0] = holder;
-        vm.prank(agent);
+        vm.prank(address(servicing));
         l.payingAgent.pay(id, batch);
     }
 
@@ -60,14 +60,14 @@ contract SequenceTest is Stack {
         _credit(a, 1_000_000_00);
         _credit(b, 1_000_000_00);
 
-        // §2.1. The note is issued paused: nothing moves until the Issuer mints and opens it.
+        // §2.1. The note is issued paused: nothing moves until the notional is minted and it opens.
         assertTrue(l.note.paused(), "issued paused");
-        vm.prank(inventory);
+        vm.prank(address(p.controller));
         l.note.mint(inventory, 20);
         vm.prank(inventory);
         vm.expectRevert();
         IERC20Like(address(l.note)).transfer(a, 1);
-        vm.prank(inventory);
+        vm.prank(address(p.controller));
         l.note.unpause();
     }
 
@@ -126,14 +126,14 @@ contract SequenceTest is Stack {
 
         // §4.3. The coupon opens from the Payment Date, funded in one transfer from the Agent.
         uint48 payment = _obs(0).paymentDate;
-        vm.prank(agent);
+        vm.prank(address(servicing));
         vm.expectRevert(abi.encodeWithSelector(PayingAgent.BeforePaymentDate.selector, payment));
         l.payingAgent.open(0, PayingAgent.Kind.Coupon);
         vm.warp(payment);
-        vm.prank(agent);
+        vm.prank(address(servicing));
         vm.expectRevert(abi.encodeWithSelector(PayingAgent.NothingDue.selector, 0, PayingAgent.Kind.Redemption));
         l.payingAgent.open(0, PayingAgent.Kind.Redemption);
-        vm.prank(agent);
+        vm.prank(address(servicing));
         bytes32 coupon = l.payingAgent.open(0, PayingAgent.Kind.Coupon);
         (,, uint64 entitled,,,,,,,) = l.payingAgent.distributions(coupon);
         assertEq(entitled, 15, "the units of record, the inventory's excluded");
@@ -141,7 +141,7 @@ contract SequenceTest is Stack {
         // §4.4, §4.5. Paid in batches to the holders of record, never the inventory; closed when reconciled.
         address[] memory inv = new address[](1);
         inv[0] = inventory;
-        vm.prank(agent);
+        vm.prank(address(servicing));
         vm.expectRevert(PayingAgent.InventoryIsNotPaid.selector);
         l.payingAgent.pay(coupon, inv);
         uint256 aCash = d.deposit.balanceOf(a);
@@ -174,11 +174,11 @@ contract SequenceTest is Stack {
     function _redemption() internal {
         // §5.2 to §5.4. The coupon, then the redemption: opening it pauses the note, paying burns, closing burns the inventory.
         vm.warp(_obs(1).paymentDate);
-        vm.prank(agent);
+        vm.prank(address(servicing));
         bytes32 coupon2 = l.payingAgent.open(1, PayingAgent.Kind.Coupon);
         _pay(coupon2, a);
         _pay(coupon2, b);
-        vm.prank(agent);
+        vm.prank(address(servicing));
         bytes32 redemption = l.payingAgent.open(1, PayingAgent.Kind.Redemption);
         assertTrue(l.note.paused(), "the redemption pauses the note");
         _pay(redemption, a);

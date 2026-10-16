@@ -29,6 +29,9 @@ interface ICashLeg {
  *
  * Placement (the Issuer's inventory sells), secondary transfer, and buy-back (the inventory buys)
  * all settle here.
+ *
+ * Deployed once as an implementation and cloned for each note, initialised in the transaction that
+ * creates it (ADR 0115).
  */
 contract LockedSettlement {
     enum Side {
@@ -55,8 +58,8 @@ contract LockedSettlement {
         uint256 price;
     }
 
-    INote public immutable NOTE;
-    ICashLeg public immutable CASH;
+    INote public NOTE;
+    ICashLeg public CASH;
 
     uint256 public offerCount;
     mapping(uint256 id => Offer) public offers;
@@ -87,8 +90,16 @@ contract LockedSettlement {
     error NoAllowance(address owner, uint256 needed);
     error NoteLegRefused(address seller, address buyer, uint256 units);
     error CashLegRefused(address buyer, address seller, uint256 price);
+    error AlreadyInitialized();
 
-    constructor(INote note, ICashLeg cash) {
+    /// @dev The implementation itself is never initialised: only its clones are.
+    constructor() {
+        NOTE = INote(address(1));
+    }
+
+    /// @notice Points a clone at its note and the deposit, once.
+    function initialize(INote note, ICashLeg cash) external {
+        if (address(NOTE) != address(0)) revert AlreadyInitialized();
         NOTE = note;
         CASH = cash;
     }

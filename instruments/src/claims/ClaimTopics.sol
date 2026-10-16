@@ -24,4 +24,8 @@ library ClaimTopics {
     /// @notice On the note's own identity: the hash and location of its term sheet, self-attested
     ///         by the note's owner at issuance.
     uint256 internal constant TERM_SHEET = uint256(keccak256("claim.term-sheet"));
+
+    /// @notice A note's identity within the programme, stated by the note's owner on its own
+    ///         identity: its series number and its ISIN, where one is given (ADR 0115).
+    uint256 internal constant SERIES = uint256(keccak256("claim.series"));
 }

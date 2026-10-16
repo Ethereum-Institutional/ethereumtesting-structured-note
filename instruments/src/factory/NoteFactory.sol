@@ -2,17 +2,23 @@
 pragma solidity 0.8.30;
 
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {ITREXFactory} from "t-rex/factory/ITREXFactory.sol";
 import {IIdentity} from "@onchain-id/solidity/contracts/interface/IIdentity.sol";
 import {KeyPurposes} from "@onchain-id/solidity/contracts/libraries/KeyPurposes.sol";
 import {KeyTypes} from "@onchain-id/solidity/contracts/libraries/KeyTypes.sol";
 
 import {IDeterminationAgent} from "../interfaces/IDeterminationAgent.sol";
+import {IProgrammeRoles} from "../interfaces/IProgrammeRoles.sol";
 import {INote, AgentRestrictions, IOwnable2Step} from "../interfaces/INote.sol";
 import {ClaimTopics} from "../claims/ClaimTopics.sol";
+import {DeterminationAgent} from "../DeterminationAgent.sol";
+import {RecordDateModule} from "../compliance/RecordDateModule.sol";
+import {PayingAgent, INoteServicing, ICashLeg, IRecordDates} from "../PayingAgent.sol";
+import {LockedSettlement, ICashLeg as ISettlementCash} from "../LockedSettlement.sol";
 import {AgentPowers} from "./AgentPowers.sol";
-import {TermsDeployer} from "./TermsDeployer.sol";
-import {ServicingDeployer} from "./ServicingDeployer.sol";
+import {ProgrammeTREXFactory} from "./ProgrammeTREXFactory.sol";
 
 /// @dev T-REX's identity registry, as far as the factory reads the note's suite from it.
 interface ISuiteRegistry {
@@ -24,61 +30,62 @@ interface ITokenIdentity {
     function onchainID() external view returns (address);
 }
 
+/// @dev The deposit, as far as the factory allowlists a note's lifecycle contracts on it.
+interface IAllowlist {
+    function setAllowlistedMany(address[] calldata accounts, bool allowed) external;
+}
+
+/// @dev The governance controller takes each note into its care at issuance.
+interface IAdopts {
+    function adopt(NoteFactory.Note calldata n) external;
+}
+
 /**
  * @title NoteFactory
- * @notice Issues a note on the shared scaffolding in one transaction (ADR 0091): its terms, its
- *         record dates, its T-REX suite, its term sheet, its Paying Agent and settlement contract,
- *         each agent restricted to its own powers, the notional minted to the Issuer's inventory,
- *         and the note opened for transfers.
+ * @notice Issues the programme's notes (ADR 0115). Each note is issued whole, in one transaction,
+ *         straight into the governance controller's care; several may be issued in one call.
  *
- * - **The Issuer alone issues.** The factory has one owner, the Issuer, and is the owner of
- *   T-REX's factory, so no note is issued around it.
- * - **The factory owns each note for the Issuer.** It owns the note's token, identity registry,
- *   trusted issuers, claim topics and compliance, and manages the note's identity, from issuance
- *   until the Issuer hands the note over. Meanwhile the Issuer administers a note through
- *   {administer}, which reaches that note's own contracts and nothing else.
- * - **One hand-over.** {handOver} offers every one of the note's contracts to a new owner, who
- *   accepts them (two-step, as T-REX's contracts are), and moves the identity's management to it.
- * - **No standing power.** The factory is an agent of a note only within {issue}, to mint and open
- *   it, and removes itself before it returns.
- * - **A record of every note.** Each note's contracts are kept, and emitted, for the Ledger and
- *   for reconciliation.
- *
- * The scaffolding it issues on is fixed at construction: T-REX's factory, the identity storage,
- * the deposit each note settles in, the onboarding agent's claim issuer whose note claim each
- * note's registry requires, and the onboarding agent as each registry's agent.
+ * - **The Issuer alone issues.** The factory's owner is the Issuer's multi-signature wallet, and
+ *   the factory owns T-REX's factory, so no note is issued around it.
+ * - **A series identity.** Each note takes the next series number, its salt, and optionally an
+ *   ISIN; both are stated on the note's identity and kept in the record.
+ * - **Its own lifecycle contracts, as clones.** The note's Determination Agent, record-date module,
+ *   Paying Agent and settlement contract are minimal clones of fixed implementations, so each note
+ *   stays isolated from every other while issuance stays cheap.
+ * - **The programme's checks.** Every note requires the onboarding agent's note claim, plus any
+ *   further claims its series names, and carries the programme's sanctions module.
+ * - **Governed from the first block.** The note's contracts are handed to the governance
+ *   controller, which accepts them in the same transaction; the factory keeps no power over a note
+ *   once issued. The Issuer keeps none either: its inventory is a holder like any other.
+ * - **Allowlisted at once.** The note's Paying Agent and settlement contract are allowlisted on the
+ *   deposit in the same transaction, the bank having granted the factory that role.
+ * - **The shared identity storage, stewarded.** On the controller's act, the factory unbinds a
+ *   redeemed note's registry from the storage, which binds at most 300, and can hand T-REX's
+ *   factory, and with it the storage, to a successor.
  */
 contract NoteFactory is Ownable2Step {
-    /// @notice An agent added at issuance beyond the Issuer and the lifecycle, with its powers.
-    struct AgentGrant {
-        address agent;
-        AgentRestrictions restrictions;
-    }
-
     struct Params {
-        /// @dev Unique to the note within T-REX's factory.
-        string salt;
+        /// @dev The note's ISIN, twelve characters, or empty where it has none.
+        string isin;
         string name;
         string symbol;
         IDeterminationAgent.Terms terms;
-        /// @dev The Issuer's inventory, and the note's minting agent.
+        /// @dev The Issuer's inventory, which the notional is minted to.
         address issuer;
-        address calculationAgent;
-        /// @dev Whose deposit funds distributions: the Agent.
-        address funder;
-        /// @dev Who pays: the Agent's servicing wallet.
-        address payer;
         bytes32 termSheetHash;
         string termSheetUri;
         /// @dev Minted to the Issuer's inventory at issuance; zero mints nothing.
         uint256 units;
         /// @dev Whether to open the note for transfers; T-REX issues it paused.
         bool open;
-        AgentGrant[] agents;
+        /// @dev Claims this series requires beyond the note claim, each with the issuer trusted for it.
+        uint256[] extraTopics;
+        address[] extraIssuers;
     }
 
-    /// @notice A note's contracts.
+    /// @notice A note's contracts, and its place in the programme.
     struct Note {
+        uint256 series;
         address token;
         address identity;
         address identityRegistry;
@@ -89,115 +96,107 @@ contract NoteFactory is Ownable2Step {
         address recordDates;
         address payingAgent;
         address settlement;
+        address inventory;
     }
 
-    ITREXFactory public immutable TREX_FACTORY;
-    address public immutable IDENTITY_STORAGE;
-    address public immutable DEPOSIT;
-    address public immutable NOTE_CLAIM_ISSUER;
-    address public immutable ONBOARDING_AGENT;
-    TermsDeployer public immutable TERMS;
-    ServicingDeployer public immutable SERVICING;
-
-    address[] private _notes;
-    mapping(address token => Note) private _noteOf;
-    /// @notice Whether the factory still owns a note it issued, for the Issuer.
-    mapping(address token => bool) public holds;
-
-    event NoteIssued(address indexed token, string salt, Note note);
-    event Administered(address indexed token, address indexed target, bytes4 selector);
-    event HandedOver(address indexed token, address indexed newOwner);
-
-    error InvalidArgument();
-    error NotHeld(address token);
-    error NotPartOfNote(address target);
+    /// @notice The implementations each note's lifecycle contracts are cloned from.
+    struct Implementations {
+        address determinations;
+        address recordDates;
+        address payingAgent;
+        address settlement;
+    }
 
     struct Scaffold {
         address trexFactory;
         address identityStorage;
         address deposit;
         address noteClaimIssuer;
-        address onboardingAgent;
-        TermsDeployer terms;
-        ServicingDeployer servicing;
+        address sanctions;
+        address governance;
+        Implementations implementations;
     }
 
-    constructor(address issuer, Scaffold memory s) Ownable(issuer) {
-        TREX_FACTORY = ITREXFactory(s.trexFactory);
+    ProgrammeTREXFactory public immutable TREX_FACTORY;
+    address public immutable IDENTITY_STORAGE;
+    address public immutable DEPOSIT;
+    address public immutable NOTE_CLAIM_ISSUER;
+    address public immutable SANCTIONS;
+    /// @notice The governance controller: every note's owner, and the programme's roles.
+    address public immutable GOVERNANCE;
+    address public immutable DETERMINATIONS_IMPL;
+    address public immutable RECORD_DATES_IMPL;
+    address public immutable PAYING_AGENT_IMPL;
+    address public immutable SETTLEMENT_IMPL;
+
+    uint256 public seriesCount;
+    address[] private _notes;
+    mapping(address token => Note) private _noteOf;
+    mapping(uint256 series => address token) public tokenOfSeries;
+    /// @notice Whether a redeemed note's registry has been unbound from the shared storage.
+    mapping(address token => bool) public retired;
+
+    event NoteIssued(address indexed token, uint256 indexed series, string isin, Note note);
+    event Retired(address indexed token);
+    event TrexFactoryReleased(address indexed successor);
+
+    error InvalidArgument();
+    error NotGovernance(address caller);
+    error UnknownNote(address token);
+    error NotRedeemed(address token);
+
+    constructor(address issuerWallet, Scaffold memory s) Ownable(issuerWallet) {
+        TREX_FACTORY = ProgrammeTREXFactory(s.trexFactory);
         IDENTITY_STORAGE = s.identityStorage;
         DEPOSIT = s.deposit;
         NOTE_CLAIM_ISSUER = s.noteClaimIssuer;
-        ONBOARDING_AGENT = s.onboardingAgent;
-        TERMS = s.terms;
-        SERVICING = s.servicing;
+        SANCTIONS = s.sanctions;
+        GOVERNANCE = s.governance;
+        DETERMINATIONS_IMPL = s.implementations.determinations;
+        RECORD_DATES_IMPL = s.implementations.recordDates;
+        PAYING_AGENT_IMPL = s.implementations.payingAgent;
+        SETTLEMENT_IMPL = s.implementations.settlement;
     }
 
     // ------------------------------------------------------------------------------------------
     // Issuance
     // ------------------------------------------------------------------------------------------
 
-    /// @notice Issues a note, whole, in this one transaction.
-    function issue(Params calldata p) external onlyOwner returns (Note memory n) {
-        if (p.issuer == address(0) || p.calculationAgent == address(0) || p.funder == address(0) || p.payer == address(0)) {
-            revert InvalidArgument();
+    /// @notice Issues a note, whole, in this one transaction, into the controller's care.
+    function issue(Params calldata p) external onlyOwner returns (Note memory) {
+        return _issue(p);
+    }
+
+    /// @notice Issues several notes in one transaction.
+    function issueMany(Params[] calldata ps) external onlyOwner returns (Note[] memory out) {
+        out = new Note[](ps.length);
+        for (uint256 k = 0; k < ps.length; ++k) {
+            out[k] = _issue(ps[k]);
         }
-        (n.determinations, n.recordDates) = _terms(p);
-        _suite(p, n);
-        _termSheet(n.identity, p);
-        _servicing(p, n);
-        _agents(p, n);
-
-        INote note = INote(n.token);
-        if (p.units > 0) note.mint(p.issuer, p.units);
-        if (p.open) note.unpause();
-        note.removeAgent(address(this));
-
-        _notes.push(n.token);
-        _noteOf[n.token] = n;
-        holds[n.token] = true;
-        emit NoteIssued(n.token, p.salt, n);
     }
 
     // ------------------------------------------------------------------------------------------
-    // The Issuer's administration, until it hands a note over
+    // Stewardship of the shared identity storage, on the controller's act
     // ------------------------------------------------------------------------------------------
 
-    /**
-     * @notice Calls one of a held note's own contracts as its owner: the token, its identity
-     *         registry, trusted issuers, claim topics, compliance, or identity. A refusal is passed
-     *         back whole.
-     */
-    function administer(address token, address target, bytes calldata data) external onlyOwner returns (bytes memory) {
-        if (!holds[token]) revert NotHeld(token);
-        if (!_isPartOf(_noteOf[token], target)) revert NotPartOfNote(target);
-        (bool ok, bytes memory ret) = target.call(data);
-        if (!ok) {
-            assembly ("memory-safe") {
-                revert(add(ret, 32), mload(ret))
-            }
-        }
-        emit Administered(token, target, bytes4(data));
-        return ret;
-    }
-
-    /**
-     * @notice Offers every one of a held note's contracts to `newOwner`, which accepts each, and
-     *         makes it the manager of the note's identity in the factory's place.
-     */
-    function handOver(address token, address newOwner) external onlyOwner {
-        if (!holds[token]) revert NotHeld(token);
-        if (newOwner == address(0) || newOwner == address(this)) revert InvalidArgument();
+    /// @notice Unbinds a redeemed note's registry from the shared identity storage.
+    function retire(address token) external {
+        _onlyGovernance();
         Note storage n = _noteOf[token];
-        IOwnable2Step(n.token).transferOwnership(newOwner);
-        IOwnable2Step(n.identityRegistry).transferOwnership(newOwner);
-        IOwnable2Step(n.trustedIssuers).transferOwnership(newOwner);
-        IOwnable2Step(n.claimTopics).transferOwnership(newOwner);
-        IOwnable2Step(n.compliance).transferOwnership(newOwner);
-        IIdentity identity = IIdentity(n.identity);
-        identity.addKey(keccak256(abi.encode(newOwner)), KeyPurposes.MANAGEMENT, KeyTypes.ECDSA);
-        identity.removeKey(keccak256(abi.encode(address(this))), KeyPurposes.MANAGEMENT);
-        holds[token] = false;
-        emit HandedOver(token, newOwner);
+        if (n.token == address(0)) revert UnknownNote(token);
+        if (!IDeterminationAgent(n.determinations).terminated() || INote(token).totalSupply() != 0) revert NotRedeemed(token);
+        retired[token] = true;
+        TREX_FACTORY.unbindIdentityRegistry(IDENTITY_STORAGE, n.identityRegistry);
+        emit Retired(token);
+    }
+
+    /// @notice Hands T-REX's factory, and with it the shared identity storage, to a successor
+    ///         factory, so the programme's identities carry over.
+    function releaseTrexFactory(address successor) external {
+        _onlyGovernance();
+        if (successor == address(0)) revert InvalidArgument();
+        TREX_FACTORY.transferOwnership(successor);
+        emit TrexFactoryReleased(successor);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -220,28 +219,68 @@ contract NoteFactory is Ownable2Step {
     // Internal
     // ------------------------------------------------------------------------------------------
 
-    /// The note's terms, fixed in its Determination Agent, and its record-date module.
-    function _terms(Params calldata p) private returns (address determinations, address recordDates) {
-        return _call2(address(TERMS), abi.encodeCall(TermsDeployer.deploy, (p.terms, p.calculationAgent)));
+    function _issue(Params calldata p) private returns (Note memory n) {
+        if (p.issuer == address(0)) revert InvalidArgument();
+        if (bytes(p.isin).length != 0 && bytes(p.isin).length != 12) revert InvalidArgument();
+        if (p.extraTopics.length != p.extraIssuers.length || p.extraTopics.length > 4) revert InvalidArgument();
+        n.series = ++seriesCount;
+        n.inventory = p.issuer;
+        string memory salt = string.concat("series-", Strings.toString(n.series));
+
+        _terms(p, n);
+        _suite(p, n, salt);
+        _statements(p, n);
+        _servicing(p, n);
+        _agents(n);
+
+        INote note = INote(n.token);
+        if (p.units > 0) note.mint(p.issuer, p.units);
+        if (p.open) note.unpause();
+        note.removeAgent(address(this));
+
+        address[] memory lifecycle = new address[](2);
+        (lifecycle[0], lifecycle[1]) = (n.payingAgent, n.settlement);
+        IAllowlist(DEPOSIT).setAllowlistedMany(lifecycle, true);
+
+        _notes.push(n.token);
+        _noteOf[n.token] = n;
+        tokenOfSeries[n.series] = n.token;
+        _handOver(n);
+        emit NoteIssued(n.token, n.series, p.isin, n);
     }
 
-    /// The token, its identity, registry and compliance, as one T-REX suite owned by the factory.
-    function _suite(Params calldata p, Note memory n) private {
-        address[] memory irAgents = new address[](1);
-        irAgents[0] = ONBOARDING_AGENT;
+    /// The note's terms, in a clone of the Determination Agent, and its record dates.
+    function _terms(Params calldata p, Note memory n) private {
+        n.determinations = Clones.clone(DETERMINATIONS_IMPL);
+        DeterminationAgent(n.determinations).initialize(p.terms, IProgrammeRoles(GOVERNANCE));
+        n.recordDates = Clones.clone(RECORD_DATES_IMPL);
+        RecordDateModule(n.recordDates).initialize(IDeterminationAgent(n.determinations));
+    }
+
+    /// The token, its identity, registry and compliance, as one T-REX suite.
+    function _suite(Params calldata p, Note memory n, string memory salt) private {
+        uint256 extra = p.extraTopics.length;
+        uint256[] memory topics = new uint256[](1 + extra);
+        address[] memory issuers = new address[](1 + extra);
+        uint256[][] memory issuerTopics = new uint256[][](1 + extra);
+        topics[0] = ClaimTopics.NOTE_ELIGIBLE;
+        issuers[0] = NOTE_CLAIM_ISSUER;
+        issuerTopics[0] = new uint256[](1);
+        issuerTopics[0][0] = ClaimTopics.NOTE_ELIGIBLE;
+        for (uint256 k = 0; k < extra; ++k) {
+            if (p.extraIssuers[k] == address(0) || p.extraIssuers[k] == NOTE_CLAIM_ISSUER) revert InvalidArgument();
+            topics[1 + k] = p.extraTopics[k];
+            issuers[1 + k] = p.extraIssuers[k];
+            issuerTopics[1 + k] = new uint256[](1);
+            issuerTopics[1 + k][0] = p.extraTopics[k];
+        }
         address[] memory tokenAgents = new address[](1);
         tokenAgents[0] = address(this);
-        address[] memory modules = new address[](1);
-        modules[0] = n.recordDates;
-        uint256[] memory topics = new uint256[](1);
-        topics[0] = ClaimTopics.NOTE_ELIGIBLE;
-        address[] memory issuers = new address[](1);
-        issuers[0] = NOTE_CLAIM_ISSUER;
-        uint256[][] memory issuerTopics = new uint256[][](1);
-        issuerTopics[0] = topics;
+        address[] memory modules = new address[](2);
+        (modules[0], modules[1]) = (n.recordDates, SANCTIONS);
 
         TREX_FACTORY.deployTREXSuite(
-            p.salt,
+            salt,
             ITREXFactory.TokenDetails({
                 owner: address(this),
                 name: p.name,
@@ -249,14 +288,14 @@ contract NoteFactory is Ownable2Step {
                 decimals: 0,
                 irs: IDENTITY_STORAGE,
                 ONCHAINID: address(0),
-                irAgents: irAgents,
+                irAgents: new address[](0),
                 tokenAgents: tokenAgents,
                 complianceModules: modules,
                 complianceSettings: new bytes[](0)
             }),
             ITREXFactory.ClaimDetails({claimTopics: topics, issuers: issuers, issuerClaims: issuerTopics})
         );
-        n.token = TREX_FACTORY.getToken(p.salt);
+        n.token = TREX_FACTORY.getToken(salt);
         INote note = INote(n.token);
         n.identity = ITokenIdentity(n.token).onchainID();
         n.identityRegistry = note.identityRegistry();
@@ -265,36 +304,50 @@ contract NoteFactory is Ownable2Step {
         n.claimTopics = ISuiteRegistry(n.identityRegistry).topicsRegistry();
     }
 
-    /// The note's owner states its term sheet on the note's identity: its hash and where it is.
-    function _termSheet(address identity, Params calldata p) private {
-        IIdentity(identity).addClaim(
-            ClaimTopics.TERM_SHEET, 1, identity, "", abi.encode(p.termSheetHash, p.termSheetUri), p.termSheetUri
+    /// The note's owner states, on the note's identity, its term sheet and its series identity.
+    function _statements(Params calldata p, Note memory n) private {
+        IIdentity identity = IIdentity(n.identity);
+        identity.addClaim(
+            ClaimTopics.TERM_SHEET, 1, n.identity, "", abi.encode(p.termSheetHash, p.termSheetUri), p.termSheetUri
         );
+        identity.addClaim(ClaimTopics.SERIES, 1, n.identity, "", abi.encode(n.series, p.isin), "");
     }
 
+    /// The note's Paying Agent and settlement contract, as clones.
     function _servicing(Params calldata p, Note memory n) private {
-        ServicingDeployer.Servicing memory s = ServicingDeployer.Servicing({
-            note: n.token,
-            cash: DEPOSIT,
-            determinations: n.determinations,
-            recordDates: n.recordDates,
-            inventory: p.issuer,
-            funder: p.funder,
-            admin: owner(),
-            payer: p.payer
-        });
-        (n.payingAgent, n.settlement) = _call2(address(SERVICING), abi.encodeCall(ServicingDeployer.deploy, (s)));
+        n.payingAgent = Clones.clone(PAYING_AGENT_IMPL);
+        PayingAgent(n.payingAgent).initialize(
+            INoteServicing(n.token),
+            ICashLeg(DEPOSIT),
+            IDeterminationAgent(n.determinations),
+            IRecordDates(n.recordDates),
+            p.issuer,
+            IProgrammeRoles(GOVERNANCE)
+        );
+        n.settlement = Clones.clone(SETTLEMENT_IMPL);
+        LockedSettlement(n.settlement).initialize(INote(n.token), ISettlementCash(DEPOSIT));
     }
 
-    function _agents(Params calldata p, Note memory n) private {
+    /// Each of the note's agents, restricted to its own powers.
+    function _agents(Note memory n) private {
         INote note = INote(n.token);
-        _grant(note, p.issuer, AgentPowers.issuer());
         _grant(note, n.payingAgent, AgentPowers.payingAgent());
         _grant(note, n.settlement, AgentPowers.settlement());
-        for (uint256 k = 0; k < p.agents.length; ++k) {
-            if (p.agents[k].agent == address(0) || p.agents[k].agent == address(this)) revert InvalidArgument();
-            _grant(note, p.agents[k].agent, p.agents[k].restrictions);
-        }
+        _grant(note, GOVERNANCE, AgentPowers.controller());
+    }
+
+    /// Every one of the note's contracts offered to the controller, which accepts them now; the
+    /// note's identity managed by the controller in the factory's place.
+    function _handOver(Note memory n) private {
+        IOwnable2Step(n.token).transferOwnership(GOVERNANCE);
+        IOwnable2Step(n.identityRegistry).transferOwnership(GOVERNANCE);
+        IOwnable2Step(n.trustedIssuers).transferOwnership(GOVERNANCE);
+        IOwnable2Step(n.claimTopics).transferOwnership(GOVERNANCE);
+        IOwnable2Step(n.compliance).transferOwnership(GOVERNANCE);
+        IIdentity identity = IIdentity(n.identity);
+        identity.addKey(keccak256(abi.encode(GOVERNANCE)), KeyPurposes.MANAGEMENT, KeyTypes.ECDSA);
+        identity.removeKey(keccak256(abi.encode(address(this))), KeyPurposes.MANAGEMENT);
+        IAdopts(GOVERNANCE).adopt(n);
     }
 
     function _grant(INote note, address agent, AgentRestrictions memory restrictions) private {
@@ -302,21 +355,7 @@ contract NoteFactory is Ownable2Step {
         note.setAgentRestrictions(agent, restrictions);
     }
 
-    function _isPartOf(Note storage n, address target) private view returns (bool) {
-        return target != address(0)
-            && (target == n.token || target == n.identityRegistry || target == n.trustedIssuers || target == n.claimTopics
-                || target == n.compliance || target == n.identity);
-    }
-
-    /// @dev Calls a deployer, which returns two addresses, keeping its contracts' code out of this
-    ///      contract's own.
-    function _call2(address deployer, bytes memory data) private returns (address a, address b) {
-        (bool ok, bytes memory ret) = deployer.call(data);
-        if (!ok) {
-            assembly ("memory-safe") {
-                revert(add(ret, 32), mload(ret))
-            }
-        }
-        (a, b) = abi.decode(ret, (address, address));
+    function _onlyGovernance() private view {
+        if (msg.sender != GOVERNANCE) revert NotGovernance(msg.sender);
     }
 }

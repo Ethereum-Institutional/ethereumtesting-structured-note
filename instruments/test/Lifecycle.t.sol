@@ -6,6 +6,8 @@ import {DeterminationAgent} from "../src/DeterminationAgent.sol";
 import {RecordDateModule} from "../src/compliance/RecordDateModule.sol";
 import {PayingAgent} from "../src/PayingAgent.sol";
 import {LockedSettlement} from "../src/LockedSettlement.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {IProgrammeRoles} from "../src/interfaces/IProgrammeRoles.sol";
 import {Stack, IERC20Like} from "./Stack.sol";
 
 interface IForcedTransfer {
@@ -107,18 +109,20 @@ contract LifecycleTest is Stack {
     function test_invalidTermsRejected() public {
         IDeterminationAgent.Terms memory t = _terms();
         t.barrierBps = 7_500; // above the coupon barrier
-        vm.expectRevert(abi.encodeWithSelector(IDeterminationAgent.InvalidTerms.selector, "barrier above coupon barrier"));
-        new DeterminationAgent(t, vm.addr(CA_KEY));
+        _refused(t, "barrier above coupon barrier");
         t = _terms();
         t.schedule[3].barrier = false;
-        vm.expectRevert(
-            abi.encodeWithSelector(IDeterminationAgent.InvalidTerms.selector, "barrier always observed on the final date")
-        );
-        new DeterminationAgent(t, vm.addr(CA_KEY));
+        _refused(t, "barrier always observed on the final date");
         t = _terms();
         t.schedule[1].date = t.schedule[0].date;
-        vm.expectRevert(abi.encodeWithSelector(IDeterminationAgent.InvalidTerms.selector, "schedule not strictly ordered"));
-        new DeterminationAgent(t, vm.addr(CA_KEY));
+        _refused(t, "schedule not strictly ordered");
+    }
+
+    /// A clone initialised on invalid terms is refused, as the factory would find at issuance.
+    function _refused(IDeterminationAgent.Terms memory t, string memory reason) internal {
+        DeterminationAgent da = DeterminationAgent(Clones.clone(d.implementations.determinations));
+        vm.expectRevert(abi.encodeWithSelector(IDeterminationAgent.InvalidTerms.selector, reason));
+        da.initialize(t, IProgrammeRoles(address(p.controller)));
     }
 
     // --- entitlement ---
@@ -150,7 +154,7 @@ contract LifecycleTest is Stack {
         vm.warp(_obs(0).paymentDate);
         uint256 aBefore = d.deposit.balanceOf(a);
         uint256 inventoryBefore = d.deposit.balanceOf(inventory);
-        vm.startPrank(agent);
+        vm.startPrank(address(servicing));
         bytes32 id = l.payingAgent.open(0, PayingAgent.Kind.Coupon);
         address[] memory batch = new address[](1);
         batch[0] = b;
@@ -203,7 +207,7 @@ contract LifecycleTest is Stack {
         vm.warp(_obs(0).date);
         _determine(0, 10_500); // MER on the first date
         vm.warp(_obs(0).paymentDate);
-        vm.startPrank(agent);
+        vm.startPrank(address(servicing));
         bytes32 id = l.payingAgent.open(0, PayingAgent.Kind.Redemption);
         assertTrue(l.note.paused(), "views now agree with the stop");
         address[] memory batch = new address[](2);
@@ -227,7 +231,7 @@ contract LifecycleTest is Stack {
         vm.warp(_obs(0).date);
         _determine(0, 9_000);
         vm.warp(_obs(0).paymentDate);
-        vm.startPrank(agent);
+        vm.startPrank(address(servicing));
         bytes32 id = l.payingAgent.open(0, PayingAgent.Kind.Coupon);
         address[] memory one = new address[](1);
         one[0] = a;
@@ -256,7 +260,7 @@ contract LifecycleTest is Stack {
         _determine(0, 9_000);
         _revokeCash(b);
         vm.warp(_obs(0).paymentDate);
-        vm.startPrank(agent);
+        vm.startPrank(address(servicing));
         bytes32 id = l.payingAgent.open(0, PayingAgent.Kind.Coupon);
         address[] memory both = new address[](2);
         both[0] = a;

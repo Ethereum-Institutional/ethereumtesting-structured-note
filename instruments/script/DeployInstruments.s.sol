@@ -130,7 +130,6 @@ contract DeployInstruments is Script {
         string memory o = "identity";
         vm.serializeAddress(o, "idFactory", address(d.idFactory));
         vm.serializeAddress(o, "trexFactory", address(d.trexFactory));
-        vm.serializeAddress(o, "noteFactory", address(d.noteFactory));
         vm.serializeAddress(o, "trexAuthority", address(d.trexAuthority));
         vm.serializeAddress(o, "identityStorage", address(d.identities));
         vm.serializeAddress(o, "bankIssuer", address(d.bankIssuer));
@@ -145,6 +144,13 @@ contract DeployInstruments is Script {
         vm.serializeAddress(o, "poolTopics", address(d.poolTopics));
         vm.serializeAddress(o, "poolIssuers", address(d.poolIssuers));
         vm.writeJson(vm.serializeAddress(o, "depositIssuers", address(d.depositIssuers)), _manifest(), ".identity");
+
+        string memory im = "implementations";
+        vm.serializeAddress(im, "determinations", d.implementations.determinations);
+        vm.serializeAddress(im, "recordDates", d.implementations.recordDates);
+        vm.serializeAddress(im, "payingAgent", d.implementations.payingAgent);
+        string memory impls = vm.serializeAddress(im, "settlement", d.implementations.settlement);
+        vm.writeJson(vm.serializeString("programme", "implementations", impls), _manifest(), ".programme");
 
         string memory i = "instruments";
         vm.serializeAddress(i, "deposit", address(d.deposit));

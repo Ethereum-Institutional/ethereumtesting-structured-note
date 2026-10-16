@@ -45,7 +45,7 @@ interface ITrustedIssuers {
 
 /// The controller's venue acts and Tier 1 withdrawal, in the other compilation unit.
 interface IController {
-    function freezeAccount(address account, bool frozen, string calldata reason) external;
+    function freezeAccount(address[] calldata tokens, address account, bool frozen, string calldata reason) external;
     function withdrawPoolAccess(address account, string calldata reason) external;
     function restorePoolAccess(address account, string calldata reason) external;
     function setVenueSwapping(bool enabled) external;

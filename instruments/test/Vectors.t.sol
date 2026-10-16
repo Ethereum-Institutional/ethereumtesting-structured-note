@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 import {IDeterminationAgent} from "../src/interfaces/IDeterminationAgent.sol";
 import {PayingAgent} from "../src/PayingAgent.sol";
 import {Issuance} from "../script/Issuance.sol";
+import {Programme} from "../script/Programme.sol";
 import {Stack, IERC20Like} from "./Stack.sol";
 
 /**
@@ -27,6 +28,7 @@ contract VectorsTest is Stack {
         vm.warp(1_780_000_000); // before every date in the grid
         claimLife = 2 * 365 days; // past the last date in the grid
         _deployScaffolding();
+        _deployProgramme(Programme.Venue(address(0), address(0), address(0)));
         for (uint256 h = 0; h < 3; ++h) _onboard(holders[h], true);
         _onboard(inventory, true);
         _onboard(agent, true);
@@ -124,7 +126,7 @@ contract VectorsTest is Stack {
     function _distribute(PayingAgent pa, uint256 k, PayingAgent.Kind kind, uint256 perCa, string memory name) internal {
         uint256[3] memory before;
         for (uint256 h = 0; h < 3; ++h) before[h] = d.deposit.balanceOf(holders[h]);
-        vm.startPrank(agent);
+        vm.startPrank(address(servicing));
         bytes32 id = pa.open(k, kind);
         address[] memory batch = new address[](3);
         for (uint256 h = 0; h < 3; ++h) batch[h] = holders[h];
@@ -142,7 +144,7 @@ contract VectorsTest is Stack {
     function _fundAndPlace(Issuance.Issued memory n) internal {
         vm.prank(agent);
         IERC20Like(address(d.deposit)).approve(address(n.payingAgent), type(uint256).max);
-        vm.startPrank(inventory);
+        vm.startPrank(address(p.controller));
         for (uint256 h = 0; h < 3; ++h) n.note.mint(holders[h], units[h]);
         n.note.mint(inventory, INVENTORY_UNITS);
         vm.stopPrank();
