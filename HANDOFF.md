@@ -34,10 +34,27 @@ success criteria are the bank's nine. The plan, its decisions and its workstream
 | 8 | The term sheet as data, the input to issuance | 0095 |
 | 9 | The order of lifecycle events, walked by a test | 0096 |
 | 11 | The overview rewritten for 0.2.0, and its PDF generated from it | 0097 |
+| 10 | Deployed to Ethereum Sepolia; the site as a container for the bank's VM; the IT hand-over guide and the AI build brief | 0098 |
 
-**Still to do:** workstream 10, deployment to Ethereum Sepolia, with the bank's virtual machine
-image, the hand-over guide and the brief for the bank's AI-led build; and workstream 12, the
-release. **Waiting on the bank:** its term-sheet field list, fitted to the record's field catalogue,
+**Deployed to Ethereum Sepolia** (chain 11155111) on 15 October 2026. The manifest is
+`ops/addresses.ethereum-sepolia.json`, kept locally and ignored by git, like the keys it was deployed
+with (`ops/keys.ethereum-sepolia.env`):
+
+| Contract | Address |
+|---|---|
+| The note: EUR Worst-of Autocallable Note (EURWAN) | `0xbbcf9bf28827a13e2A3DC22d03BB4Ae900ea6AeF` |
+| The tokenized deposit: Euro Tokenized Deposit (EURTD) | `0xc3d3b3D94302B553bD8A3f974C1480736B0E4030` |
+| The note factory | `0xE03e82b8e17fCDC390e3A3cc47feb6BC2c42d92f` |
+| The shared identity storage | `0x1f73C24bf3980F203279FeE0cAb05b79785a1F7A` |
+| The governance controller, the note's owner | `0xF45D1e22eF6e28154aCc4F2Ab877e9F07De0C9BA` |
+| The pool's hook | `0x0b3758F0A5fC8aC914550f3b24a1C33a369068c0` |
+
+Ethereum Sepolia runs Amsterdam: deploying costs about 5.5 times the gas the local node shows, and
+the deploy takes each transaction's gas from the chain (ADR 0098). Rehearse on a fork first, with
+`ops/dry-run-fork.sh`.
+
+**Still to do:** workstream 12, the release: the tag, and access to the repository for the bank's
+IT team. **Waiting on the bank:** its term-sheet field list, fitted to the record's field catalogue,
 and its detailed order of lifecycle events, mapped to `docs/lifecycle-sequence.md`.
 
 **Tests.** `cd site && npm run test:local` runs everything on the local chain: it resets the chain
@@ -50,8 +67,8 @@ against a public network.
 domain only, with deployment protection on. Sign-in is by emailed code; the portals are given by
 role lists in its environment (`BANK_EMAILS`, `ONBOARDING_EMAILS`, `AGENT_EMAILS`,
 `CUSTODIAN_EMAILS`; `OPERATOR_EMAILS` holds every role). Postgres is Neon; mail is Resend. See
-`site/README.md`. It still points at the first release's integration deployment until workstream 10
-deploys 0.2.0 to Ethereum Sepolia.
+`site/README.md`. It points at the Ethereum Sepolia deployment above; the first release's data was
+not carried over.
 
 **Hazards worth knowing:**
 - **The T-REX 5.0.0-beta2 implementation authority** lets anyone switch versions. We deploy our own fixed authority in its place (ADR 0088). Never deploy T-REX's.
