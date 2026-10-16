@@ -135,6 +135,29 @@ test("an issuance that lands after the site stopped waiting is picked up when th
   assert.equal(n.status, "issued", n.error);
 });
 
+test("a step in flight is left alone, not marked issued; one claimed longer ago than a page may run is released and run again; a stopped issuance stays stopped (ADR 0105)", async () => {
+  const started = await notes.startNote(operator as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 1, unit: "hours" }, units: 4 });
+  const inFlight = { ...started, step: -1, claimedAt: new Date().toISOString() };
+  assert.ok(await store.updateNote(inFlight as any, 0));
+  const polled = await notes.advanceIssuance(started.id);
+  assert.equal(polled!.status, "issuing", "not marked issued while its step is in flight");
+  assert.equal(polled!.step, -1);
+
+  const stale = { ...inFlight, claimedAt: new Date(Date.now() - 7 * 60_000).toISOString() };
+  assert.ok(await store.updateNote(stale as any, -1));
+  const rerun = await notes.advanceIssuance(started.id);
+  assert.equal(rerun!.step, 1, rerun!.error);
+  assert.ok(rerun!.addresses.note, "the released step ran: the note is issued on the chain");
+
+  await notes.stopIssuance(operator as any, started.id);
+  const stopped = (await store.noteById(started.id))!;
+  assert.equal(stopped.status, "failed");
+  assert.match(stopped.error!, /Stopped by operator@example.org at step 2/);
+  assert.equal(await store.updateNote({ ...stopped, status: "issuing", step: 2 } as any, -2), false, "a step still in flight cannot record itself after");
+  assert.equal((await notes.advanceIssuance(started.id))!.status, "failed");
+  await assert.rejects(notes.stopIssuance({ ...operator, email: "someone@corp.example" } as any, started.id), /Not permitted/);
+});
+
 // --- selling restrictions and placement (ADR 0075; S-08, S-09) ---
 
 const place = await import("../lib/notes/place.ts");

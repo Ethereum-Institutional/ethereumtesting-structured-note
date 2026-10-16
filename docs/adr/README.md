@@ -112,3 +112,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0102](0102-the-site-on-a-phone.md) | The site on a phone | Accepted |
 | [0103](0103-waiting-for-ethereum-sepolia.md) | Waiting long enough for Ethereum Sepolia, and an issuance safe to run again | Accepted |
 | [0104](0104-an-existing-identity-must-be-an-identity.md) | An identity brought to the site must be an ONCHAINID identity | Accepted |
+| [0105](0105-an-issuance-that-cannot-hang.md) | An issuance that cannot hang, and can be stopped | Accepted |

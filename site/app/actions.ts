@@ -520,6 +520,15 @@ export async function startNoteAction(f: FormData) {
   }, "/agent/notes");
 }
 
+/** Staff stop an issuance that will not finish (ADR 0105). */
+export async function stopIssuanceAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("agent", "/agent/notes", async (staff) => {
+    const { stopIssuance } = await import("@/lib/notes/issue");
+    await stopIssuance(staff, field(f, "id"));
+    return "Stopped.";
+  });
+}
+
 /** Moves a note's issuance on by a step; the Agent's Notes page calls it while a note is being issued. */
 export async function advanceNoteAction(id: string) {
   const op = await currentStaff("agent");

@@ -233,14 +233,41 @@ async function readLive(m: Manifest, functionName: "name" | "symbol"): Promise<s
   return s.publicClient.readContract({ address: m.assets.note!.address as Address, abi: NOTE, functionName });
 }
 
+/** Longer than a page may run (maxDuration, 300 s): a claim this old belongs to a request that was stopped. */
+const CLAIM_TTL_MS = 6 * 60_000;
+
+/** Beyond every step: an issuance stopped by staff, so that a step still in flight cannot record itself after. */
+const STOPPED_STEP = 1_000;
+
+/** Staff stop an issuance that will not finish (ADR 0105). Whatever already landed on the chain stays. */
+export async function stopIssuance(staff: Registrant, id: string): Promise<void> {
+  if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
+  const store = getStore();
+  const n = await store.noteById(id);
+  if (!n || n.status !== "issuing") throw new Error("This note is not being issued.");
+  const stopped = { ...n, status: "failed" as const, step: STOPPED_STEP, claimedAt: undefined, error: `Stopped by ${staff.email} at step ${Math.abs(n.step) + (n.step < 0 ? 0 : 1)}` };
+  if (!(await store.updateNote(stopped, n.step))) throw new Error("The issuance moved on meanwhile; try again.");
+  await store.audit({ at: now(), actor: staff.email, action: `stopped issuing ${n.name} at step ${Math.abs(n.step) + (n.step < 0 ? 0 : 1)}`, subject: n.id });
+}
+
 /**
  * Runs the note's next issuance step. Safe to call repeatedly: the step is claimed in the store
  * before it is sent, so two callers cannot both run it; a failed step leaves the note to be retried.
  */
 export async function advanceIssuance(id: string): Promise<DemoNote | null> {
   const store = getStore();
-  const n = await store.noteById(id);
+  let n = await store.noteById(id);
   if (!n || n.status !== "issuing") return n;
+  // A step in flight (ADR 0105). The page polls every few seconds while a step on Ethereum Sepolia
+  // can take minutes: leave it be, unless its claim is older than any page may run, in which case
+  // the request running it was stopped, and the step is released to run again.
+  if (n.step < 0) {
+    const claimed = n.claimedAt ? Date.parse(n.claimedAt) : 0;
+    if (Date.now() - claimed < CLAIM_TTL_MS) return n;
+    const released = { ...n, step: -n.step - 1, claimedAt: undefined, error: "The step did not finish in time, and runs again" };
+    if (!(await store.updateNote(released, n.step))) return store.noteById(id);
+    n = released;
+  }
   const step = STEPS[n.step];
   if (!step) {
     const done = { ...n, status: "issued" as const };
@@ -248,12 +275,12 @@ export async function advanceIssuance(id: string): Promise<DemoNote | null> {
     return done;
   }
   // Claim the step: a negative step marks it in flight, so a second caller does nothing.
-  const claimed = { ...n, step: -(n.step + 1), error: undefined };
+  const claimed = { ...n, step: -(n.step + 1), claimedAt: now(), error: undefined };
   if (!(await store.updateNote(claimed, n.step))) return n;
   const scenario = SCENARIOS.find((s) => s.name === n.scenario)!;
   try {
     const patch = (await step.run({ ...context(), n, scenario })) ?? {};
-    const next = { ...n, ...patch, step: n.step + 1, error: undefined } as DemoNote;
+    const next = { ...n, ...patch, step: n.step + 1, claimedAt: undefined, error: undefined } as DemoNote;
     if (!STEPS[next.step]) next.status = "issued";
     await store.updateNote(next, claimed.step);
     if (next.status === "issued") await store.audit({ at: now(), actor: "site", action: `issued ${n.name}: ${n.units} units to the Issuer's inventory`, subject: n.id });

@@ -96,8 +96,10 @@ export type DemoNote = {
   interval?: { value: number; unit: "minutes" | "hours" | "days" | "months" };
   units: number;
   status: "issuing" | "issued" | "failed" | "closed";
-  /** The next issuance step to run; issuance is a sequence of single transactions. */
+  /** The next issuance step to run; issuance is a sequence of single transactions. Negative while one is in flight. */
   step: number;
+  /** When the step in flight was claimed: a claim older than a page may run is released (ADR 0105). */
+  claimedAt?: string;
   createdAt: string;
   by: string;
   error?: string;

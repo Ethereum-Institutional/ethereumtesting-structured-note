@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getStore } from "@/lib/store";
 import { ISSUANCE_STEPS, SCENARIOS } from "@/lib/notes/issue";
-import { advanceNoteAction, startNoteAction } from "../../actions";
+import { advanceNoteAction, startNoteAction, stopIssuanceAction } from "../../actions";
+import { ActionForm } from "../../staff/ActionForm";
 import { Advance } from "../../Advance";
 import { when } from "../../staff/parts";
 import { NoteForm } from "./NoteForm";
@@ -28,7 +29,7 @@ export default async function Notes() {
               <tbody>
                 {notes.map((n) => {
                   const sc = SCENARIOS.find((x) => x.name === n.scenario);
-                  const done = n.status === "issuing" ? Math.abs(n.step) : ISSUANCE_STEPS.length;
+                  const done = n.status === "issuing" ? (n.step < 0 ? -n.step - 1 : n.step) : ISSUANCE_STEPS.length;
                   const cal = n.calendar ?? [];
                   return (
                     <tr key={n.id}>
@@ -40,7 +41,15 @@ export default async function Notes() {
                       <td style={{ whiteSpace: "normal", minWidth: "14rem" }}>
                         <span className={`pill ${n.status === "issued" ? "approved" : n.status === "issuing" ? "pending" : n.status === "closed" ? "" : "revoked"}`}>{n.status === "closed" ? "redeemed" : n.status}</span>
                         {n.status === "issuing" && <><br /><span className="muted">Step {done + 1} of {ISSUANCE_STEPS.length}: {ISSUANCE_STEPS[done]}</span></>}
-                        {n.error && <><br /><span className="muted">Retrying: {n.error}</span></>}
+                        {n.error && <><br /><span className="muted">{n.status === "issuing" ? `Retrying: ${n.error}` : n.error}</span></>}
+                        {n.status === "issuing" && (
+                          <details>
+                            <summary>Stop issuing…</summary>
+                            <ActionForm action={stopIssuanceAction} hidden={{ id: n.id }} label="Stop" working="Stopping…" quiet>
+                              <p className="muted" style={{ margin: 0 }}>The site stops working on this note. Whatever already reached the chain stays there.</p>
+                            </ActionForm>
+                          </details>
+                        )}
                       </td>
                       <td style={{ whiteSpace: "nowrap" }}>
                         {cal.length > 0 && <>Date 1: {when(new Date(cal[0].date * 1000).toISOString())}<br />Date {cal.length}: {when(new Date(cal.at(-1)!.date * 1000).toISOString())}</>}
