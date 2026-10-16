@@ -20,8 +20,8 @@ export default async function NoteRequests() {
   const rows = await Promise.all(waiting.map(async (a) => ({ a, p: await participantOf(a) })));
   return (
     <>
-      <h2 id="requests">Requests for the note</h2>
-      {rows.length === 0 && <p className="muted panel">No client is waiting for access to the note.</p>}
+      <h2 id="requests">Requests for the notes</h2>
+      {rows.length === 0 && <p className="muted panel">No client is waiting for access to the notes.</p>}
       {rows.map(({ a, p }) => {
         const d = dataOf(a);
         const bank = p ? claimState(p.claims.deposit) : null;
@@ -37,8 +37,8 @@ export default async function NoteRequests() {
               <dt>Investor class declared</dt><dd>{d.note!.answers.investorClass || "none"}</dd>
               <dt>Relies on the bank's KYB</dt><dd>{d.note!.answers.relyOnBankKyb ? "With the client's consent" : "No"}</dd>
             </dl>
-            <ActionForm action={decideNoteAction} hidden={{ id: a.id, decision: "approve" }} label="Approve for the note" working="Adding the note claim…">
-              <p className="muted">Adds the onboarding agent's claim to the client's identity, carrying the hash of this decision's record. The note accepts the wallet at once.</p>
+            <ActionForm action={decideNoteAction} hidden={{ id: a.id, decision: "approve" }} label="Approve for the notes" working="Adding the note claim…">
+              <p className="muted">Adds the onboarding agent's claim to the client's identity, carrying the hash of this decision's record. Every note issued under the programme accepts the wallet at once.</p>
             </ActionForm>
             <details>
               <summary>Decline…</summary>

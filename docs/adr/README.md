@@ -118,3 +118,5 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0108](0108-the-bank-removes-a-client.md) | The bank removes a client, to add it again | Accepted |
 | [0109](0109-the-page-uses-the-screen.md) | The page uses the screen, and the portal's actions explain themselves | Accepted |
 | [0110](0110-an-account-is-named-by-the-banks-client.md) | An account is named by the bank's client | Accepted |
+| [0111](0111-one-claim-for-every-note.md) | One claim makes a client eligible for every note | Accepted |
+| [0112](0112-placement-checks-the-buyers-cash.md) | Placement checks the buyer's cash before offering | Accepted |

@@ -102,7 +102,7 @@ test("transfers settle by locked offer: arranged by the bank, open offers taken,
   // third-party custodian's account of spec 04) is refused before anything is sent.
   await staff.getByText("Arrange a transfer…").click();
   await pick(arrange.locator('select[name="seller"]'), SECOND);
-  await pick(arrange.locator('select[name="buyer"]'), "not eligible for the note");
+  await pick(arrange.locator('select[name="buyer"]'), "not eligible for the notes");
   await arrange.getByRole("button", { name: "Arrange" }).click();
   await expect(arrange.getByRole("alert")).toContainText("buyer is not eligible for the note");
 

@@ -123,7 +123,7 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
                   <label>Buyer<select name="buyer" required defaultValue="">
                     <option value="" disabled>Choose the buyer…</option>
                     <option value="open">Open: any approved client</option>
-                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.label}{a.regS ? "" : " (not eligible for the note)"}</option>)}
+                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.label}{a.regS ? "" : " (not eligible for the notes)"}</option>)}
                   </select></label>
                   <label>Units<input name="units" type="number" min={1} step={1} defaultValue={1} required /></label>
                   <label>Price a unit (€)<input name="price" inputMode="decimal" defaultValue="1000.00" required /></label>

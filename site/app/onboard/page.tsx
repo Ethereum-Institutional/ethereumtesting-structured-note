@@ -53,7 +53,7 @@ const STAGES: Record<Admission["route"], string[]> = {
   "bank-custody": ["Your bank confirms your KYB", "The custody platform opens your account", "Onboarded for the deposit"],
   "third-party": ["Your bank confirms your KYB", "Your custodian opens your account", "Onboarded for the deposit"],
   "self-custody": ["Your bank confirms your KYB", "Sign once from your wallet", "Onboarded for the deposit"],
-  "existing-identity": ["Sign once from your wallet", "The onboarding agent registers it", "Registered for the note"],
+  "existing-identity": ["Sign once from your wallet", "The onboarding agent registers it", "Registered for the notes"],
 };
 
 function stageOf(a: Admission): number {
@@ -101,7 +101,7 @@ export default async function Account() {
               <dt>{p.admission.route === "self-custody" || p.admission.route === "existing-identity" ? "Your wallet" : "Your account"}</dt><dd><Address value={p.wallet} /></dd>
               <dt>Your identity</dt><dd><Address value={p.identity} />{p.admission.route === "self-custody" && <span className="muted"> (managed by your wallet)</span>}</dd>
               <dt>The deposit</dt><dd><span className={`pill ${deposit.pill}`}>{p.eligible.deposit ? `eligible, ${deposit.label}` : `not eligible (${deposit.label})`}</span></dd>
-              <dt>The note</dt>
+              <dt>The notes</dt>
               <dd>
                 <span className={`pill ${note.pill}`}>{p.eligible.note ? `eligible, ${note.label}` : d.note?.status === "requested" ? "asked; the onboarding agent decides" : d.note?.status === "declined" ? "declined" : d.note?.status === "revoked" ? "revoked" : "not asked"}</span>
               </dd>
@@ -114,7 +114,7 @@ export default async function Account() {
             </dl>
             {p.admission.route !== "existing-identity" && (!d.note || d.note.status === "declined") && p.eligible.deposit && !d.closeRequest && (
               <details>
-                <summary>Ask for access to the note…</summary>
+                <summary title="One claim from the onboarding agent makes the account eligible for every note issued under the programme.">Ask for access to the notes…</summary>
                 <NoteRequestForm id={p.admission.id} action={requestNoteAction} />
               </details>
             )}
@@ -129,7 +129,7 @@ export default async function Account() {
                 <ActionForm action={requestCloseAction} hidden={{ id: p.admission.id }} label="Ask to close" working="Checking what the account holds…" quiet>
                   <p className="muted" style={{ margin: 0 }}>
                     The bank revokes its claim and removes the {p.admission.route === "self-custody" || p.admission.route === "existing-identity" ? "wallet" : "account"} from every
-                    registry: it can then neither hold nor receive the deposit or the note. It must first hold nothing and be owed nothing. The bank keeps its records.
+                    registry: it can then neither hold nor receive the deposit or the notes. It must first hold nothing and be owed nothing. The bank keeps its records.
                   </p>
                   <label>Reason<input name="reason" required maxLength={500} /></label>
                 </ActionForm>
@@ -172,7 +172,7 @@ export default async function Account() {
       {open.length === 0 && (
         <>
           <p className="lede" style={{ marginTop: 0 }}>
-            {onboarded.length ? "Add another account or wallet:" : "Choose how your account is held. Your bank confirms the KYB it already holds; then you may ask for access to the note."}
+            {onboarded.length ? "Add another account or wallet:" : "Choose how your account is held. Your bank confirms the KYB it already holds; then you may ask for access to the notes."}
           </p>
           <div className="cards">
             {ROUTES.map((r) => (

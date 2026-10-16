@@ -18,7 +18,7 @@ export default async function ExistingIdentities() {
       <h2 id="existing">Existing identities</h2>
       <p className="muted panel">
         A client may bring an identity another institution has already vouched for. Once its wallet has signed, registering the
-        wallet against the identity relies on the claims the identity carries: the note accepts it if an issuer it trusts
+        wallet against the identity relies on the claims the identity carries: the notes accept it if an issuer they trust
         vouches for it, and the registration is undone if none does.
       </p>
       {waiting.length === 0 && <p className="muted panel">No identity is waiting.</p>}
@@ -32,7 +32,7 @@ export default async function ExistingIdentities() {
               <dt>Identity</dt><dd><Address value={d.identity} /></dd>
               <dt>Wallet</dt><dd><Address value={d.wallet} /> <span className="muted">(signed)</span></dd>
             </dl>
-            <ActionForm action={acceptExistingAction} hidden={{ id: a.id }} label="Register the wallet" working="Registering and checking the note's registry…" />
+            <ActionForm action={acceptExistingAction} hidden={{ id: a.id }} label="Register the wallet" working="Registering and checking the notes' registries…" />
           </section>
         );
       })}

@@ -16,7 +16,7 @@ test("the note refuses a wallet until the onboarding agent vouches for it; the c
   const notePage = staff.url();
   const place = staff.locator("#place-2 + .panel");
   const option = place.locator('select[name="admission"] option', { hasText: wallet.slice(0, 10) });
-  await expect(option).toContainText("(not eligible for the note)");
+  await expect(option).toContainText("(not eligible for the notes)");
   const account = await option.getAttribute("value");
   await place.locator('select[name="admission"]').selectOption(account!);
   await place.getByLabel("Units").fill("2");
@@ -26,10 +26,10 @@ test("the note refuses a wallet until the onboarding agent vouches for it; the c
   // The client asks; the onboarding agent approves; the bank credits the deposit to pay with.
   await client.goto("/onboard");
   const card = client.getByRole("region", { name: "Self-custody" });
-  await card.getByText("Ask for access to the note…").click();
+  await card.getByText("Ask for access to the notes…").click();
   await card.getByLabel(/not a U.S. person/).check();
   await card.getByLabel(/rely on our bank's KYB/).check();
-  await card.getByRole("button", { name: "Ask for access to the note" }).click();
+  await card.getByRole("button", { name: "Ask for access to the notes" }).click();
   await staff.goto("/onboarding");
   const ask = staff.locator("section.panel").filter({ hasText: wallet });
   await ask.getByRole("button", { name: "Approve for the note" }).click();

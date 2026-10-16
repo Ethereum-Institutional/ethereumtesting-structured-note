@@ -5,14 +5,14 @@ import { PendingButton } from "../PendingButton";
 
 type Result = { ok?: string; error?: string };
 
-/** The client asks for access to the note, answering the selling restrictions (ADR 0089). */
+/** The client asks for access to the notes, every note the factory issues, answering the selling restrictions (ADR 0089). */
 export function NoteRequestForm({ id, action, investorClass }: { id: string; action: (prev: Result, f: FormData) => Promise<Result>; investorClass?: string }) {
   const [state, run] = useActionState(action, {});
   return (
     <form action={run} className="stack">
       <input type="hidden" name="id" value={id} />
       <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-        <input type="checkbox" name="notUsPerson" required /> We are not a U.S. person, and do not acquire the note for one (Regulation S).
+        <input type="checkbox" name="notUsPerson" required /> We are not a U.S. person, and do not acquire the notes for one (Regulation S).
       </label>
       <label>
         Our investor class
@@ -24,7 +24,7 @@ export function NoteRequestForm({ id, action, investorClass }: { id: string; act
       <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
         <input type="checkbox" name="relyOnBankKyb" required /> The onboarding agent may rely on our bank's KYB rather than repeat it.
       </label>
-      <div className="actions"><PendingButton working="Asking…">Ask for access to the note</PendingButton></div>
+      <div className="actions"><PendingButton working="Asking…">Ask for access to the notes</PendingButton></div>
       {state.error && <p role="alert" className="notice err">{state.error}</p>}
       {state.ok && <p role="status" className="muted">{state.ok}</p>}
     </form>

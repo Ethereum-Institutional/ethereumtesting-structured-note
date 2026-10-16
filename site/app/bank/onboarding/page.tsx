@@ -89,7 +89,7 @@ export default async function BankOnboarding() {
       {onboarded.length > 0 && (
         <div className="table-wrap panel">
           <table>
-            <thead><tr><th>Client</th><th>Route</th><th>Wallet</th><th>Identity</th><th>The bank's claim</th><th>The note's claim</th><th /></tr></thead>
+            <thead><tr><th>Client</th><th>Route</th><th>Wallet</th><th>Identity</th><th>The bank's claim</th><th>The notes' claim</th><th /></tr></thead>
             <tbody>
               {onboarded.map((p) => {
                 const a = p.admission;
@@ -131,9 +131,9 @@ export default async function BankOnboarding() {
                             </ActionForm>
                           </details>
                           <details>
-                            <summary title="Withdraws, at once, the bank's word that this client may hold the deposit. Its identity and the note's claim are untouched.">Revoke the bank's claim…</summary>
+                            <summary title="Withdraws, at once, the bank's word that this client may hold the deposit. Its identity and the notes' claim are untouched.">Revoke the bank's claim…</summary>
                             <ActionForm action={revokeDepositAction} hidden={{ id: a.id }} label="Revoke" working="Revoking…" quiet>
-                              <p className="muted">At once: the wallet can no longer hold or receive the deposit. Its identity and the note's claim are untouched.</p>
+                              <p className="muted">At once: the wallet can no longer hold or receive the deposit. Its identity and the notes' claim are untouched.</p>
                               <label>Reason<input name="reason" required maxLength={500} /></label>
                             </ActionForm>
                           </details>

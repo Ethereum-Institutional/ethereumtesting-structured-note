@@ -31,7 +31,7 @@ export function PlaceForm({
           Account
           <select name="admission" required defaultValue="">
             <option value="" disabled>Choose the account…</option>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.label}{a.regS ? "" : " (not eligible for the note)"}</option>)}
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.label}{a.regS ? "" : " (not eligible for the notes)"}</option>)}
           </select>
         </label>
         <label>Units<input name="units" type="number" min={1} max={inventory} step={1} required defaultValue={1} /></label>

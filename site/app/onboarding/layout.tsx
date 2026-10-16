@@ -4,7 +4,7 @@ import { StaffShell } from "../staff/StaffShell";
 
 export const dynamic = "force-dynamic";
 
-/** The onboarding agent's portal (ADR 0089): requests for the note, its claims, identities brought from elsewhere. */
+/** The onboarding agent's portal (ADR 0089): requests for the notes, its claims, identities brought from elsewhere. */
 export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
   const admissions = await getStore().listAdmissions(500);
   const requests = admissions.filter((a) => a.status === "onboarded" && dataOf(a).note?.status === "requested").length;
@@ -13,7 +13,7 @@ export default async function OnboardingLayout({ children }: { children: React.R
     <StaffShell
       role="onboarding"
       items={[
-        { href: "/onboarding", label: "Requests for the note", badge: requests },
+        { href: "/onboarding", label: "Requests for the notes", badge: requests },
         { href: "/onboarding/existing", label: "Existing identities", badge: existing },
         { href: "/onboarding/participants", label: "Vouched for" },
       ]}

@@ -410,14 +410,14 @@ export async function decideNoteAction(_prev: Result, f: FormData): Promise<Resu
   return staffStep("onboarding", "/onboarding", async (staff) => {
     const outcome = field(f, "decision") === "decline" ? "decline" : "approve";
     await onboarding.decideNote(staff, field(f, "id"), outcome, field(f, "reason"));
-    return outcome === "approve" ? "Approved: the note claim is on the client's identity." : "Declined.";
+    return outcome === "approve" ? "Approved: the notes' claim is on the client's identity; every note issued accepts the wallet." : "Declined.";
   });
 }
 
 export async function revokeNoteAction(_prev: Result, f: FormData): Promise<Result> {
   return staffStep("onboarding", "/onboarding", async (staff) => {
     await onboarding.revokeNote(staff, field(f, "id"), field(f, "reason"));
-    return "Revoked: the wallet can no longer receive the note.";
+    return "Revoked: the wallet can no longer receive any of the notes.";
   });
 }
 
@@ -439,7 +439,7 @@ export async function acceptExistingAction(_prev: Result, f: FormData): Promise<
   return staffStep("onboarding", "/onboarding", async (staff) => {
     await onboarding.acceptExisting(staff, field(f, "id"));
     const a = await getStore().admissionById(field(f, "id"));
-    return a?.status === "onboarded" ? "Registered: the note's registry verifies the identity." : "Refused: no issuer the note trusts vouches for it.";
+    return a?.status === "onboarded" ? "Registered: the notes' registries verify the identity." : "Refused: no issuer the notes trust vouches for it.";
   });
 }
 

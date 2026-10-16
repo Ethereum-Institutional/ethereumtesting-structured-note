@@ -9,7 +9,7 @@ factory, the conversion pool, and reconciliation at any block.
   `docs/solution-overview.pdf`, generated from it. The gated site in `site/` serves the overview.
 - **The order of a note's life,** step by step, as the contracts enforce it:
   `docs/lifecycle-sequence.md`.
-- **Why each design decision went the way it did:** `docs/adr/`. 0.2.0's are ADRs 0085 to 0110.
+- **Why each design decision went the way it did:** `docs/adr/`. 0.2.0's are ADRs 0085 to 0112.
 - **The 0.2.0 plan and its workstreams:** `docs/plan/0.2.0.md`.
 - **Where things stand, hazards and open items:** `HANDOFF.md`.
 - **Spikes:** `docs/spikes/`, with their harnesses under `spikes/`.

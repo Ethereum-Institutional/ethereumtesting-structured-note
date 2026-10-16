@@ -316,6 +316,15 @@ export async function placeUnits(staff: Registrant, noteId: string, admissionId:
   const inventory = await unlockedUnits(s, n, issuer, units);
   if (inventory < BigInt(units)) throw new Error(`The Issuer's inventory holds ${inventory} units not already offered, not ${units}.`);
   await noteWouldMove(s, n, issuer, buyer, units);
+  // The cash leg, before anything is sent: an offer the buyer cannot pay for would lock the units until it lapses.
+  // Read until it suffices or a few blocks pass: an RPC a block behind may not yet show a credit just made.
+  const cash = await until(
+    () => s.publicClient.readContract({ address: m.assets.deposit!.address as Address, abi: DEPOSIT, functionName: "balanceOf", args: [buyer] }),
+    (v) => v >= price,
+  );
+  if (cash < price) {
+    throw new Error(`The buyer holds ${euros(cash)} of the deposit; ${units} units cost ${euros(price)}. The bank credits its deposit first: Bank → Onboarding, Credit deposit… on its row.`);
+  }
 
   await s.send("issuer", { address: n.addresses.note as Address, abi: NOTE, functionName: "approve", args: [n.addresses.settlement as Address, BigInt(units)] });
   await allowed(s, n.addresses.note as Address, issuer, n, BigInt(units));

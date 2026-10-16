@@ -24,13 +24,13 @@ export default async function Participants() {
       <p className="muted panel">
         Every onboarded wallet, its identity, and the claims on it, as the chain holds them now. The facts behind each claim
         stay with the institution that verified them: the bank for the deposit
-        {issuers && <> (claim issuer <Address value={issuers.deposit} />)</>}, the onboarding agent for the note
+        {issuers && <> (claim issuer <Address value={issuers.deposit} />)</>}, the onboarding agent for the notes
         {issuers && <> (<Address value={issuers.note} />)</>}.
       </p>
       {rows.length > 0 && (
         <div className="table-wrap panel">
           <table>
-            <thead><tr><th>Wallet</th><th>Identity</th><th>Route</th><th>The bank vouches</th><th>The onboarding agent vouches</th><th>May hold the deposit</th><th>May hold the note</th></tr></thead>
+            <thead><tr><th>Wallet</th><th>Identity</th><th>Route</th><th>The bank vouches</th><th>The onboarding agent vouches</th><th>May hold the deposit</th><th>May hold the notes</th></tr></thead>
             <tbody>
               {rows.map((p) => {
                 const dep = claimState(p.claims.deposit);

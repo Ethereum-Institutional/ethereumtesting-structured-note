@@ -210,7 +210,7 @@ test("S-09, then S-08: an unapproved wallet is refused; once approved, it accept
   assert.equal(await place.eligibleFor(note, investorC), false);
   await approveForNote(id, "depositAgent");
   assert.equal(await place.eligibleFor(note, investorC), true);
-  await assert.rejects(onboarding.decideNote(operator as any, id, "approve"), /no request for the note waiting/);
+  await assert.rejects(onboarding.decideNote(operator as any, id, "approve"), /no request for the notes waiting/);
 
   const offered = await place.placeUnits(operator as any, n.id, id, 2, 100_000n);
   assert.equal(offered.status, "offered", "a client's own wallet accepts itself");
@@ -237,6 +237,10 @@ test("S-08 for a custody account: the custodian accepts in the same action, and 
   const id = await admitted("adm_test_seg3", "bank-custody", account, operator.id);
   await credit(account, 200_000n);
   await approveForNote(id, "custodian");
+  // More than the account holds: refused before anything is sent, so no units are locked in an offer.
+  const before = (await place.offersOf((await store.noteById(n.id))!)).length;
+  await assert.rejects(place.placeUnits(operator as any, n.id, id, 1, 10n ** 15n), /The buyer holds .* of the deposit; 1 units cost .* The bank credits its deposit first/);
+  assert.equal((await place.offersOf((await store.noteById(n.id))!)).length, before, "no offer made");
   const p = await place.placeUnits(operator as any, n.id, id, 1, 100_000n);
   assert.equal(p.status, "settled");
   assert.ok(p.settledTx);

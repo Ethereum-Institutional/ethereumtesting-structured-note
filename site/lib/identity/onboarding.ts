@@ -260,10 +260,10 @@ export async function requestNote(client: Registrant, id: string, answers: Answe
   const d = dataOf(a);
   if (a.registrantId !== client.id || a.status !== "onboarded") throw new Error("Onboard for the deposit first.");
   if (d.note && ["requested", "approved"].includes(d.note.status)) return;
-  if (!answers.notUsPerson) throw new Error("The note is sold only outside the United States (Regulation S).");
+  if (!answers.notUsPerson) throw new Error("The notes are sold only outside the United States (Regulation S).");
   if (!answers.relyOnBankKyb) throw new Error("The onboarding agent relies on the bank's KYB; consent to it, or ask the onboarding agent to verify you itself.");
   await save(a, a.status, { ...d, note: { status: "requested", requestedAt: now(), answers } });
-  await audit(client.email, "asked for access to the note", a.id);
+  await audit(client.email, "asked for access to the notes", a.id);
 }
 
 /** An identity the client already has (Q2): the client names it and signs for its wallet. */
@@ -411,11 +411,11 @@ export async function decideNote(staff: Registrant, id: string, outcome: "approv
   must(staff, "onboarding");
   const a = await load(id);
   const d = dataOf(a);
-  if (a.status !== "onboarded" || d.note?.status !== "requested" || !d.identity) throw new Error("There is no request for the note waiting.");
+  if (a.status !== "onboarded" || d.note?.status !== "requested" || !d.identity) throw new Error("There is no request for the notes waiting.");
   const at = now();
   if (outcome === "decline") {
     await save(a, a.status, { ...d, note: { ...d.note, status: "declined", decidedAt: at, decidedBy: staff.email, reason } });
-    await audit(staff.email, `declined access to the note${reason ? `: ${reason}` : ""}`, a.id);
+    await audit(staff.email, `declined access to the notes${reason ? `: ${reason}` : ""}`, a.id);
     return;
   }
   if (d.note.answers.relyOnBankKyb && !(await eligibility(d.wallet!)).deposit) throw new Error("The bank's claim no longer stands; the client must be onboarded by the bank again.");
@@ -425,7 +425,7 @@ export async function decideNote(staff: Registrant, id: string, outcome: "approv
   const latest = await load(id);
   const ld = dataOf(latest);
   await save(latest, latest.status, { ...ld, note: { ...ld.note!, status: "approved", decidedAt: at, decidedBy: staff.email, salt, recordHash: hash, ...v }, error: undefined });
-  await audit(staff.email, `approved ${d.wallet} for the note`, a.id);
+  await audit(staff.email, `approved ${d.wallet} for the notes`, a.id);
 }
 
 /** The onboarding agent revokes its claim at once: the wallet can no longer receive the note. */
@@ -515,8 +515,8 @@ export async function acceptExisting(staff: Registrant, id: string): Promise<voi
   if (!ok) {
     await unregister(d.wallet);
     const latest = await load(id);
-    await save(latest, latest.status, { ...dataOf(latest), error: "No issuer the note trusts vouches for this identity." }, "declined");
-    await audit(staff.email, `refused identity ${d.identity}: no trusted claim for the note`, a.id);
+    await save(latest, latest.status, { ...dataOf(latest), error: "No issuer the notes trust vouches for this identity." }, "declined");
+    await audit(staff.email, `refused identity ${d.identity}: no trusted claim for the notes`, a.id);
     return;
   }
   const latest = await load(id);
