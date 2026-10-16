@@ -39,7 +39,7 @@ export default async function SignUps() {
                   <Decide r={r} self={r.email === op.email} />
                   {admin && r.email !== op.email && (
                     <details>
-                      <summary>Delete…</summary>
+                      <summary title="Deletes this registration and its sign-in records; the address may register again. Admins only.">Delete…</summary>
                       <ActionForm action={deleteRegistrationAction} hidden={{ id: r.id }} label="Delete permanently" working="Deleting…" quiet>
                         <p className="muted" style={{ margin: 0 }}>
                           Removes the registration, its sessions and its onboarding requests. The audit log keeps the deletion, and the

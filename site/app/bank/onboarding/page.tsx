@@ -54,7 +54,7 @@ export default async function BankOnboarding() {
               <p className="notice">The bank has no client yet. <Link href="/bank/clients">Add the client under Clients</Link>, then confirm the request here.</p>
             )}
             <details>
-              <summary>Decline…</summary>
+              <summary title="Refuses this request, with a reason the client sees. Nothing reaches the chain.">Decline…</summary>
               <ActionForm action={declineRouteAction} hidden={{ id: a.id }} label="Decline" working="Declining…" quiet>
                 <label>Reason<input name="reason" maxLength={500} /></label>
               </ActionForm>
@@ -118,26 +118,27 @@ export default async function BankOnboarding() {
                             </ActionForm>
                           )}
                           <details>
-                            <summary>Credit deposit…</summary>
+                            <summary title="Issues the bank's tokenized deposit into this wallet, as when the client pays money into its account at the bank: the client's cash, now able to settle the note on-chain.">Credit deposit…</summary>
                             <ActionForm action={creditDepositAction} hidden={{ id: a.id }} label="Credit" working="Crediting the deposit…">
+                              <p className="muted" style={{ margin: 0 }}>Issues the bank's tokenized deposit into this wallet, as when the client pays money into its account at the bank: the client's cash, now able to settle the note on-chain. Booked under a fresh reference.</p>
                               <label>Amount<input name="amount" required inputMode="decimal" placeholder="10.00" /></label>
                             </ActionForm>
                           </details>
                           <details>
-                            <summary>Renew the bank's claim…</summary>
+                            <summary title="Adds a fresh claim that the client may hold the deposit, against its current record, for another 180 days.">Renew the bank's claim…</summary>
                             <ActionForm action={renewDepositAction} hidden={{ id: a.id }} label="Renew" working="Adding a fresh claim…">
                               <p className="muted">A fresh claim against the client's current record, running another 180 days.</p>
                             </ActionForm>
                           </details>
                           <details>
-                            <summary>Revoke the bank's claim…</summary>
+                            <summary title="Withdraws, at once, the bank's word that this client may hold the deposit. Its identity and the note's claim are untouched.">Revoke the bank's claim…</summary>
                             <ActionForm action={revokeDepositAction} hidden={{ id: a.id }} label="Revoke" working="Revoking…" quiet>
                               <p className="muted">At once: the wallet can no longer hold or receive the deposit. Its identity and the note's claim are untouched.</p>
                               <label>Reason<input name="reason" required maxLength={500} /></label>
                             </ActionForm>
                           </details>
                           <details>
-                            <summary>Offboard…</summary>
+                            <summary title="Ends the relationship on-chain: revokes the bank's claim and removes the wallet from every registry. The bank's records stay.">Offboard…</summary>
                             <ActionForm action={offboardAction} hidden={{ id: a.id }} label="Offboard" working="Revoking and removing…" quiet>
                               <p className="muted">Revokes the bank's claim and removes the wallet from every registry: it can no longer hold, send or receive either asset.</p>
                               <label>Reason<input name="reason" required maxLength={500} /></label>

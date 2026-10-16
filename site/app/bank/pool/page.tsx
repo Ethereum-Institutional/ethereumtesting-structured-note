@@ -4,6 +4,7 @@ import { loadManifest } from "@/lib/chain/manifest";
 import { admitToPoolAction, revokePoolAction } from "../../actions";
 import { ActionForm } from "../../staff/ActionForm";
 import { Address } from "../../Address";
+import { accountNamer } from "@/lib/identity/names";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
  * pool's own identity registry, with the client's country and any supervisory withdrawal.
  */
 export default async function Pool() {
+  const nameOf = await accountNamer();
   if (!loadManifest().venue) {
     return (
       <>
@@ -40,7 +42,7 @@ export default async function Pool() {
                 const claim = claimState(p.claims.pool);
                 return (
                   <tr key={p.admission.id} data-wallet={p.wallet}>
-                    <td>{d.request?.organisation}</td>
+                    <td>{nameOf(p.admission)}</td>
                     <td>{ROUTE_LABEL[p.admission.route]}</td>
                     <td><Address value={p.wallet} /></td>
                     <td><span className={`pill ${claim.pill}`}>{claim.label}</span>{d.pool && <> <span className="muted">{d.pool.investorClass}</span></>}</td>
@@ -48,7 +50,7 @@ export default async function Pool() {
                     <td>
                       {p.claims.pool.valid ? (
                         <details>
-                          <summary>Revoke…</summary>
+                          <summary title="Withdraws the bank's pool-access claim: the wallet can no longer convert in the pool.">Revoke…</summary>
                           <ActionForm action={revokePoolAction} hidden={{ id: p.admission.id }} label="Revoke pool access" working="Revoking…" quiet>
                             <p className="muted">At once: the wallet can no longer convert. What it holds stays its own.</p>
                             <label>Reason<input name="reason" required maxLength={500} /></label>
@@ -56,7 +58,7 @@ export default async function Pool() {
                         </details>
                       ) : (
                         <details>
-                          <summary>Admit…</summary>
+                          <summary title="Adds the bank's pool-access claim: the wallet may then convert the euro payment token and the deposit in the pool.">Admit…</summary>
                           <ActionForm action={admitToPoolAction} hidden={{ id: p.admission.id }} label="Admit to the pool" working="Signing and adding the claim…" quiet>
                             <p className="muted">The bank has found the client one of the pool's investor classes, and screened it.</p>
                             <label>

@@ -6,6 +6,7 @@ import { custodyConvertAction, openAccountAction } from "../actions";
 import { ActionForm } from "../staff/ActionForm";
 import { when } from "../staff/parts";
 import { Address } from "../Address";
+import { accountNamer } from "@/lib/identity/names";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export const dynamic = "force-dynamic";
  * custody platform converts in the pool for an account the bank admitted (ADR 0090).
  */
 export default async function Accounts() {
+  const nameOf = await accountNamer();
   const admissions = await getStore().listAdmissions(500);
   const waiting = admissions.filter((a) => a.status === "awaiting-custodian" && a.route === "third-party");
   const held = await participants((a) => custodianOf(a) !== null);
@@ -64,7 +66,7 @@ export default async function Accounts() {
                       const note = claimState(p.claims.note);
                       return (
                         <tr key={p.admission.id}>
-                          <td>{d.request?.organisation}</td>
+                          <td>{nameOf(p.admission)}</td>
                           <td>{d.clientRef}</td>
                           <td><Address value={p.wallet} /></td>
                           <td><Address value={p.identity} /></td>
@@ -74,7 +76,7 @@ export default async function Accounts() {
                           <td>
                             {which === "bank" && p.pool === "admitted" && (
                               <details>
-                                <summary>Convert…</summary>
+                                <summary title="Converts for the client in the pool, between the euro payment token and the bank's deposit, from its custody account.">Convert…</summary>
                                 <ActionForm action={custodyConvertAction} hidden={{ id: p.admission.id }} label="Convert for the client" working="Converting in the pool…" quiet>
                                   <label>
                                     Direction

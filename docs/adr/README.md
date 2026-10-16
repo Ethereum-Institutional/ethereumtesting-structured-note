@@ -116,3 +116,5 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0106](0106-addresses-shortened-and-linked.md) | Addresses shown short, and linked to the explorer | Accepted |
 | [0107](0107-a-client-closes-an-account.md) | A client asks to close an account; the bank closes it | Accepted |
 | [0108](0108-the-bank-removes-a-client.md) | The bank removes a client, to add it again | Accepted |
+| [0109](0109-the-page-uses-the-screen.md) | The page uses the screen, and the portal's actions explain themselves | Accepted |
+| [0110](0110-an-account-is-named-by-the-banks-client.md) | An account is named by the bank's client | Accepted |

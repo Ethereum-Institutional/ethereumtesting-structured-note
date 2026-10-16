@@ -47,7 +47,7 @@ export default async function Clients() {
                           <PendingButton className="quiet" working="Re-screening…">Re-screen</PendingButton>
                         </form>
                         <details>
-                          <summary>Remove…</summary>
+                          <summary title="Removes this client from the bank's records, so it can be added again with its facts put right.">Remove…</summary>
                           <ActionForm action={removeClientAction} hidden={{ id: c.id }} label="Remove the client" working="Removing…" quiet>
                             <p className="muted" style={{ margin: 0 }}>
                               Removes the record, so the client can be added again with its facts put right. Refused while an account for it is onboarded on the

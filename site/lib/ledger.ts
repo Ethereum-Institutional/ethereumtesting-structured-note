@@ -3,6 +3,7 @@ import { createPublicClient, defineChain, http, parseAbi, parseAbiItem, type Add
 import { addressBook, loadManifest, type Manifest } from "./chain/manifest.ts";
 import { readTape, Tape, type TapeRow } from "./chain/tape.ts";
 import { getStore } from "./store.ts";
+import { accountNamer } from "./identity/names.ts";
 
 /**
  * The Ledger (ADR 0071): the deployment's lifecycle reconstructed from chain events alone (S-35),
@@ -163,13 +164,14 @@ export async function reconcile(): Promise<RegisterRow[]> {
   const accounts = new Map<string, Address>();
   for (const l of stored) if (l.args._investorAddress) accounts.set(l.args._investorAddress.toLowerCase(), l.args._investorAddress);
   const known = new Map<string, NonNullable<RegisterRow["site"]>>();
+  const nameOf = await accountNamer();
   for (const a of await getStore().listAdmissions(1000)) {
     const d = a.data as Record<string, any>;
     const wallet: string | undefined = d.wallet;
     if (!wallet || !["onboarded", "offboarded"].includes(a.status)) continue;
     const key = wallet.toLowerCase();
     // The newest onboarding of a wallet speaks for it.
-    if (!known.has(key)) known.set(key, { client: String(d.request?.organisation ?? ""), route: a.route, status: a.status, admission: a.id });
+    if (!known.has(key)) known.set(key, { client: nameOf(a), route: a.route, status: a.status, admission: a.id });
     accounts.set(key, wallet as Address);
   }
 

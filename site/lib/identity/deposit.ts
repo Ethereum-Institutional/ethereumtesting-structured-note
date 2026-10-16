@@ -6,6 +6,7 @@ import { until } from "../chain/until.ts";
 import { client, deploymentBlock, noteContracts, withCustodyAccounts } from "../ledger.ts";
 import { getStore } from "../store.ts";
 import { context } from "./onchain.ts";
+import { accountNamer } from "./names.ts";
 
 /**
  * The bank's tokenized deposit (ADRs 0086, 0092): credits and debits through the deposit gateway,
@@ -163,9 +164,10 @@ export async function depositView(): Promise<DepositView> {
   for (const n of notes) names.set(n.address.toLowerCase(), n.label);
   const onboarding = new Map<string, { id: string; name: string }>();
   const refs = new Map<string, string>();
+  const nameOf = await accountNamer();
   for (const a of admissions) {
     const d = a.data as Record<string, any>;
-    if (d.wallet && !onboarding.has(String(d.wallet).toLowerCase())) onboarding.set(String(d.wallet).toLowerCase(), { id: a.id, name: String(d.request?.organisation ?? "") });
+    if (d.wallet && !onboarding.has(String(d.wallet).toLowerCase())) onboarding.set(String(d.wallet).toLowerCase(), { id: a.id, name: nameOf(a) });
     for (const b of [...(d.credits ?? []), ...(d.debits ?? [])]) if (b.bookingRef) refs.set(keccak256(toBytes(b.bookingRef)).toLowerCase(), b.bookingRef);
   }
   // Every booking the site made carries its reference in the audit log, whoever it was for.

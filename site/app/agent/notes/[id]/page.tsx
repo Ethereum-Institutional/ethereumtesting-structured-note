@@ -29,6 +29,7 @@ import { ActionForm } from "../../../staff/ActionForm";
 import { Linked, when } from "../../../staff/parts";
 import { PlaceForm, type Placeable } from "../PlaceForm";
 import { Address } from "../../../Address";
+import { accountNamer } from "@/lib/identity/names";
 
 export const dynamic = "force-dynamic";
 
@@ -52,11 +53,12 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
     locked ? offersOf(n).catch(() => []) : Promise.resolve([]),
     locked ? holdersOf(n).catch(() => new Map<string, bigint>()) : Promise.resolve(new Map<string, bigint>()),
   ]);
+  const nameOf = await accountNamer();
   const accounts: Placeable[] = admissions
     .filter((a) => a.status === "onboarded")
     .map((a) => {
       const d = dataOf(a);
-      return { id: a.id, label: `${d.request?.organisation ?? "Account"}, ${routeLabel(a.route)}, ${String(d.wallet ?? "").slice(0, 10)}…`, regS: d.note?.status === "approved" || a.route === "existing-identity" };
+      return { id: a.id, label: `${nameOf(a)}, ${routeLabel(a.route)}, ${String(d.wallet ?? "").slice(0, 10)}…`, regS: d.note?.status === "approved" || a.route === "existing-identity" };
     });
   const legacy = ((n.data.placements ?? []) as Placement[]).slice().reverse();
   const arranged = ((n.data.arranged ?? []) as Arranged[]).filter((x) => x.status === "awaiting-seller");

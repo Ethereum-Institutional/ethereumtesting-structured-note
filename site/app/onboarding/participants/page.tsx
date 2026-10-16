@@ -3,11 +3,13 @@ import { claimState, participants } from "@/lib/identity/participants";
 import { revokeNoteAction } from "../../actions";
 import { ActionForm } from "../../staff/ActionForm";
 import { Address } from "../../Address";
+import { accountNamer } from "@/lib/identity/names";
 
 export const dynamic = "force-dynamic";
 
 /** The wallets the onboarding agent vouched for the note, and its claim on each, revoked here. */
 export default async function VouchedFor() {
+  const nameOf = await accountNamer();
   const rows = await participants((a) => Boolean(dataOf(a).note && dataOf(a).note!.status !== "requested") || a.route === "existing-identity");
   return (
     <>
@@ -23,7 +25,7 @@ export default async function VouchedFor() {
                 const note = claimState(p.claims.note);
                 return (
                   <tr key={p.admission.id}>
-                    <td>{d.request?.organisation}</td>
+                    <td>{nameOf(p.admission)}</td>
                     <td>{ROUTE_LABEL[p.admission.route]}</td>
                     <td><Address value={p.wallet} /></td>
                     <td><Address value={p.identity} /></td>
@@ -32,7 +34,7 @@ export default async function VouchedFor() {
                     <td>
                       {d.note?.status === "approved" && (
                         <details>
-                          <summary>Revoke…</summary>
+                          <summary title="Withdraws the onboarding agent's claim: the wallet can no longer receive the note.">Revoke…</summary>
                           <ActionForm action={revokeNoteAction} hidden={{ id: p.admission.id }} label="Revoke the note claim" working="Revoking…" quiet>
                             <p className="muted">At once: the wallet can no longer receive the note. Units it holds stay its own until the Agent acts.</p>
                             <label>Reason<input name="reason" required maxLength={500} /></label>

@@ -32,7 +32,7 @@ export default async function Deposit() {
           <dt>State</dt><dd><span className={`pill ${view.paused ? "revoked" : "approved"}`}>{view.paused ? "paused" : "moving"}</span></dd>
         </dl>
         <details>
-          <summary>{view.paused ? "Resume the deposit…" : "Pause the deposit…"}</summary>
+          <summary title={view.paused ? "Lets transfers, credits and debits move again." : "Stops every transfer, credit and debit at once, and with them the pool and settlement."}>{view.paused ? "Resume the deposit…" : "Pause the deposit…"}</summary>
           <ActionForm action={pauseDepositAction} hidden={{ pause: view.paused ? "0" : "1" }} label={view.paused ? "Resume" : "Pause"} working={view.paused ? "Resuming…" : "Pausing…"}>
             <p className="muted" style={{ margin: 0 }}>
               {view.paused ? "Transfers, credits and debits move again." : "Every transfer, credit and debit stops at once, and with them the pool and settlement. An order still moves."}
@@ -57,20 +57,21 @@ export default async function Deposit() {
                   <td>{h.why === "identity" ? "the bank's claim" : h.why === "allowlist" ? "the allowlist" : <span className="pill revoked">nothing: it cannot move</span>}</td>
                   <td>
                     <details>
-                      <summary>Credit…</summary>
+                      <summary title="Issues the bank's tokenized deposit into this wallet, as when the client pays money into its account at the bank: the client's cash, now able to settle the note on-chain.">Credit…</summary>
                       <ActionForm action={creditAccountAction} hidden={{ account: h.account }} label="Credit" working="Crediting…" quiet>
+                        <p className="muted" style={{ margin: 0 }}>Issues the bank's tokenized deposit into this account, as when the client pays money into its account at the bank: the client's cash, now able to settle the note on-chain. Booked under a fresh reference.</p>
                         <label>Amount<input name="amount" required inputMode="decimal" placeholder="100.00" /></label>
                       </ActionForm>
                     </details>
                     <details>
-                      <summary>Debit…</summary>
+                      <summary title="Takes deposit out of this account, as when the client withdraws money: paid out to its account at the bank.">Debit…</summary>
                       <ActionForm action={debitDepositAction} hidden={{ account: h.account }} label="Debit" working="Debiting…" quiet>
                         <p className="muted" style={{ margin: 0 }}>Paid out to the client's account at the bank, against a booking. A held amount cannot be debited.</p>
                         <label>Amount<input name="amount" required inputMode="decimal" placeholder="100.00" /></label>
                       </ActionForm>
                     </details>
                     <details>
-                      <summary>Hold…</summary>
+                      <summary title="Freezes part of the balance, with a reason: it stays the client's but cannot move or be debited until released.">Hold…</summary>
                       <ActionForm action={holdDepositAction} hidden={{ account: h.account }} label="Set the hold" working="Holding…" quiet>
                         <p className="muted" style={{ margin: 0 }}>The whole amount held from now; zero releases it. A held amount cannot move or be debited.</p>
                         <label>Amount held<input name="amount" required inputMode="decimal" defaultValue="0" /></label>
@@ -78,7 +79,7 @@ export default async function Deposit() {
                       </ActionForm>
                     </details>
                     <details>
-                      <summary>Move by order…</summary>
+                      <summary title="Moves deposit between accounts under a court's or a regulator's order, its reason on-chain. Not for corrections.">Move by order…</summary>
                       <ActionForm action={enforceDepositAction} hidden={{ account: h.account }} label="Move by order" working="Moving by order…" quiet>
                         <p className="muted" style={{ margin: 0 }}>A court's or a regulator's order, its reason recorded on-chain in full. Held or paused, it moves. A correction is a debit and a credit instead.</p>
                         <label>To<select name="to" required defaultValue="">

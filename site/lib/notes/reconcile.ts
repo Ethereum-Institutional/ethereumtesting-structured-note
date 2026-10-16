@@ -7,6 +7,7 @@ import { lifecycleOf } from "./lifecycle.ts";
 import { offersOf } from "./place.ts";
 import { chainClient, type NoteOnRecord } from "./registry.ts";
 import { termSheetOfNote, type NoteTermSheet } from "./termsheets.ts";
+import { accountNamer } from "../identity/names.ts";
 
 /**
  * A note's reconciliation statement (ADR 0094), generalising its close-out statement (S-33,
@@ -143,9 +144,10 @@ async function names(): Promise<(a: Address) => string | null> {
   const map = new Map<string, string>();
   for (const [a, v] of addressBook(withCustody)) map.set(a, v.label);
   for (const n of notes) map.set(n.address.toLowerCase(), n.label);
+  const nameOf = await accountNamer();
   for (const a of admissions) {
     const d = a.data as Record<string, any>;
-    if (d.wallet && d.request?.organisation) map.set(String(d.wallet).toLowerCase(), String(d.request.organisation));
+    if (d.wallet) map.set(String(d.wallet).toLowerCase(), nameOf(a));
   }
   return (a) => map.get(a.toLowerCase()) ?? null;
 }

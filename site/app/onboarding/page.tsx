@@ -5,6 +5,7 @@ import { decideNoteAction } from "../actions";
 import { ActionForm } from "../staff/ActionForm";
 import { when } from "../staff/parts";
 import { Address } from "../Address";
+import { accountNamer } from "@/lib/identity/names";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
  * bank's claim stands, which the client consented to it relying on, and never the bank's record.
  */
 export default async function NoteRequests() {
+  const nameOf = await accountNamer();
   const admissions = await getStore().listAdmissions(500);
   const waiting = admissions.filter((a) => a.status === "onboarded" && dataOf(a).note?.status === "requested");
   const rows = await Promise.all(waiting.map(async (a) => ({ a, p: await participantOf(a) })));
@@ -26,7 +28,7 @@ export default async function NoteRequests() {
         return (
           <section className="panel" key={a.id}>
             <p className="eyebrow">{ROUTE_LABEL[a.route]}, asked {when(d.note!.requestedAt)}</p>
-            <h3 style={{ margin: "0.25rem 0 1rem" }}>{d.request?.organisation}</h3>
+            <h3 style={{ margin: "0.25rem 0 1rem" }}>{nameOf(a)}</h3>
             <dl className="facts">
               <dt>Wallet</dt><dd><Address value={d.wallet} /></dd>
               <dt>Identity</dt><dd><Address value={d.identity} /></dd>
