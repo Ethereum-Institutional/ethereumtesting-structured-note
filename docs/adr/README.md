@@ -122,3 +122,4 @@ A decision owned by a party outside engineering is **Proposed** until that party
 | [0112](0112-placement-checks-the-buyers-cash.md) | Placement checks the buyer's cash before offering | Accepted |
 | [0113](0113-contracts-verified-on-etherscan.md) | Every contract verified on Etherscan | Accepted |
 | [0114](0114-tier-1-names-the-note-it-governs.md) | Tier 1 names the note it governs, and its accounts by client | Accepted |
+| [0115](0115-a-note-programme-for-an-agency-and-trust-business.md) | A note programme for an agency and trust business | Accepted |
