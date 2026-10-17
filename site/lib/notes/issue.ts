@@ -8,8 +8,8 @@ import { getStore, type DemoNote, type Registrant } from "../store.ts";
 import { hasRole } from "../operators.ts";
 import scenarios from "./scenarios.json" with { type: "json" };
 import { calendar as calendarOf, calendarProblem, stretch, type Interval } from "./calendar.ts";
-import { termSheetFrom, toTerms } from "./termsheet.ts";
-import { keepTermSheet, termSheetOfNote, termSheetUri } from "./termsheets.ts";
+import { SCHEMA, termSheetFrom, toTerms, v, validate, value, isNA, type Item, type TermSheet } from "./termsheet.ts";
+import { keepTermSheet, termSheetByHash, termSheetOfNote, termSheetUri } from "./termsheets.ts";
 
 /**
  * Issuing a note: the same contracts as the deployment's own note, a scenario's terms, and a
@@ -63,7 +63,8 @@ function context() {
 const shapeOf = (n: DemoNote): { observations: number; interval: Interval } =>
   n.interval && n.observations ? { observations: n.observations, interval: n.interval } : { observations: 4, interval: { value: n.spacingMinutes ?? 10, unit: "minutes" } };
 
-type Ctx = ReturnType<typeof context> & { n: DemoNote; scenario: Scenario };
+/** A note issued from a scenario has one; a note issued from an uploaded term sheet has none. */
+type Ctx = ReturnType<typeof context> & { n: DemoNote; scenario: Scenario | undefined };
 type Step = { label: string; run: (c: Ctx) => Promise<Partial<DemoNote> | void> };
 
 /** What the site records of an issued note: its contracts, calendar, term sheet and transaction. */
@@ -137,12 +138,23 @@ const STEPS: Step[] = [
       const issuerWallet = c.m.governance?.issuerGovernance;
       if (!issuerWallet) throw new Error("The deployment has no Issuer's wallet.");
       const block = await c.s.publicClient.getBlock();
-      const shape = shapeOf(c.n);
-      const calendar = calendarOf(Number(block.timestamp), shape.observations, shape.interval);
-      const stretched = stretch(c.scenario, shape.observations);
-      const t = c.scenario.terms;
-      // The term sheet first: the record this series is issued from, kept and published by its hash (ADR 0095).
-      const record = termSheetFrom({
+      let record: TermSheet;
+      let calendar: Array<{ date: number; recordTime: number; paymentDate: number }>;
+      const uploaded = c.n.data.termSheet as string | undefined;
+      if (uploaded) {
+        // Issued from a term sheet staff uploaded: the record as it stands, its dates its own.
+        const kept = await termSheetByHash(uploaded);
+        if (!kept) throw new Error("The term sheet this note is issued from is no longer on record.");
+        record = kept;
+        calendar = (value<Item[]>(record.fields.calendar) ?? []).map((o) => ({ date: Number(value(o.date)), recordTime: Number(value(o.recordTime)), paymentDate: Number(value(o.paymentDate)) }));
+        if (calendar[0].recordTime <= Number(block.timestamp)) throw new Error(`The term sheet's first Record Time, ${new Date(calendar[0].recordTime * 1000).toISOString()}, has passed: issue it with later dates.`);
+      } else {
+        const shape = shapeOf(c.n);
+        calendar = calendarOf(Number(block.timestamp), shape.observations, shape.interval);
+        const stretched = stretch(c.scenario!, shape.observations);
+        const t = c.scenario!.terms;
+        // The term sheet first: the record this series is issued from, kept and published by its hash.
+        record = termSheetFrom({
         name: c.n.name,
         symbol: c.n.symbol,
         chainId: c.m.chainId,
@@ -157,7 +169,9 @@ const STEPS: Step[] = [
         twinWin: t.twinWin,
         schedule: stretched.schedule.map((o, k) => ({ date: calendar[k].date, recordTime: calendar[k].recordTime, paymentDate: calendar[k].paymentDate, coupon: o.coupon, mer: o.mer, barrier: o.barrier, isFinal: o.isFinal, merTriggerBps: o.merTriggerBps })),
         depositSymbol: c.m.assets.deposit!.symbol,
-      });
+        });
+        if (c.n.isin) record.fields.isin = v(c.n.isin);
+      }
       const sheetHash = await keepTermSheet(record);
       const terms = toTerms(record);
       const params = {
@@ -188,9 +202,10 @@ const STEPS: Step[] = [
   {
     label: "The bank funds the Agent for coupons and redemptions",
     run: async (c) => {
-      // Enough to pay every coupon and redeem at the most the scenario can pay: twice the Calculation Amount per unit.
+      // Enough to pay every coupon and redeem at the most the note can pay: twice the Calculation Amount per unit.
       // The Agent approves the Paying Agent for each distribution's exact amount when it opens.
-      const amount = BigInt(c.n.units) * BigInt(c.scenario.terms.calculationAmountCents) * 2n;
+      const ca = c.scenario ? c.scenario.terms.calculationAmountCents : Number(c.n.data.calculationAmountCents);
+      const amount = BigInt(c.n.units) * BigInt(ca) * 2n;
       const h = await c.s.send("depositAgent", { address: c.m.instruments!.gateway, abi: GATEWAY, functionName: "credit", args: [c.s.address("agent"), amount, keccak256(toBytes(`${c.n.symbol}/funding/${randomBytes(4).toString("hex")}`))] });
       return tx("funding", h)(c.n);
     },
@@ -257,6 +272,63 @@ export async function startNote(staff: Registrant, input: { scenario: string; ob
   return n;
 }
 
+/**
+ * Staff issue a note from a term sheet they upload: the record is the note's terms and its
+ * published term sheet, as it stands. Checked first: against the schema, against this network, its
+ * ISIN, its dates still to come, and its symbol not already used.
+ */
+export async function startNoteFromTermSheet(staff: Registrant, raw: string): Promise<DemoNote> {
+  if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
+  let record: TermSheet;
+  try {
+    record = JSON.parse(raw);
+  } catch {
+    throw new Error("The term sheet is not JSON: upload the record as the site publishes term sheets.");
+  }
+  if (record?.schema !== SCHEMA) throw new Error(`This is not a term sheet record: its schema should be ${SCHEMA}.`);
+  const problems = validate(record);
+  if (problems.length) throw new Error(`The term sheet is not complete: ${problems.slice(0, 5).join("; ")}${problems.length > 5 ? `; and ${problems.length - 5} more` : ""}.`);
+  const m = loadManifest();
+  const f = record.fields;
+  if (Number(value(f.chainId)) !== m.chainId) throw new Error(`The term sheet is for network ${value(f.chainId)}; this deployment is on ${m.chainId}.`);
+  const isin = isNA(f.isin) ? "" : String(value(f.isin) ?? "").trim().toUpperCase();
+  const bad = isinProblem(isin);
+  if (bad) throw new Error(bad);
+  const units = Number(value(f.issueSizeUnits));
+  if (!Number.isInteger(units) || units < 1 || units > 1_000_000) throw new Error("The issue size is between 1 and 1,000,000 units.");
+  const calendar = value<Item[]>(f.calendar) ?? [];
+  const now_ = Number((await context().s.publicClient.getBlock()).timestamp);
+  if (Number(value(calendar[0]?.recordTime)) <= now_ + 60) throw new Error("The term sheet's first Record Time has passed, or is under a minute away: give dates still to come.");
+  const symbol = String(value(f.symbol));
+  const name = String(value(f.name));
+  const store = getStore();
+  const stored = await store.listNotes();
+  if (stored.some((x) => x.symbol === symbol && x.status !== "failed") || symbol === (await readLive(m, "symbol"))) throw new Error(`The symbol ${symbol} is already used by a note.`);
+  if (isin && stored.some((x) => x.isin === isin && x.status !== "failed")) throw new Error("A note with that ISIN is already issued or being issued.");
+  const hash = await keepTermSheet(record);
+  const onChain = Number(await context().s.publicClient.readContract({ address: context().factory, abi: FACTORY, functionName: "seriesCount" }));
+  const n: DemoNote = {
+    id: `note_${randomBytes(9).toString("base64url")}`,
+    series: Math.max(onChain, ...stored.map((x) => x.series)) + 1,
+    ...(isin ? { isin } : {}),
+    name,
+    symbol,
+    scenario: "",
+    observations: calendar.length,
+    units,
+    status: "issuing",
+    step: 0,
+    createdAt: now(),
+    by: staff.email,
+    addresses: {},
+    txs: {},
+    data: { termSheet: hash, calculationAmountCents: Number(value(f.calculationAmountCents)) },
+  };
+  await store.putNote(n);
+  await store.audit({ at: now(), actor: staff.email, action: `started issuing ${name} (${symbol}) from term sheet ${hash}: ${units} units, ${calendar.length} observations`, subject: n.id });
+  return n;
+}
+
 async function readLive(m: Manifest, functionName: "name" | "symbol"): Promise<string> {
   const { s } = context();
   return s.publicClient.readContract({ address: m.assets.note!.address as Address, abi: NOTE, functionName });
@@ -306,7 +378,7 @@ export async function advanceIssuance(id: string): Promise<DemoNote | null> {
   // Claim the step: a negative step marks it in flight, so a second caller does nothing.
   const claimed = { ...n, step: -(n.step + 1), claimedAt: now(), error: undefined };
   if (!(await store.updateNote(claimed, n.step))) return n;
-  const scenario = SCENARIOS.find((s) => s.name === n.scenario)!;
+  const scenario = SCENARIOS.find((s) => s.name === n.scenario);
   try {
     const patch = (await step.run({ ...context(), n, scenario })) ?? {};
     const next = { ...n, ...patch, step: n.step + 1, claimedAt: undefined, error: undefined } as DemoNote;

@@ -30,6 +30,10 @@ project, team = sys.argv[1], sys.argv[2]
 sys.path.insert(0, os.path.join(os.environ["ROOT"], "ops"))
 from site_env import site_env
 env = site_env(os.environ["MANIFEST"], os.environ["NETWORK"], embed_manifest=True)
+# The secret Vercel's cron presents to carry background jobs on (ADR 0116): made here, sent straight
+# to the project, never shown; each run replaces it.
+import secrets
+env["CRON_SECRET"] = secrets.token_urlsafe(32)
 for key, value in env.items():
     body = json.dumps({"key": key, "value": value, "type": "sensitive", "target": ["production"]}).encode()
     req = urllib.request.Request(

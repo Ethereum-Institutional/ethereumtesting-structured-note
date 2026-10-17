@@ -4,6 +4,8 @@ import { addressBook, loadManifest, type Manifest } from "./chain/manifest.ts";
 import { readTape, Tape, type TapeRow } from "./chain/tape.ts";
 import { getStore } from "./store.ts";
 import { accountNamer } from "./identity/names.ts";
+import { holdingsFromIndex } from "./chain/events.ts";
+import { notesOnRecord } from "./notes/registry.ts";
 
 /**
  * The Ledger (ADR 0071): the deployment's lifecycle reconstructed from chain events alone (S-35),
@@ -149,7 +151,7 @@ export type RegisterRow = {
   label: string | null;
   /** Not a disagreement: why the site has no record of it. */
   note: string | null;
-  onChain: { identity: Address | null; depositEligible: boolean; noteEligible: boolean; deposit: bigint; note: bigint };
+  onChain: { identity: Address | null; depositEligible: boolean; noteEligible: boolean; deposit: bigint; note: bigint; holdings: Array<{ symbol: string; units: bigint }> };
   site: { client: string; route: string; status: string; admission: string } | null;
   finding: string | null;
 };
@@ -177,15 +179,21 @@ export async function reconcile(): Promise<RegisterRow[]> {
 
   const rows: RegisterRow[] = [];
   const book = addressBook(await withCustodyAccounts(c, m, from));
+  // Every note's holdings, from the index of the programme's events, and each note's symbol.
+  const [held, notes] = await Promise.all([holdingsFromIndex(), notesOnRecord().catch(() => [])]);
+  const symbolOf = new Map(notes.map((n) => [n.token.toLowerCase(), n.symbol]));
   const noteRegistry = m.noteSuite?.identityRegistry;
   for (const account of accounts.values()) {
-    const [identity, depositEligible, noteEligible, deposit, noteBalance] = await Promise.all([
+    const [identity, depositEligible, noteEligible, deposit] = await Promise.all([
       c.readContract({ address: m.identity.depositRegistry, abi: VIEWS, functionName: "identity", args: [account] }),
       c.readContract({ address: m.identity.depositRegistry, abi: VIEWS, functionName: "isVerified", args: [account] }),
       noteRegistry ? c.readContract({ address: noteRegistry, abi: VIEWS, functionName: "isVerified", args: [account] }) : Promise.resolve(false),
       c.readContract({ address: m.assets.deposit!.address as Address, abi: VIEWS, functionName: "balanceOf", args: [account] }),
-      m.assets.note ? c.readContract({ address: m.assets.note.address as Address, abi: VIEWS, functionName: "balanceOf", args: [account] }) : Promise.resolve(0n),
     ]);
+    const holdings = [...held.entries()]
+      .map(([token, accounts]) => ({ symbol: symbolOf.get(token) ?? token, units: accounts.get(account.toLowerCase()) ?? 0n }))
+      .filter((h) => h.units !== 0n);
+    const noteBalance = holdings.reduce((t, h) => t + h.units, 0n);
     const site = known.get(account.toLowerCase()) ?? null;
     const registered = !/^0x0{40}$/i.test(identity);
     const label = book.get(account.toLowerCase())?.label ?? null;
@@ -195,8 +203,9 @@ export async function reconcile(): Promise<RegisterRow[]> {
       : site.status === "onboarded" && !registered ? "The site records it onboarded, but the identity storage holds no identity for it"
       : site.status === "onboarded" && !depositEligible ? "The site records it onboarded, but the deposit does not accept it: the bank's claim was revoked or has lapsed. Renew or offboard it."
       : site.status === "offboarded" && registered ? "The site records it offboarded, but the identity storage still holds its identity"
+      : noteBalance > 0n && !noteEligible ? "It holds units of a note, but the notes no longer accept it: the onboarding agent's claim was revoked or has lapsed"
       : null;
-    rows.push({ account, label, note, onChain: { identity: registered ? identity : null, depositEligible, noteEligible, deposit, note: noteBalance }, site, finding });
+    rows.push({ account, label, note, onChain: { identity: registered ? identity : null, depositEligible, noteEligible, deposit, note: noteBalance, holdings }, site, finding });
   }
   // Disagreements first, then the site's own accounts, then what the deployment onboarded itself.
   const rank = (r: RegisterRow) => (r.finding ? 0 : r.site ? 1 : 2);

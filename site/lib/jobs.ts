@@ -1,7 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { getStore, type Job, type Registrant } from "./store.ts";
-import { hasRole } from "./operators.ts";
+import { AUTOMATIC_APPROVER, automaticSecondApprover, DUTY_LABEL, hasDuty, hasRole, type Duty } from "./operators.ts";
 
 /**
  * Background jobs (ADR 0116): issuance and payment runs the server carries to their end with no
@@ -13,6 +13,9 @@ import { hasRole } from "./operators.ts";
  * - **Each step is worked out from the chain,** so running one again after a crash is safe.
  * - **A failed step waits before it runs again,** longer each time, and after enough tries the job
  *   is marked failed with its reason, for staff to see.
+ * - **Four eyes.** A determination or a payment waits for a second person holding the same duty,
+ *   other than the one who proposed it, before it runs; where the deployment enables the automatic
+ *   second approver, it approves at once, and the record says so.
  * - **What carries jobs forward:** the server, after answering the request that started or nudged
  *   them; every staff page load; and a daily cron, the most the Vercel Hobby plan allows.
  */
@@ -28,13 +31,55 @@ export type StepResult = { done: boolean; data?: Record<string, unknown> };
 /** Runs one step of a job of the given kind. Loaded lazily: the steps import this module. */
 async function step(job: Job): Promise<StepResult> {
   if (job.kind === "payment") return (await import("./notes/lifecycle.ts")).paymentStep(job);
+  if (job.kind === "determination") return (await import("./notes/lifecycle.ts")).determinationStep(job);
   throw new Error(`no steps for jobs of kind ${job.kind}`);
 }
 
+/** The duty a job of each kind needs, to propose it and to approve it. */
+export const DUTY_OF: Record<Job["kind"], Duty> = { determination: "calculation", payment: "payments" };
+
+/**
+ * Creates a job waiting for its second approver; with the automatic second approver enabled, it is
+ * approved at once and queued.
+ */
 export async function createJob(kind: Job["kind"], subject: string, by: string, data: Record<string, unknown>): Promise<Job> {
-  const job: Job = { id: `job_${randomBytes(9).toString("base64url")}`, kind, subject, createdAt: now(), by, state: "queued", version: 0, attempts: 0, data };
-  await getStore().putJob(job);
-  return job;
+  const job: Job = { id: `job_${randomBytes(9).toString("base64url")}`, kind, subject, createdAt: now(), by, state: "awaiting approval", version: 0, attempts: 0, data };
+  const store = getStore();
+  await store.putJob(job);
+  if (!automaticSecondApprover()) return job;
+  const approved: Job = { ...job, version: 1, state: "queued", approval: { by: AUTOMATIC_APPROVER, at: now(), automatic: true } };
+  await store.updateJob(approved, 0);
+  await store.audit({ at: now(), actor: AUTOMATIC_APPROVER, action: `approved a ${kind} proposed by ${by}, as this deployment allows`, subject });
+  return approved;
+}
+
+/**
+ * A second person approves a job a colleague proposed: they hold the duty it needs, and are not the
+ * one who proposed it. The job then runs.
+ */
+export async function approveJob(staff: Registrant, id: string): Promise<Job> {
+  const store = getStore();
+  const j = await store.jobById(id);
+  if (!j || j.state !== "awaiting approval") throw new Error("Nothing is waiting for approval there.");
+  const duty = DUTY_OF[j.kind];
+  if (!hasDuty(staff.email, duty)) throw new Error(`Only ${DUTY_LABEL[duty]} staff approve a ${j.kind}.`);
+  if (staff.email.toLowerCase() === j.by.toLowerCase()) throw new Error(`A second person approves: ${j.by} proposed this ${j.kind}.`);
+  const approved: Job = { ...j, version: j.version + 1, state: "queued", approval: { by: staff.email, at: now(), automatic: false } };
+  if (!(await store.updateJob(approved, j.version))) throw new Error("It changed meanwhile; look again.");
+  await store.audit({ at: now(), actor: staff.email, action: `approved the ${j.kind} ${j.by} proposed`, subject: j.subject });
+  return approved;
+}
+
+/** A second person, or the proposer, declines a job waiting for approval. Nothing reaches the chain. */
+export async function rejectJob(staff: Registrant, id: string, reason: string): Promise<void> {
+  const store = getStore();
+  const j = await store.jobById(id);
+  if (!j || j.state !== "awaiting approval") throw new Error("Nothing is waiting for approval there.");
+  if (!hasDuty(staff.email, DUTY_OF[j.kind])) throw new Error(`Only ${DUTY_LABEL[DUTY_OF[j.kind]]} staff decline a ${j.kind}.`);
+  const why = reason.trim();
+  if (!why) throw new Error("Give a reason for declining it.");
+  if (!(await store.updateJob({ ...j, version: j.version + 1, state: "stopped", error: `Declined by ${staff.email}: ${why}` }, j.version))) throw new Error("It changed meanwhile; look again.");
+  await store.audit({ at: now(), actor: staff.email, action: `declined the ${j.kind} ${j.by} proposed: ${why}`, subject: j.subject });
 }
 
 const runnable = (j: Job, at = Date.now()) =>
@@ -138,6 +183,7 @@ export async function stopJob(staff: Registrant, id: string): Promise<void> {
   for (let tries = 0; tries < 5; tries++) {
     const j = await store.jobById(id);
     if (!j || j.state !== "queued") throw new Error("That job is not running.");
+    if (!hasDuty(staff.email, DUTY_OF[j.kind])) throw new Error(`Only ${DUTY_LABEL[DUTY_OF[j.kind]]} staff stop a ${j.kind}.`);
     if (await store.updateJob({ ...j, version: j.version + 1, state: "stopped", error: `Stopped by ${staff.email}` }, j.version)) {
       await store.audit({ at: now(), actor: staff.email, action: `stopped a ${j.kind} job`, subject: j.subject });
       return;

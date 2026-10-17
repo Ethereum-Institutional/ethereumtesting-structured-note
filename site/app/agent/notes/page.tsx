@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { getStore } from "@/lib/store";
 import { ISSUANCE_STEPS, SCENARIOS } from "@/lib/notes/issue";
-import { advanceNoteAction, startNoteAction, stopIssuanceAction } from "../../actions";
+import { advanceNoteAction, startNoteAction, startNoteFromTermSheetAction, stopIssuanceAction } from "../../actions";
+import { loadManifest } from "@/lib/chain/manifest";
+import { hashOf, type TermSheet } from "@/lib/notes/termsheet";
 import { ActionForm } from "../../staff/ActionForm";
 import { Advance } from "../../Advance";
 import { when } from "../../staff/parts";
@@ -12,6 +14,8 @@ export const dynamic = "force-dynamic";
 /** Every note issued here, each opening on its own page (ADR 0078); and issuing another. */
 export default async function Notes() {
   const notes = await getStore().listNotes();
+  const own = loadManifest().termSheet as TermSheet | undefined;
+  const example = own ? hashOf(own) : null;
   return (
     <>
       <h2 id="notes">Notes</h2>
@@ -35,9 +39,9 @@ export default async function Notes() {
                     <tr key={n.id}>
                       <td>
                         {n.status === "issuing" ? n.name : <Link href={`/agent/notes/${n.id}`}>{n.name}</Link>}
-                        <br /><span className="muted">{n.symbol}, {n.units} units, {n.observations ?? 4} observations every {n.interval ? `${n.interval.value} ${n.interval.unit}` : `${n.spacingMinutes} minutes`}</span>
+                        <br /><span className="muted">{n.symbol}{n.isin ? `, ${n.isin}` : ""}, {n.units} units, {n.observations ?? 4} observations{n.interval ? ` every ${n.interval.value} ${n.interval.unit}` : n.spacingMinutes ? ` every ${n.spacingMinutes} minutes` : ""}</span>
                       </td>
-                      <td style={{ whiteSpace: "normal", minWidth: "16rem" }}>{sc?.summary}</td>
+                      <td style={{ whiteSpace: "normal", minWidth: "16rem" }}>{sc?.summary ?? (n.data.termSheet ? "Issued from its term sheet" : "")}</td>
                       <td style={{ whiteSpace: "normal", minWidth: "14rem" }}>
                         <span className={`pill ${n.status === "issued" ? "approved" : n.status === "issuing" ? "pending" : n.status === "closed" ? "" : "revoked"}`}>{n.status === "closed" ? "redeemed" : n.status}</span>
                         {n.status === "issuing" && <><br /><span className="muted">Step {done + 1} of {ISSUANCE_STEPS.length}: {ISSUANCE_STEPS[done]}</span></>}
@@ -61,7 +65,19 @@ export default async function Notes() {
             </table>
           </div>
         )}
-        <h3>Issue a note</h3>
+        <h3>Issue a note from its term sheet</h3>
+        <ActionForm action={startNoteFromTermSheetAction} hidden={{}} label="Issue from the term sheet" working="Checking the term sheet and starting the issuance…">
+          <p className="muted" style={{ margin: 0 }}>
+            Upload the note's term sheet, as a record in the form the site publishes term sheets: its name, symbol, ISIN,
+            underlyings with their Initial Levels, payoff and calendar become the note's terms, and the record is published at
+            the address the note's identity carries. It is checked first: every field present or marked not applicable, this
+            network, the ISIN's check digit, and dates still to come.
+            {example && <> For the form, see <a href={`/term-sheets/${example}`}>the deployment's own term sheet</a>.</>}
+          </p>
+          <label>Term sheet file<input name="file" type="file" accept="application/json,.json" /></label>
+          <label>Or paste the record<textarea name="record" rows={4} placeholder='{"schema":"structured-note-term-sheet/1","fields":{…}}' /></label>
+        </ActionForm>
+        <h3>Issue a demonstration note</h3>
         <NoteForm action={startNoteAction} scenarios={SCENARIOS.map((s) => ({ name: s.name, summary: s.summary }))} />
       </section>
     </>

@@ -4,7 +4,7 @@ test("staff issue a note; the page carries the issuance to the end, and the Ledg
   test.setTimeout(180_000); // issuance is two transactions: the Issuer's wallet's through the note factory, and the bank's credit
   const staff = await signedIn(browser, PEOPLE.operator);
   await staff.goto("/agent/notes");
-  const form = staff.locator("#notes + .panel form");
+  const form = staff.locator("#notes + .panel form").filter({ has: staff.locator('select[name="scenario"]') });
   const scenario = form.locator('select[name="scenario"]');
   const value = await scenario.locator("option", { hasText: "early redemption" }).first().getAttribute("value");
   await scenario.selectOption(value!);
@@ -22,7 +22,7 @@ test("staff issue a note; the page carries the issuance to the end, and the Ledg
   await form.getByLabel("Time between observations").fill("30");
   await form.getByLabel("Units").fill("10");
   await form.getByLabel("ISIN (optional)").fill("XS0000001239");
-  await form.getByRole("button", { name: "Issue" }).click();
+  await form.getByRole("button", { name: "Issue", exact: true }).click();
 
   const row = staff.locator("#notes + .panel tbody tr").filter({ hasText: "EURWAN2" });
   await expect(row).toContainText("issuing");

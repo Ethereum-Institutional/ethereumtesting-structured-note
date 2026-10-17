@@ -557,6 +557,97 @@ test("an early redemption ends the note: the dates after it fall away", async ()
   assert.equal((await store.noteById(n.id))!.status, "closed");
 });
 
+test("four eyes: with no automatic second approver, a determination and a payment wait for a second person with the same duty, never their proposer", async () => {
+  const jobs = await import("../lib/jobs.ts");
+  const colleague = { ...operator, id: "reg_colleague", email: "colleague@example.org" };
+  const outsider = { ...operator, id: "reg_outsider", email: "outsider@example.org" };
+  // The colleague is at the Agent's desk with both duties; the outsider is at the desk, with neither.
+  Object.assign(process.env, { FOUR_EYES: "strict", AGENT_EMAILS: "colleague@example.org,outsider@example.org", CALCULATION_EMAILS: "operator@example.org,colleague@example.org", PAYMENTS_EMAILS: "operator@example.org,colleague@example.org" });
+  try {
+    const n = await placedNote("coupon-at-barrier", 1, 0);
+    let view = await life.lifecycleOf((await store.noteById(n.id))!);
+    await warpTo(view.dates[0].date);
+    await assert.rejects(life.proposeDetermination(outsider as any, n.id, 0, view.dates[0].suggested.map(BigInt)), /Only Calculation Agent staff/);
+    assert.equal(await life.determineDate(operator as any, n.id, 0, view.dates[0].suggested.map(BigInt), "Exchange closing levels"), null, "proposed, not sent");
+    const proposed = (await jobs.jobsFor(n.id)).find((j) => j.kind === "determination")!;
+    assert.equal(proposed.state, "awaiting approval");
+    assert.equal(proposed.data.source, "Exchange closing levels");
+    await assert.rejects(jobs.approveJob(operator as any, proposed.id), /A second person approves/);
+    await assert.rejects(jobs.approveJob(outsider as any, proposed.id), /Only Calculation Agent staff approve/);
+    await assert.rejects(life.proposeDetermination(colleague as any, n.id, 0, view.dates[0].suggested.map(BigInt)), /already waiting for approval/);
+    view = await life.lifecycleOf((await store.noteById(n.id))!);
+    assert.equal(view.dates[0].determined, false, "nothing sent before approval");
+    const approved = await jobs.approveJob(colleague as any, proposed.id);
+    assert.deepEqual([approved.state, approved.approval?.by, approved.approval?.automatic], ["queued", "colleague@example.org", false]);
+    assert.equal((await jobs.runToEnd(proposed.id)).state, "done");
+    view = await life.lifecycleOf((await store.noteById(n.id))!);
+    assert.equal(view.dates[0].determined, true);
+
+    // The coupon: proposed by the colleague, declined once with a reason, then approved by the operator.
+    await warpTo(view.dates[0].paymentDate);
+    const first = await life.startPayment(colleague as any, n.id, 0, "coupon");
+    assert.equal(first.state, "awaiting approval");
+    await assert.rejects(jobs.rejectJob(operator as any, first.id, " "), /Give a reason/);
+    await jobs.rejectJob(operator as any, first.id, "Wrong date booked");
+    assert.equal((await getStore().jobById(first.id))?.state, "stopped");
+    const second = await life.startPayment(colleague as any, n.id, 0, "coupon");
+    await jobs.approveJob(operator as any, second.id);
+    assert.equal((await jobs.runToEnd(second.id)).state, "done", (await getStore().jobById(second.id))?.error);
+    view = await life.lifecycleOf((await store.noteById(n.id))!);
+    assert.equal(view.dates[0].events.find((e) => e.kind === "coupon")?.closed, true);
+  } finally {
+    Object.assign(process.env, { FOUR_EYES: "", AGENT_EMAILS: "", CALCULATION_EMAILS: "", PAYMENTS_EMAILS: "" });
+  }
+});
+
+test("a note is issued from a term sheet staff upload: checked first, then its record is the note's terms, ISIN and published term sheet", async () => {
+  const { termSheetFrom, hashOf, v } = await import("../lib/notes/termsheet.ts");
+  const now = Number((await client.getBlock()).timestamp);
+  const hour = 3600;
+  const record = termSheetFrom({
+    name: "EUR Worst-of Autocallable Note, from its term sheet",
+    symbol: "EURWANTS",
+    chainId: LOCAL.chainId,
+    issueSizeUnits: 12,
+    strikeTime: now,
+    initialLevels: [451200, 1820300, 25000],
+    calculationAmountCents: 100000,
+    couponBarrierBps: 7000,
+    couponRateBps: 250,
+    memory: false,
+    barrierBps: 6000,
+    twinWin: { applies: false, upBps: 0, downBps: 0, capBps: 0 },
+    schedule: [1, 2].map((k) => ({ date: now + k * hour, recordTime: now + k * hour + 600, paymentDate: now + k * hour + 1200, coupon: true, mer: k === 1, barrier: k === 2, isFinal: k === 2, merTriggerBps: k === 1 ? 10000 : 0 })),
+    depositSymbol: "EURTD",
+  });
+  record.fields.isin = v("XS0000001239");
+  const raw = JSON.stringify(record);
+
+  // Checked before anything is sent.
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, "not json"), /not JSON/);
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, JSON.stringify({ ...record, fields: { ...record.fields, chainId: v(1) } })), /for network 1; this deployment is on/);
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, JSON.stringify({ ...record, fields: { ...record.fields, isin: v("XS0000001238") } })), /check digit/);
+  const { underlyings: _u, ...missing } = record.fields;
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, JSON.stringify({ ...record, fields: missing })), /not complete: underlyings/);
+  const past = JSON.parse(raw);
+  past.fields.calendar.value[0].recordTime.value = now - 10;
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, JSON.stringify(past)), /first Record Time has passed/);
+
+  const started = await notes.startNoteFromTermSheet(operator as any, raw);
+  assert.deepEqual([started.symbol, started.isin, started.units, started.observations], ["EURWANTS", "XS0000001239", 12, 2]);
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, raw), /symbol EURWANTS is already used/);
+  const n = await issued(started.id);
+  assert.equal(n.status, "issued", n.error);
+  assert.equal((n.data as any).termSheet, hashOf(record), "published as uploaded, at its own hash");
+  assert.deepEqual(n.calendar?.map((x) => x.date), [now + hour, now + 2 * hour], "its own calendar");
+  const NOTE = parseAbi(["function totalSupply() view returns (uint256)", "function symbol() view returns (string)"]);
+  assert.equal(await client.readContract({ address: n.addresses.note as Address, abi: NOTE, functionName: "totalSupply" }), 12n);
+  const rec = await registry.noteOnRecord(n.addresses.note);
+  assert.equal(rec?.isin, "XS0000001239", "the ISIN on the note's series claim");
+  const statement = await reconcile.statementOf(rec!);
+  assert.ok(statement.checks.find((c) => c.label === "The term sheet matches the note")?.ok, "the terms on the chain are the record's");
+});
+
 // --- ETH for fees (ADR 0080) ---
 
 test("a key that cannot pay its fees is refused before signing, named, warned about, and topped up from the best-funded key", async () => {
@@ -566,6 +657,8 @@ test("a key that cannot pay its fees is refused before signing, named, warned ab
   const s = signers(defineChain({ id: 31337, name: "local", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [RPC] } } }), RPC);
   const calc = s.address("calculationAgent");
   await client.request({ method: "anvil_setBalance" as any, params: [calc, "0x3e8"] as any }); // 1,000 wei
+  await client.request({ method: "evm_mine" as any, params: [] as any });
+  await new Promise((r) => setTimeout(r, 1_600)); // past the lagging RPC's window
 
   const view = await keys.keyBalances(true);
   assert.equal(view.rows.find((r) => r.capacity === "calculationAgent")?.state, "empty");

@@ -168,6 +168,8 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     const ttl = receiptTimeout + 60_000;
     const store = getStore();
     const deadline = Date.now() + ttl + 15_000;
+    const debug = env.DEBUG_SENDS ? (msg: string) => console.error(`[send ${capacity}] ${msg}`) : () => {};
+    const started = Date.now();
     let data = await store.takeLease(key, holder, ttl);
     while (!data) {
       if (Date.now() > deadline) throw new Error(`The ${CAPACITY_LABEL[capacity] ?? capacity}'s key is busy sending another transaction; try again shortly.`);
@@ -176,8 +178,16 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     }
     let next = Number(data.nextNonce ?? 0);
     try {
-      next = Math.max(await publicClient.getTransactionCount({ address, blockTag: "pending" }), next);
-      return await task(next, (n) => void (next = n + 1));
+      const counted = await publicClient.getTransactionCount({ address, blockTag: "pending" });
+      debug(`lease after ${Date.now() - started} ms; counted ${counted}, recorded ${next}`);
+      next = Math.max(counted, next);
+      const t0 = Date.now();
+      const out = await task(next, (n) => void (next = n + 1));
+      debug(`sent in ${Date.now() - t0} ms`);
+      return out;
+    } catch (e) {
+      debug(`failed after ${Date.now() - started} ms: ${String((e as Error)?.message).split("\n")[0]}`);
+      throw e;
     } finally {
       await store.releaseLease(key, holder, { nextNonce: next }).catch(() => undefined);
     }

@@ -568,6 +568,19 @@ export async function startNoteAction(f: FormData) {
   }, "/agent/notes");
 }
 
+/** Staff issue a note from a term sheet they upload or paste; the issuance then runs in the background. */
+export async function startNoteFromTermSheetAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("agent", "/agent/notes", async (staff) => {
+    const file = f.get("file");
+    const raw = file instanceof File && file.size > 0 ? await file.text() : field(f, "record");
+    if (!raw.trim()) throw new Error("Upload the term sheet, or paste its record.");
+    if (raw.length > 200_000) throw new Error("That file is too large for a term sheet.");
+    const n = await (await import("@/lib/notes/issue")).startNoteFromTermSheet(staff, raw);
+    await (await import("@/lib/jobs")).kick();
+    return `Issuing ${n.name} (${n.symbol}) from its term sheet: this page follows it.`;
+  });
+}
+
 /** Staff stop an issuance that will not finish (ADR 0105). */
 export async function stopIssuanceAction(_prev: Result, f: FormData): Promise<Result> {
   return staffStep("agent", "/agent/notes", async (staff) => {
@@ -774,8 +787,11 @@ export async function determineAction(_prev: { ok?: string; error?: string }, f:
       return BigInt(s);
     });
     const k = Number(field(f, "date"));
-    await (await import("@/lib/notes/lifecycle")).determineDate(op, field(f, "noteId"), k, levels);
-    return `Date ${k + 1} determined.`;
+    const { proposeDetermination } = await import("@/lib/notes/lifecycle");
+    const job = await proposeDetermination(op, field(f, "noteId"), k, levels, field(f, "source"));
+    if (job.state === "awaiting approval") return `Date ${k + 1}'s determination is proposed: a second Calculation Agent approves it before it is sent.`;
+    await (await import("@/lib/jobs")).kick();
+    return `Date ${k + 1}'s determination is approved by the automatic second approver, and is being sent.`;
   });
 }
 
@@ -783,9 +799,27 @@ export async function payEventAction(_prev: { ok?: string; error?: string }, f: 
   return lifecycleStep(async (op) => {
     const k = Number(field(f, "date"));
     const kind = field(f, "kind") === "redemption" ? "redemption" : "coupon";
-    await (await import("@/lib/notes/lifecycle")).startPayment(op, field(f, "noteId"), k, kind);
+    const job = await (await import("@/lib/notes/lifecycle")).startPayment(op, field(f, "noteId"), k, kind);
+    if (job.state === "awaiting approval") return "Payment proposed: a second payments colleague approves it before anything is sent.";
     await (await import("@/lib/jobs")).kick();
-    return "Payment started: the servicing wallet pays the holders of record in the background, and this page follows it.";
+    return "Payment started, approved by the automatic second approver: the servicing wallet pays the holders of record in the background, and this page follows it.";
+  });
+}
+
+/** A second person approves a determination or a payment a colleague proposed; it then runs. */
+export async function approveJobAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    const j = await (await import("@/lib/jobs")).approveJob(op, field(f, "id"));
+    await (await import("@/lib/jobs")).kick();
+    return `Approved: the ${j.kind} is being sent.`;
+  });
+}
+
+/** A determination or a payment waiting for approval is declined, with a reason; nothing is sent. */
+export async function rejectJobAction(_prev: { ok?: string; error?: string }, f: FormData) {
+  return lifecycleStep(async (op) => {
+    await (await import("@/lib/jobs")).rejectJob(op, field(f, "id"), field(f, "reason"));
+    return "Declined: nothing was sent.";
   });
 }
 

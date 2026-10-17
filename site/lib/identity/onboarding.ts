@@ -1,6 +1,15 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { getAddress, isAddress, type Address, type Hex } from "viem";
+import { getAddress, isAddress, keccak256, toBytes, type Address, type Hex } from "viem";
+
+/**
+ * A custody account's reference: `SEG-` and twelve characters of a hash of the bank's client
+ * reference and the onboarding's own random id. It goes on-chain in the custody factory's call and
+ * fixes the account's address, so it must not reveal the client: the mapping lives only in the
+ * site's records.
+ */
+export const custodyRef = (kycReference: string, admissionId: string) =>
+  `SEG-${keccak256(toBytes(`${kycReference}/custody/${admissionId}`)).slice(2, 14).toUpperCase()}`;
 import { getStore, type Admission, type AdmissionRoute, type Client, type Registrant } from "../store.ts";
 import { hasRole, type Role } from "../operators.ts";
 import { claimsOf, consented, context, consent, createIdentity, eligibility, handOver, identityOf, isIdentity, recordHash, register, revoke, unregister, vouch } from "./onchain.ts";
@@ -320,7 +329,7 @@ export async function confirmRoute(staff: Registrant, id: string, kycReference: 
   if (a.route === "self-custody") return save(a, a.status, d, "awaiting-wallet");
   if (a.route === "third-party") return save(a, a.status, { ...d, custodian: "third-party" }, "awaiting-custodian");
   // Bank custody: the custody platform opens the account at once.
-  const next = await save(a, a.status, { ...d, custodian: "bank", clientRef: `${c.kycReference}/${a.id.slice(-6)}` }, "awaiting-custodian");
+  const next = await save(a, a.status, { ...d, custodian: "bank", clientRef: custodyRef(c.kycReference, a.id) }, "awaiting-custodian");
   return openForClient(staff, next.id, "bank");
 }
 
@@ -390,7 +399,7 @@ export async function openForClient(staff: Registrant, id: string, which: Custod
   const a = await load(id);
   const d = dataOf(a);
   if (a.status !== "awaiting-custodian" || d.custodian !== which || !d.kycReference) throw new Error("This onboarding is not waiting for that custodian.");
-  const clientRef = d.clientRef ?? `${d.kycReference}/${a.id.slice(-6)}`;
+  const clientRef = d.clientRef ?? custodyRef(String(d.kycReference), a.id);
   const account = await onChain(a, () => openAccount(which, clientRef));
   await audit(staff.email, `opened custody account ${account} (${clientRef})`, a.id);
   await save(await load(id), "awaiting-custodian", { ...d, clientRef, wallet: account });
@@ -510,7 +519,7 @@ export async function acceptExisting(staff: Registrant, id: string): Promise<voi
     await audit(staff.email, `refused ${d.identity}: not an identity`, a.id);
     return;
   }
-  await onChain(a, () => register(d.wallet!, d.identity!, "onboarding"));
+  await onChain(a, () => register(d.wallet!, d.identity!));
   const ok = (await eligibility(d.wallet)).note;
   if (!ok) {
     await unregister(d.wallet);

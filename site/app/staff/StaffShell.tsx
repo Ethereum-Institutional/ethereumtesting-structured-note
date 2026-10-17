@@ -3,18 +3,22 @@ import Link from "next/link";
 import { formatEther } from "viem";
 import { currentStaff } from "@/lib/access";
 import { lowKeys } from "@/lib/chain/keys";
+import { kick } from "@/lib/jobs";
 import { ROLE_LABEL, type Role } from "@/lib/operators";
 import { Bar } from "../Bar";
 import { ConsoleNav, type NavItem } from "../ConsoleNav";
 
 /**
  * Every staff portal (ADR 0089): its own role only, the navigation column beside it, and a warning
- * when any key the deployment signs with is low on ETH for fees (ADR 0080).
+ * when any key the deployment signs with is low on ETH for fees (ADR 0080); and each load carries
+ * the background jobs on.
  */
 export async function StaffShell({ role, items, children }: { role: Role; items: NavItem[]; children: React.ReactNode }) {
   const who = await currentStaff(role);
   if (!who) notFound();
   const low = await lowKeys().catch(() => []);
+  // Every staff page load carries the background jobs on, after the page is sent (ADR 0116).
+  await kick();
   return (
     <div className="wrap">
       <Bar who={who} />

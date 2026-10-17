@@ -27,8 +27,11 @@ test("staff determine a note's first date from the scenario's Levels, the model 
   await warpTo(Number(await first.getAttribute("data-date")));
   await staff.reload();
   await expect(first.getByLabel(/Underlying 1 Level/)).toHaveValue("473760");
+  await first.getByLabel("Source of the Levels").fill("Exchange closing levels");
   await first.getByRole("button", { name: "Determine date 1" }).click();
   await expect(first).toContainText("Agrees with the payoff model.", { timeout: 30_000 });
+  // Four eyes: on this deployment the automatic second approver approved it at once, and the date says so.
+  await expect(first).toContainText("approved by the automatic second approver, as this deployment allows");
   await expect(first).toContainText("coupon €25.00 a unit; early redemption at €1,000.00 a unit");
   // The dates after an early redemption fall away.
   for (const k of [2, 3, 4]) await expect(staff.getByRole("listitem", { name: `Date ${k}` })).toContainText("Falls away");

@@ -30,13 +30,13 @@ test("transfers settle by locked offer: arranged by the bank, open offers taken,
 
   // A note to trade, issued 30 minutes apart so that no date arrives meanwhile.
   await staff.goto("/agent/notes");
-  const form = staff.locator("#notes + .panel form");
+  const form = staff.locator("#notes + .panel form").filter({ has: staff.locator('select[name="scenario"]') });
   await form.locator('select[name="scenario"]').selectOption((await form.locator('select[name="scenario"] option', { hasText: "redemption at €1000.00" }).last().getAttribute("value"))!);
   await form.getByLabel("Observations (coupon dates)").fill("4");
   await form.getByLabel("Time between observations").fill("30");
   await form.getByLabel("Unit", { exact: true }).selectOption("minutes");
   await form.getByLabel("Units").fill("10");
-  await form.getByRole("button", { name: "Issue" }).click();
+  await form.getByRole("button", { name: "Issue", exact: true }).click();
   const noteRow = staff.locator("#notes + .panel tbody tr").filter({ hasText: "EURWAN3" });
   await expect(noteRow.locator(".pill")).toHaveText("issued", { timeout: 150_000 });
 

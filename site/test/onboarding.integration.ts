@@ -135,6 +135,9 @@ test("third-party custodian: the bank confirms, the custodian opens the account 
   const d = onboarding.dataOf(a);
   assert.equal(await forDeposit(d.wallet!), true);
   assert.equal(await manages(d.identity!, m.parties.thirdPartyCustodian as Address), true, "the third-party custodian manages the identity");
+  // The reference the account is opened under goes on-chain: opaque, never the bank's client reference.
+  assert.match(String(d.clientRef), /^SEG-[0-9A-F]{12}$/);
+  assert.ok(!String(d.clientRef).includes(c.kycReference));
 });
 
 test("each institution revokes its own claim at once, and the bank renews its own", async () => {
@@ -215,7 +218,7 @@ test("an identity brought from elsewhere is registered for the note only if a tr
   f = (await store.admissionById(f.id))!;
   await store.updateAdmission({ ...f, data: { ...f.data, identity: eoa } }, f.status);
   const onchain = await import("../lib/identity/onchain.ts");
-  await onchain.register(eoa, eoa, "onboarding");
+  await onchain.register(eoa, eoa);
   assert.deepEqual(await onchain.eligibility(eoa), { deposit: false, note: false, pool: false });
   await onboarding.acceptExisting(operator as any, f.id);
   f = (await store.admissionById(f.id))!;

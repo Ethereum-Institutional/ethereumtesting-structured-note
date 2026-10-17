@@ -48,3 +48,40 @@ export function isAdmin(email: string, env: NodeJS.ProcessEnv = process.env): bo
 export function isOperator(email: string, env: NodeJS.ProcessEnv = process.env): boolean {
   return rolesOf(email, env).length > 0;
 }
+
+/**
+ * Duties within the Agent's desk, each needing four eyes: determining a note's dates as the
+ * Calculation Agent, and paying its coupons and redemptions. Each has its own list of emails; where
+ * a list is not set, everyone at the Agent's desk holds that duty. Operators hold both.
+ */
+export const DUTIES = ["calculation", "payments"] as const;
+export type Duty = (typeof DUTIES)[number];
+
+export const DUTY_LABEL: Record<Duty, string> = {
+  calculation: "Calculation Agent",
+  payments: "Payments",
+};
+
+const DUTY_ENV: Record<Duty, string> = {
+  calculation: "CALCULATION_EMAILS",
+  payments: "PAYMENTS_EMAILS",
+};
+
+export function hasDuty(email: string, duty: Duty, env: NodeJS.ProcessEnv = process.env): boolean {
+  const e = normaliseEmail(email);
+  if (emailList(env.OPERATOR_EMAILS).includes(e)) return true;
+  const listed = env[DUTY_ENV[duty]];
+  return listed?.trim() ? emailList(listed).includes(e) : hasRole(e, "agent", env);
+}
+
+/**
+ * Whether a second person must approve what a colleague proposed (FOUR_EYES=strict), or the
+ * deployment's automatic second approver approves it at once (FOUR_EYES=auto, the default, for the
+ * demonstration). Either way the approval is recorded, and an automatic one says so.
+ */
+export function automaticSecondApprover(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env.FOUR_EYES ?? "auto").trim().toLowerCase() !== "strict";
+}
+
+/** The name the automatic second approver's approvals are recorded under. */
+export const AUTOMATIC_APPROVER = "the automatic second approver";

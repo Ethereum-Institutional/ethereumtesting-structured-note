@@ -176,3 +176,23 @@ export async function indexed(q: EventQuery & { fresh?: boolean }): Promise<Inde
   await syncIndex(fresh);
   return getStore().events(deployment, query);
 }
+
+/**
+ * Every account's units of every note, from the index's transfers alone: note (lower case) to
+ * account (lower case) to units. One read of the index, whatever the size of the book.
+ */
+export async function holdingsFromIndex(): Promise<Map<string, Map<string, bigint>>> {
+  const transfers = await indexed({ names: ["Transfer"], fresh: true });
+  const out = new Map<string, Map<string, bigint>>();
+  const zero = "0x0000000000000000000000000000000000000000";
+  for (const e of transfers) {
+    if (!e.note || e.address !== e.note) continue; // a note's own token
+    const book = out.get(e.note) ?? out.set(e.note, new Map()).get(e.note)!;
+    const value = BigInt(String(e.args.value));
+    const from = String(e.args.from).toLowerCase();
+    const to = String(e.args.to).toLowerCase();
+    if (from !== zero) book.set(from, (book.get(from) ?? 0n) - value);
+    if (to !== zero) book.set(to, (book.get(to) ?? 0n) + value);
+  }
+  return out;
+}

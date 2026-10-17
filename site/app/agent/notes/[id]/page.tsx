@@ -22,6 +22,8 @@ import {
   payEventAction,
   placeUnitsAction,
   stopJobAction,
+  approveJobAction,
+  rejectJobAction,
   releaseExpiredAction,
   takeForCustodyAction,
   withdrawArrangedAction,
@@ -266,14 +268,21 @@ function DateCard({ noteId, d, chainId, initial, jobs }: { noteId: string; d: Da
         <span className="muted">Tests: {tests}</span>
       </div>
       {d.fallsAway && <p className="muted">Falls away: the note redeemed early.</p>}
-      {!d.fallsAway && !d.determined && d.can.determine && (
-        <ActionForm action={determineAction} hidden={{ noteId, date: String(d.index) }} label={`Determine date ${d.index + 1}`} working="The Calculation Agent signs; the Determination Agent recomputes and accepts…">
-          <p className="muted" style={{ margin: 0 }}>The scenario's Levels, which you may change. The Calculation Agent signs them with the outcome the contract computes.</p>
+      <Approval jobs={jobs.filter((j) => j.kind === "determination")} />
+      {!d.fallsAway && !d.determined && d.can.determine && !jobs.some((j) => j.kind === "determination" && (j.state === "awaiting approval" || j.state === "queued")) && (
+        <ActionForm action={determineAction} hidden={{ noteId, date: String(d.index) }} label={`Determine date ${d.index + 1}`} working="Proposing the determination…">
+          <p className="muted" style={{ margin: 0 }}>
+            The scenario's Levels, which you may change, and where they came from. A second Calculation Agent approves them; the
+            Calculation Agent then signs them with the outcome the contract computes.
+          </p>
           <div className="fields">
             {d.suggested.map((l, i) => (
               <label key={i}>Underlying {i + 1} Level{initial[i] ? ` (initial ${initial[i]})` : ""}<input name="level" defaultValue={l} inputMode="numeric" required /></label>
             ))}
           </div>
+          <label title="The fixing page, data vendor or exchange each Level was read from, kept with the determination.">
+            Source of the Levels<input name="source" maxLength={200} placeholder="e.g. official closing levels, exchange fixing page" />
+          </label>
         </ActionForm>
       )}
       {d.waiting && <p className="muted">{d.waiting}</p>}
@@ -293,8 +302,9 @@ function DateCard({ noteId, d, chainId, initial, jobs }: { noteId: string; d: Da
             <strong>{e.kind === "coupon" ? "Coupon" : "Redemption"}</strong>: {euros(e.perCaCents)} a unit.{" "}
             {e.closed ? `Paid to ${e.unitsPaid} units; closed.` : e.open ? `Open: ${e.unitsPaid} of ${e.unitsEntitled} units paid.` : "Not yet paid."}
           </p>
-          <PaymentJob job={jobs.find((j) => j.data.event === e.kind)} closed={e.closed} />
-          {d.can.pay.includes(e.kind) && !jobs.some((j) => j.data.event === e.kind && j.state === "queued") && (
+          <Approval jobs={jobs.filter((j) => j.kind === "payment" && j.data.event === e.kind)} />
+          <PaymentJob job={jobs.find((j) => j.kind === "payment" && j.data.event === e.kind && j.state !== "awaiting approval")} closed={e.closed} />
+          {d.can.pay.includes(e.kind) && !jobs.some((j) => j.kind === "payment" && j.data.event === e.kind && (j.state === "queued" || j.state === "awaiting approval")) && (
             <ActionForm action={payEventAction} hidden={{ noteId, date: String(d.index), kind: e.kind }} label={`Pay the ${e.kind}`} working="Starting the payment…" />
           )}
           {e.payments.length > 0 && (
@@ -340,4 +350,35 @@ function PaymentJob({ job, closed }: { job?: Job; closed: boolean }) {
     );
   }
   return <p role="alert" className="notice err">The last payment run {job.state === "stopped" ? "was stopped" : "failed"}{job.error ? `: ${job.error}` : "."} Pay again to carry on from where it stopped.</p>;
+}
+
+/**
+ * Four eyes: a determination or a payment a colleague proposed, waiting for a second person with
+ * the same duty; and, once approved, who approved it.
+ */
+function Approval({ jobs }: { jobs: Job[] }) {
+  const j = jobs.find((x) => x.state === "awaiting approval") ?? jobs.find((x) => x.approval && x.state !== "stopped");
+  if (!j) return null;
+  const what = j.kind === "determination" ? `Levels ${(j.data.levels as string[]).join(", ")}${j.data.source ? ` (${String(j.data.source)})` : ""}: ${String(j.data.outcome ?? "")}` : `the ${String(j.data.event)}`;
+  if (j.state !== "awaiting approval") {
+    return (
+      <p className="muted" style={{ margin: "0.25rem 0" }}>
+        {j.kind === "determination" ? "Determination" : "Payment"} proposed by {j.by}, approved by {j.approval!.by}{j.approval!.automatic ? ", as this deployment allows" : ""}.
+      </p>
+    );
+  }
+  return (
+    <div className="notice" role="status" aria-label="Awaiting approval">
+      <p style={{ margin: 0 }}>
+        <strong>Awaiting a second approver.</strong> {j.by} proposed {j.kind === "determination" ? "determining this date from" : "paying"} {what}.
+        Another {j.kind === "determination" ? "Calculation Agent" : "payments"} colleague approves it before anything is sent.
+      </p>
+      <div className="actions">
+        <ActionForm action={approveJobAction} hidden={{ id: j.id }} label="Approve" working="Approving…" />
+        <ActionForm action={rejectJobAction} hidden={{ id: j.id }} label="Decline" working="Declining…" quiet>
+          <label>Reason<input name="reason" required maxLength={300} /></label>
+        </ActionForm>
+      </div>
+    </div>
+  );
 }

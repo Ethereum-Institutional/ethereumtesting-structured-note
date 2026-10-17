@@ -258,12 +258,16 @@ export async function handOver(identity: Address, wallet: Address): Promise<void
  * Registers a wallet against an identity in the shared storage: by the bank through the deposit's
  * registry, or by the onboarding agent through the note's, each being its registry's agent.
  */
-export async function register(wallet: Address, identity: Address, by: "bank" | "onboarding" = "bank"): Promise<void> {
-  const { m, id, s } = context();
+/**
+ * Registers a wallet against an identity in the shared identity storage, through the deposit's
+ * registry, by the bank as its registrar: every note's registry reads the same storage, and no note
+ * registry has agents of its own. Where the onboarding agent decided it, the decision is theirs and
+ * the bank's key only records it.
+ */
+export async function register(wallet: Address, identity: Address): Promise<void> {
+  const { id, s } = context();
   if (await identityOf(wallet)) return;
-  const registry = by === "bank" ? id.depositRegistry : m.noteSuite?.identityRegistry;
-  if (!registry) throw new Error("the manifest has no note registry");
-  await s.send(by === "bank" ? "depositAgent" : "accessIssuer", { address: registry, abi: REGISTRY, functionName: "registerIdentity", args: [wallet, identity, COUNTRY] });
+  await s.send("depositAgent", { address: id.depositRegistry, abi: REGISTRY, functionName: "registerIdentity", args: [wallet, identity, COUNTRY] });
   await until(() => identityOf(wallet), (v) => v !== null);
 }
 

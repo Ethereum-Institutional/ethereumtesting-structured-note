@@ -110,7 +110,7 @@ export default async function Ledger() {
             <div className="table-wrap panel">
               <table>
                 <thead>
-                  <tr><th>Account</th><th>Identity</th><th>Deposit eligible</th><th>Note eligible</th><th>{m.assets.deposit?.symbol}</th><th>{m.assets.note?.symbol}</th><th>Client</th><th>Route</th><th>Site status</th><th>Finding</th></tr>
+                  <tr><th>Account</th><th>Identity</th><th>Deposit eligible</th><th>Note eligible</th><th>{m.assets.deposit?.symbol}</th><th>Units of the notes</th><th>Client</th><th>Route</th><th>Site status</th><th>Finding</th></tr>
                 </thead>
                 <tbody>
                   {register.map((r) => {
@@ -125,7 +125,7 @@ export default async function Ledger() {
                         <td>{r.onChain.depositEligible ? "yes" : "—"}</td>
                         <td>{r.onChain.noteEligible ? "yes" : "—"}</td>
                         <td>{units(r.onChain.deposit, m.assets.deposit?.decimals ?? 2)}</td>
-                        <td>{String(r.onChain.note)}</td>
+                        <td style={{ whiteSpace: "normal" }}>{r.onChain.holdings.length ? r.onChain.holdings.map((h) => `${h.units} ${h.symbol}`).join(", ") : "—"}</td>
                         <td>{r.site?.client ?? ""}</td>
                         <td>{routeLabel(r.site?.route)}</td>
                         <td>{r.site?.status ?? ""}</td>

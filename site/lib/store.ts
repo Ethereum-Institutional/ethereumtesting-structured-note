@@ -120,12 +120,16 @@ export type DemoNote = {
  */
 export type Job = {
   id: string;
-  kind: "payment";
-  /** What the job acts on: the note, for a payment. */
+  kind: "payment" | "determination";
+  /** What the job acts on: the note. */
   subject: string;
   createdAt: string;
+  /** Who proposed it. */
   by: string;
-  state: "queued" | "done" | "failed" | "stopped";
+  /** Waiting for a second person with the same duty; then queued to run. Rejected or stopped jobs end as stopped. */
+  state: "awaiting approval" | "queued" | "done" | "failed" | "stopped";
+  /** Who approved it, and whether that was the deployment's automatic second approver. */
+  approval?: { by: string; at: string; automatic: boolean };
   /** Bumped on every write: a write that finds another version lost a race, and is not applied. */
   version: number;
   /** When a worker claimed the job; a claim older than any request can run is stale. */

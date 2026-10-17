@@ -5,7 +5,7 @@ const PAGES: Array<[string, keyof typeof PEOPLE | null]> = [
   ["/", null], ["/access?email=someone%40example.org", null], ["/", "operator"], ["/onboard", "selfCustody"],
   ["/bank", "operator"], ["/bank/clients", "operator"], ["/bank/deposit", "operator"], ["/bank/onboarding", "operator"], ["/bank/pool", "operator"],
   ["/onboarding", "operator"], ["/custodian", "operator"],
-  ["/agent", "operator"], ["/agent/notes", "operator"], ["/agent/reconciliation", "operator"], ["/agent/governance/tier-1", "operator"],
+  ["/agent", "operator"], ["/agent/book", "operator"], ["/agent/notes", "operator"], ["/agent/reconciliation", "operator"], ["/agent/governance/tier-1", "operator"],
   ["/agent/governance/tier-2", "operator"], ["/agent/keys", "operator"], ["/agent/audit", "operator"], ["/ledger", "operator"],
 ];
 
