@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 /**
- * The bar's navigation (ADR 0102): in a row on a wide screen; on a phone folded behind a Menu
+ * The bar's navigation: in a row on a wide screen; on a phone folded behind a Menu
  * button, closed again when a page opens.
  */
 export function BarMenu({ children }: { children: React.ReactNode }) {

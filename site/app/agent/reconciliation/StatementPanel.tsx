@@ -4,7 +4,7 @@ const euros = (cents: string) => `€${(Number(cents) / 100).toLocaleString("en-
 const when = (iso: string) => iso.slice(0, 16).replace("T", " ") + " UTC";
 const short = (a: string) => `${a.slice(0, 10)}…`;
 
-/** A note's reconciliation statement (ADR 0094): its headline, its checks, the positions, cash, distributions and open offers. */
+/** A note's reconciliation statement: its headline, its checks, the positions, cash, distributions and open offers. */
 export function StatementPanel({ s, downloads }: { s: Statement; downloads: { json: string; csv: string } }) {
   const failing = s.checks.filter((x) => !x.ok).length;
   const headline = s.closed

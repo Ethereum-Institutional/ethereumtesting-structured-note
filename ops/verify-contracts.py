@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verifies a public deployment's contracts on the chain's explorer (ADR 0113).
+"""Verifies a public deployment's contracts on the chain's explorer.
 
     NETWORK_FILE=ops/networks/ethereum-sepolia.json KEYS=ops/keys.ethereum-sepolia.env \\
       python3 ops/verify-contracts.py

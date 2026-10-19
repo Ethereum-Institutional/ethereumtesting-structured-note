@@ -5,10 +5,10 @@ import {LockedSettlement} from "../src/LockedSettlement.sol";
 import {Stack, IERC20Like} from "./Stack.sol";
 
 /**
- * Delivery versus payment by locked offer (ADR 0081) on the ERC-3643 note: each proposer's side
+ * Delivery versus payment by locked offer on the ERC-3643 note: each proposer's side
  * locked until the offer settles or ends, named or open counterparties, and the instruments' own
  * eligibility deciding. The settlement contract is a note agent that may only freeze part of a
- * holding (ADR 0085).
+ * holding.
  */
 contract LockedSettlementTest is Stack {
     LockedSettlement s;

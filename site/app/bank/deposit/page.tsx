@@ -11,7 +11,7 @@ const amount = (v: bigint, decimals: number) => (Number(v) / 10 ** decimals).toL
 const short = (a: string) => `${a.slice(0, 10)}…`;
 
 /**
- * The bank's tokenized deposit (ADRs 0086, 0092): its supply, every holder and why it may hold,
+ * The bank's tokenized deposit: its supply, every holder and why it may hold,
  * the bank's acts on each, and every booking and order, read from the chain.
  */
 export default async function Deposit() {

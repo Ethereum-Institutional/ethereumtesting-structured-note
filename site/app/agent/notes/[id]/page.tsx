@@ -40,7 +40,7 @@ export const dynamic = "force-dynamic";
 const euros = (cents: string | bigint | number) => `€${(Number(cents) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
 const t = (s: number) => when(new Date(s * 1000).toISOString());
 
-/** One note: its contracts, its placements and its life, date by date (ADRs 0075, 0078). */
+/** One note: its contracts, its placements and its life, date by date. */
 export default async function NotePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const store = getStore();
@@ -74,7 +74,7 @@ export default async function NotePage({ params }: { params: Promise<{ id: strin
   const custodyIds = new Set(admissions.filter((a) => custodianOf(a) !== null && a.status === "onboarded").map((a) => a.id));
   const custody = accounts.filter((a) => custodyIds.has(a.id));
   const live = typeof lifecycle === "string" ? null : lifecycle;
-  // The reconciliation statement now (ADR 0094), which closes the note once it has redeemed (S-33).
+  // The reconciliation statement now, which closes the note once it has redeemed (S-33).
   const rec = n.addresses.note ? await noteOnRecord(n.addresses.note).catch(() => null) : null;
   const statement = rec ? await statementOf(rec).catch((e) => (e as Error).message) : null;
   // Waiting for a time to come: the page looks again by itself.

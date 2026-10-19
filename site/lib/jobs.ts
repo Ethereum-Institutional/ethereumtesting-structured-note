@@ -4,7 +4,7 @@ import { getStore, type Job, type Registrant } from "./store.ts";
 import { AUTOMATIC_APPROVER, automaticSecondApprover, DUTY_LABEL, hasDuty, hasRole, type Duty } from "./operators.ts";
 
 /**
- * Background jobs (ADR 0116): issuance and payment runs the server carries to their end with no
+ * Background jobs: issuance and payment runs the server carries to their end with no
  * page open.
  *
  * - **A job is a row,** and so is a note being issued. A worker claims one step at a time, by

@@ -3,7 +3,7 @@ import { notesOnRecord } from "@/lib/notes/registry";
 
 export const dynamic = "force-dynamic";
 
-/** Every note on record, each with its reconciliation statement (ADR 0094). */
+/** Every note on record, each with its reconciliation statement. */
 export default async function Reconciliation() {
   const notes = await notesOnRecord().catch((e) => (e as Error).message);
   if (typeof notes === "string") {

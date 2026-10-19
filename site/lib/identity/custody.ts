@@ -3,7 +3,7 @@ import { parseAbi, type Address, type Hex } from "viem";
 import { context } from "./onchain.ts";
 
 /**
- * Custodians (ADR 0089): the bank's custody platform and a third-party custodian, each opening
+ * Custodians: the bank's custody platform and a third-party custodian, each opening
  * segregated custody accounts from its own factory and signing for them (EIP-1271 by its key).
  * Each manages the identities of the accounts it holds, since key custody follows custody.
  */

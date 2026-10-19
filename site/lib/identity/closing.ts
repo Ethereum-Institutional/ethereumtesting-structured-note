@@ -8,7 +8,7 @@ import { depositToken } from "./deposit.ts";
 import { dataOf, offboard } from "./onboarding.ts";
 
 /**
- * A client closing an account (ADR 0107). The client asks, with its reason; the bank confirms
+ * A client closing an account. The client asks, with its reason; the bank confirms
  * through its offboarding, which revokes its claim and removes the wallet from every registry. A
  * wallet so removed can neither receive nor sell, so the request is refused while the account holds
  * anything, has units locked in an offer, or is owed a distribution, and checked again at confirming.

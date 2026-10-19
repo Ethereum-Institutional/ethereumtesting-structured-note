@@ -1,4 +1,4 @@
-# The site and its database on the bank's virtual machine (ADR 0098). The VM needs outbound HTTPS
+# The site and its database on the bank's virtual machine. The VM needs outbound HTTPS
 # to its Ethereum Sepolia RPC and to Resend, and nothing inbound but the bank's own TLS proxy in
 # front of port 3020: the site sets secure cookies and HSTS, so it is served over HTTPS only.
 #

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# The fork dry run (ADR 0041): forks the public test network, deploys the whole stack against
+# The fork dry run: forks the public test network, deploys the whole stack against
 # its real contracts (pool manager, Permit2, the multi-signature wallet and the euro payment
 # token), and runs the venue tests against the result.
 #
 # Nothing is published: every transaction lands on the local fork. The names, symbols and term
-# sheet values the deploy guard requires (ADR 0027) come from the network file.
+# sheet values the deploy guard requires come from the network file.
 #
 #   NETWORK_FILE=ops/networks/base-sepolia.json ./ops/dry-run-fork.sh
 #
@@ -25,7 +25,7 @@ export RPC="http://127.0.0.1:$PORT"
 export MANIFEST="ops/addresses.$(basename "$NETWORK_FILE" .json)-fork.json"
 export PUBLIC_NETWORK=1
 # The fork is private, so the dry run uses the local node's published keys and mnemonic, which a
-# live deployment never does (ops/deploy-network.sh refuses them, ADR 0051).
+# live deployment never does (ops/deploy-network.sh refuses them).
 export WALLET_MNEMONIC="test test test test test test test test test test test junk"
 LOG="$(mktemp -t fork-anvil)"
 

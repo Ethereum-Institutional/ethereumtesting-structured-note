@@ -5,7 +5,7 @@ import { termSheetByHash } from "@/lib/notes/termsheets";
 export const dynamic = "force-dynamic";
 
 /**
- * A term sheet, at the address its note's identity carries (ADR 0095): to signed-in, approved
+ * A term sheet, at the address its note's identity carries: to signed-in, approved
  * users only. Served in its canonical form, so its bytes hash to the address they are served at.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ hash: string }> }) {

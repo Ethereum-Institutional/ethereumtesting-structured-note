@@ -101,7 +101,7 @@ abstract contract VenueTestBase is Test {
 
     /// @dev Pranks `who`, first giving it ether if it has none. On a fork of an OP-stack network
     ///      Forge charges a pranked call a fee the caller must be able to pay, so a contract wallet
-    ///      or a fresh address with no balance reverts before any code runs (ADR 0041).
+    ///      or a fresh address with no balance reverts before any code runs.
     function _as(address who) internal {
         if (who.balance == 0) vm.deal(who, 1 ether);
         vm.prank(who);

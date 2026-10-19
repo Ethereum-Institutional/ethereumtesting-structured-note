@@ -9,7 +9,7 @@ import { Bar } from "../Bar";
 export const dynamic = "force-dynamic";
 
 /**
- * The Ledger (ADR 0071; S-35): the whole lifecycle as the chain records it, decoded from events
+ * The Ledger (S-35): the whole lifecycle as the chain records it, decoded from events
  * and calldata alone, for every approved user. Staff also see the register reconciliation.
  */
 

@@ -1,4 +1,4 @@
-# The site, as one image for the bank's virtual machine (ADR 0098). The same code as the public
+# The site, as one image for the bank's virtual machine. The same code as the public
 # site; only its configuration differs, and none of it is in the image: keys, the manifest and
 # every setting come in at run time (ops/vm/compose.yaml).
 #

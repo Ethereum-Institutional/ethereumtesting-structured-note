@@ -17,7 +17,7 @@ import { accountFor, custodianAddress, openAccount, type Custodian } from "./cus
 import { ROUTE_LABEL as LABELS } from "../routes.ts";
 
 /**
- * Onboarding by role (ADR 0089): the client chooses a custody route, the bank confirms it against
+ * Onboarding by role: the client chooses a custody route, the bank confirms it against
  * its KYB record, the account's identity is created and the bank vouches for the deposit; then the
  * client asks for the note, and the onboarding agent vouches for it.
  *
@@ -48,7 +48,7 @@ export type NoteAccess = {
   reason?: string;
 };
 
-/** The bank's admission of a wallet to the conversion pool (ADR 0090). */
+/** The bank's admission of a wallet to the conversion pool. */
 export type PoolAccess = {
   status: "admitted" | "revoked";
   /** The investor class the bank found: the pool serves professional and institutional investors. */
@@ -62,7 +62,7 @@ export type PoolAccess = {
   reason?: string;
 };
 
-/** The investor classes the pool serves (ADR 0033). */
+/** The investor classes the pool serves. */
 export const POOL_CLASSES = ["professional", "institutional"] as const;
 
 /** The client's answers on asking for the note: its selling restrictions, and its consent. */
@@ -92,7 +92,7 @@ export type Data = {
   revocations?: Array<{ topic: "deposit" | "note" | "pool"; by: string; at: string; reason: string }>;
   error?: string;
   offboarded?: { by: string; at: string; reason: string };
-  /** The client asked to close the account; the bank confirms (ADR 0107). */
+  /** The client asked to close the account; the bank confirms. */
   closeRequest?: { by: string; at: string; reason: string };
 };
 
@@ -181,7 +181,7 @@ const WALLET_MESSAGE_SECONDS = 15 * 60;
 /**
  * The message a self-custody client signs (Q4): its wallet, the hand-over, and its consent. It names
  * the site that asks, when it was issued and until when it may be signed, with a random nonce, as
- * Sign-In with Ethereum does (EIP-4361, ADR 0100): the wallet shows the site, and a message another
+ * Sign-In with Ethereum does (EIP-4361): the wallet shows the site, and a message another
  * site shows is not this one.
  */
 function walletMessage(a: Admission, wallet: Address, site: string) {
@@ -225,7 +225,7 @@ function walletMessage(a: Admission, wallet: Address, site: string) {
 
 /**
  * The waiting message, checked: not expired, and signed by its wallet, by recovery or EIP-1271 for a
- * contract wallet. One check for both routes, so neither can skip the expiry (ADR 0100).
+ * contract wallet. One check for both routes, so neither can skip the expiry.
  */
 async function checkWalletSignature(d: Data, signature: Hex): Promise<void> {
   if (!d.challenge || !d.wallet) throw new Error("There is no message waiting for a signature.");
@@ -456,7 +456,7 @@ export async function revokeNote(staff: Registrant, id: string, reason: string):
 }
 
 /**
- * The bank admits its client's wallet to the conversion pool (ADR 0090; plan, Q5): it has found the
+ * The bank admits its client's wallet to the conversion pool (plan, Q5): it has found the
  * client a professional or institutional investor, screened, and vouches for it with the
  * pool-access claim, which the pool's gate reads. The deposit must already accept the wallet, since
  * conversion moves the deposit; the client consented to the bank's claims when it was onboarded.

@@ -5,7 +5,7 @@ import { PendingButton } from "../PendingButton";
 
 type Result = { ok?: string; error?: string };
 
-/** The client asks for access to the notes, every note the factory issues, answering the selling restrictions (ADR 0089). */
+/** The client asks for access to the notes, every note the factory issues, answering the selling restrictions. */
 export function NoteRequestForm({ id, action, investorClass }: { id: string; action: (prev: Result, f: FormData) => Promise<Result>; investorClass?: string }) {
   const [state, run] = useActionState(action, {});
   return (

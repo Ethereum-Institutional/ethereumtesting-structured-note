@@ -17,7 +17,7 @@ import {Onboarding} from "../script/Onboarding.sol";
 import {Stack} from "./Stack.sol";
 
 /**
- * The note factory (ADR 0115): each note issued whole in one transaction by the Issuer's wallet,
+ * The note factory: each note issued whole in one transaction by the Issuer's wallet,
  * with its series identity and its own lifecycle clones, allowlisted on the deposit and governed by
  * the controller from the first block; several in one call; and every note recorded.
  */

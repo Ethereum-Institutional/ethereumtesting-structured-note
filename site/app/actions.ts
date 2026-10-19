@@ -21,7 +21,7 @@ async function recorded(run: () => Promise<unknown>, path: string) {
   } catch (e) {
     console.error(e);
   } finally {
-    // Every page of a staff portal shares its layout: refresh them all (ADR 0089).
+    // Every page of a staff portal shares its layout: refresh them all.
     revalidatePath(path, /^\/(agent|bank|onboarding|custodian)/.test(path) ? "layout" : "page");
   }
 }
@@ -49,7 +49,7 @@ export async function signInAction(_: FormState, f: FormData): Promise<FormState
   return guarded((origin) => requestSignIn(field(f, "email"), origin));
 }
 
-/** The code the visitor types (ADR 0093): signed in, waiting for approval, or refused in words. */
+/** The code the visitor types: signed in, waiting for approval, or refused in words. */
 export async function confirmCodeAction(_: FormState, f: FormData): Promise<FormState> {
   const email = field(f, "email");
   let outcome: Awaited<ReturnType<typeof confirm>>;
@@ -101,7 +101,7 @@ export async function resendLinkAction(_prev: FormState, f: FormData): Promise<F
 }
 
 // ---------------------------------------------------------------------------------------------
-// Onboarding by role (ADR 0089)
+// Onboarding by role
 // ---------------------------------------------------------------------------------------------
 
 type Result = { ok?: string; error?: string };
@@ -136,7 +136,7 @@ export async function cancelOnboardingAction(f: FormData) {
   await recorded(() => onboarding.cancel(who, field(f, "id")), "/onboard");
 }
 
-/** The browser wallet's two calls (ADR 0068): the message for the connected address, then the signature. */
+/** The browser wallet's two calls: the message for the connected address, then the signature. */
 export async function browserWalletStartAction(id: string, address: string): Promise<{ typedData?: Record<string, unknown>; error?: string }> {
   const who = await currentRegistrant();
   if (!who) return { error: "Sign in again." };
@@ -199,7 +199,7 @@ export async function bringIdentityAction(_prev: Result, f: FormData): Promise<R
 
 // --- the bank ---
 
-/** Adds a corporate client to the bank's records (ADR 0089). */
+/** Adds a corporate client to the bank's records. */
 export async function addClientAction(_prev: Result, f: FormData): Promise<Result> {
   return staffStep("bank", "/bank", async (staff) => {
     const get = (k: string) => field(f, k).trim();
@@ -248,7 +248,7 @@ export async function renewDepositAction(_prev: Result, f: FormData): Promise<Re
   });
 }
 
-/** The client asks to close an account; refused, in words, while it holds or is owed anything (ADR 0107). */
+/** The client asks to close an account; refused, in words, while it holds or is owed anything. */
 export async function requestCloseAction(_prev: Result, f: FormData): Promise<Result> {
   const who = await currentRegistrant();
   if (!who) return { error: "Sign in again." };
@@ -277,7 +277,7 @@ export async function withdrawCloseAction(_prev: Result, f: FormData): Promise<R
   }
 }
 
-/** The bank closes an account as its client asked (ADR 0107). */
+/** The bank closes an account as its client asked. */
 export async function confirmCloseAction(_prev: Result, f: FormData): Promise<Result> {
   return staffStep("bank", "/bank", async (staff) => {
     const { confirmClose } = await import("@/lib/identity/closing");
@@ -286,7 +286,7 @@ export async function confirmCloseAction(_prev: Result, f: FormData): Promise<Re
   });
 }
 
-/** The bank removes a client from its records, to add it again with its facts put right (ADR 0108). */
+/** The bank removes a client from its records, to add it again with its facts put right. */
 export async function removeClientAction(_prev: Result, f: FormData): Promise<Result> {
   return staffStep("bank", "/bank", async (staff) => {
     const { removeClient } = await import("@/lib/identity/clients");
@@ -322,7 +322,7 @@ export async function creditDepositAction(_prev: Result, f: FormData): Promise<R
   });
 }
 
-// --- the bank's deposit (ADR 0092) ---
+// --- the bank's deposit ---
 
 const depositAccount = (f: FormData) => {
   const a = field(f, "account").trim();
@@ -444,7 +444,7 @@ export async function acceptExistingAction(_prev: Result, f: FormData): Promise<
 }
 
 // ---------------------------------------------------------------------------------------------
-// Conversion in the pool, and the bank's credit of the deposit (ADR 0070)
+// Conversion in the pool, and the bank's credit of the deposit
 // ---------------------------------------------------------------------------------------------
 
 function units(amount: string, decimals: number): bigint {
@@ -548,7 +548,7 @@ export async function custodyConvertAction(_prev: Result, f: FormData): Promise<
 
 
 // ---------------------------------------------------------------------------------------------
-// Notes (ADRs 0072, 0073)
+// Notes
 // ---------------------------------------------------------------------------------------------
 
 export async function startNoteAction(f: FormData) {
@@ -581,7 +581,7 @@ export async function startNoteFromTermSheetAction(_prev: Result, f: FormData): 
   });
 }
 
-/** Staff stop an issuance that will not finish (ADR 0105). */
+/** Staff stop an issuance that will not finish. */
 export async function stopIssuanceAction(_prev: Result, f: FormData): Promise<Result> {
   return staffStep("agent", "/agent/notes", async (staff) => {
     const { stopIssuance } = await import("@/lib/notes/issue");
@@ -592,7 +592,7 @@ export async function stopIssuanceAction(_prev: Result, f: FormData): Promise<Re
 
 /**
  * Nudges the background jobs while the Notes page shows a note being issued: the server carries the
- * issuance on after answering, whether or not the page stays open (ADR 0116).
+ * issuance on after answering, whether or not the page stays open.
  */
 export async function advanceNoteAction(_id: string) {
   const op = await currentStaff("agent");
@@ -625,7 +625,7 @@ export async function placeUnitsAction(_prev: { ok?: string; error?: string }, f
   }
 }
 
-/** Staff withdraw an offer the site acts for: the Issuer's, or a custody account's (ADR 0081). */
+/** Staff withdraw an offer the site acts for: the Issuer's, or a custody account's. */
 export async function cancelOfferAction(_prev: { ok?: string; error?: string }, f: FormData) {
   return lifecycleStep(async (op) => {
     await (await import("@/lib/notes/place")).cancelOffer(op, field(f, "noteId"), field(f, "offerId"));
@@ -643,7 +643,7 @@ export async function buybackAction(_prev: { ok?: string; error?: string }, f: F
   });
 }
 
-/** Staff arrange a transfer between two accounts, or an open offer from one (ADR 0081). */
+/** Staff arrange a transfer between two accounts, or an open offer from one. */
 export async function arrangeTradeAction(_prev: { ok?: string; error?: string }, f: FormData) {
   return lifecycleStep(async (op) => {
     const buyer = field(f, "buyer");
@@ -764,7 +764,7 @@ export async function acceptanceDoneAction(noteId: string, tradeId: string, tx: 
   }
 }
 
-/** The lifecycle's steps (ADR 0078): each says what it did, or the contract's refusal. */
+/** The lifecycle's steps: each says what it did, or the contract's refusal. */
 async function lifecycleStep(run: (op: NonNullable<Awaited<ReturnType<typeof currentRegistrant>>>) => Promise<string>): Promise<{ ok?: string; error?: string }> {
   const op = await currentStaff("agent");
   if (!op) return { error: "Not permitted." };
@@ -838,7 +838,7 @@ export async function claimHeldAction(_prev: { ok?: string; error?: string }, f:
   });
 }
 
-/** Staff top up a key from the best-funded one (ADR 0080). */
+/** Staff top up a key from the best-funded one. */
 export async function topUpAction(_prev: { ok?: string; error?: string }, f: FormData) {
   return lifecycleStep(async (op) => {
     const { topUp, TOP_UP } = await import("@/lib/chain/keys");

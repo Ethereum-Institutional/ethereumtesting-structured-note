@@ -7,7 +7,7 @@ import { JurisdictionSelect } from "./RecordFields";
 export type AddClientState = { ok?: string; error?: string };
 
 /**
- * A corporate client's facts, entered once (ADR 0089). They stay in the bank's records; the bank's
+ * A corporate client's facts, entered once. They stay in the bank's records; the bank's
  * claim carries only their salted hash. The result is shown here, since a refusal must not vanish
  * into a server log.
  */
@@ -26,7 +26,7 @@ export function AddClientForm({
   return (
     <form action={submit} className="stack">
       <div className="fields">
-        {/* The site assigns the reference; a client re-issued from the bank keeps the bank's (ADR 0067). */}
+        {/* The site assigns the reference; a client re-issued from the bank keeps the bank's. */}
         {prefill?.kycReference && <input type="hidden" name="kycReference" value={prefill.kycReference} />}
         <label>Legal name<input name="legalName" required maxLength={200} /></label>
         <label>

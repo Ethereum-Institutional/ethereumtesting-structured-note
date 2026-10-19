@@ -8,7 +8,7 @@ import { holdingsFromIndex } from "./chain/events.ts";
 import { notesOnRecord } from "./notes/registry.ts";
 
 /**
- * The Ledger (ADR 0071): the deployment's lifecycle reconstructed from chain events alone (S-35),
+ * The Ledger: the deployment's lifecycle reconstructed from chain events alone (S-35),
  * read through the ledger RPC (Alchemy on the test network, whose log queries take the whole
  * range), from the deployment's first block, cached for a minute while no new block lands. And, for staff, the register
  * reconciliation: every account the chain or the site knows, what each says, and where they differ.
@@ -72,7 +72,7 @@ function ownContracts(tape: Tape, m: Manifest): Address[] {
   return tape.watched().filter((a) => !shared.has(a.toLowerCase()));
 }
 
-/** The contracts of the notes the site issued, from its own record of them (ADR 0072). */
+/** The contracts of the notes the site issued, from its own record of them. */
 export async function noteContracts(): Promise<Array<{ address: string; key: string; label: string }>> {
   const PARTS: Record<string, string> = {
     note: "",
@@ -91,7 +91,7 @@ export async function noteContracts(): Promise<Array<{ address: string; key: str
 }
 
 /**
- * The deployment's identities (ADR 0088), from the storage's own events: each named for the wallet
+ * The deployment's identities, from the storage's own events: each named for the wallet
  * it was registered for, so the keys and claims institutions add to it appear on the tape.
  */
 async function identities(c: PublicClient, m: Manifest, from: bigint): Promise<Array<{ address: string; key: string; label: string }>> {

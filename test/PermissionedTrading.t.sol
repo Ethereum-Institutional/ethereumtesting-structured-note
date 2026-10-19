@@ -18,7 +18,7 @@ interface IDepositGateway {
 }
 
 /**
- * The conversion pool's controls, each shown binding (overview S-27 to S-29; ADRs 0030 to 0039,
+ * The conversion pool's controls, each shown binding (overview S-27 to S-29;,
  * 0090). Every test states a control and shows the transaction succeeding or failing for the right
  * reason; every refusal has a positive control.
  *
@@ -183,7 +183,7 @@ contract PermissionedTradingTest is VenueTestBase {
     }
 
     /// The bank revoking its deposit claim stops the pool at once, though the pool-access claim
-    /// stands, with no venue action (ADR 0004).
+    /// stands, with no venue action.
     function test_depositClaimRevocation_stopsThePool() public {
         assertTrue(gate.isAllowed(investorA), "the pool-access claim is untouched");
         address bankIssuer = _addr(".identity.bankIssuer");

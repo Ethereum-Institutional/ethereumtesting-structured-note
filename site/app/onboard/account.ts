@@ -8,7 +8,7 @@ export { walletOf };
 const LIVE = ["requested", "awaiting-wallet", "awaiting-custodian", "failed"];
 
 /**
- * What the client's Onboard pages show (ADR 0089): the onboardings in progress, the wallets
+ * What the client's Onboard pages show: the onboardings in progress, the wallets
  * onboarded for it with their claims as the chain holds them, and what ended.
  */
 export async function accountOf(who: Registrant): Promise<{

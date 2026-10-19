@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 const eth = (v: bigint) => Number(formatEther(v)).toLocaleString("en-GB", { maximumFractionDigits: 6 });
 
-/** Every key the site signs with, and its ETH for fees (ADR 0080). */
+/** Every key the site signs with, and its ETH for fees. */
 export default async function Keys() {
   const view = await keyBalances(true).catch((e) => (e as Error).message);
   if (typeof view === "string") {

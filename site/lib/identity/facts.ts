@@ -1,7 +1,7 @@
 import { JURISDICTIONS } from "../jurisdictions.ts";
 
 /**
- * A corporate client's facts, as the bank's staff enter them (ADR 0089): checked here, kept in the
+ * A corporate client's facts, as the bank's staff enter them: checked here, kept in the
  * bank's portal, and carried on-chain only as a salted hash in the bank's claim. Pure, so it is
  * unit-tested on its own.
  */
@@ -11,7 +11,7 @@ export const CORPORATE_STATUSES = ["active", "dissolved", "suspended", "in-liqui
 export const INVESTOR_CLASSES = ["sophisticated", "professional", "institutional", "retail"] as const;
 
 export type ClientInput = {
-  /** Assigned by the site when absent (ADR 0067). */
+  /** Assigned by the site when absent. */
   kycReference?: string;
   legalName: string;
   legalForm: string;

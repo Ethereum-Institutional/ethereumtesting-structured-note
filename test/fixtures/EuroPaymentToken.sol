@@ -7,7 +7,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 /**
  * @title EuroPaymentToken
  * @notice Local stand-in for the third-party euro payment token the pool converts against. On the
- *         test network the issuer's own token is used, from the network file (ADR 0038).
+ *         test network the issuer's own token is used, from the network file.
  * @dev A plain ERC-20 with six decimals, as the issuer's token has, which shows that the hook
  *      gates only the permissioned side of the pair. Never deployed off the local node.
  */

@@ -1,5 +1,5 @@
 /**
- * Records belong to one deployment (ADR 0083): admissions and notes are stamped with the
+ * Records belong to one deployment: admissions and notes are stamped with the
  * deployment they act on, and an earlier deployment's are kept but never read.
  *
  *   npm run test:admission

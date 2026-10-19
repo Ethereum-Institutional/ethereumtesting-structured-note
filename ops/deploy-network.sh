@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploys the whole stack to a live public network (ADR 0051): an integration deployment, not
+# Deploys the whole stack to a live public network: an integration deployment, not
 # the PoC execution, which is deployed afresh after internal assurance review (D17).
 #
 #   NETWORK_FILE=ops/networks/ethereum-sepolia.json KEYS=ops/keys.ethereum-sepolia.env \
@@ -20,7 +20,7 @@ export KEYS="${KEYS:?set KEYS to the network key file}"
 net() { jq -er "$1" "$NETWORK_FILE"; }
 set -a; source "$KEYS"; set +a
 
-# Never the local node's keys (ADR 0041).
+# Never the local node's keys.
 PUBLISHED="$(grep -oE '0x[0-9a-fA-F]{64}' ops/keys.env | tr 'A-F' 'a-f')"
 for v in ISSUER_PK AGENT_PK ACCESS_ISSUER_PK DEPOSIT_AGENT_PK CUSTODIAN_PK INVESTOR_A_PK INVESTOR_B_PK INVESTOR_C_PK INVESTOR_D_PK CALCULATION_AGENT_PK THIRD_PARTY_CUSTODIAN_PK; do
   echo "$PUBLISHED" | grep -qx "$(echo "${!v}" | tr 'A-F' 'a-f')" && { echo "$v is a published local key; refusing" >&2; exit 1; }
@@ -36,7 +36,7 @@ for k in NOTE_NAME NOTE_SYMBOL DEPOSIT_NAME DEPOSIT_SYMBOL TERM_SHEET_BASE; do
 done
 
 # Gas for every capacity that sends a transaction: what the deployment used on a fork of Ethereum
-# Sepolia, under Amsterdam's prices for state creation (ADR 0098), with a tenth more. Each must hold
+# Sepolia, under Amsterdam's prices for state creation, with a tenth more. Each must hold
 # that at three times today's gas price, so a rise during the run does not strand it halfway, and
 # never less than 0.01 ETH.
 GAS_PRICE="$(cast gas-price --rpc-url "$RPC")"
@@ -73,7 +73,7 @@ echo "Deploying to chain $(net .chainId). This is public and permanent."
 ./ops/deploy-stack.sh
 echo "Addresses in $MANIFEST"
 
-# Every contract verified on the chain's explorer, where the key file holds an Etherscan key (ADR 0113).
+# Every contract verified on the chain's explorer, where the key file holds an Etherscan key.
 if [ -n "${ETHERSCAN_API_KEY:-}" ]; then
   echo "Verifying the contracts on the explorer:"
   python3 ops/verify-contracts.py || echo "Some contracts were not verified; run ops/verify-contracts.py again to retry them." >&2

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Defines and checks the instruments' frozen contract surface (ADR 0026).
+"""Defines and checks the instruments' frozen contract surface.
 
 A surface file lists every in-scope source file with its SHA-256, the SHA-256 of each deployable
 contract's runtime code as compiled, the compiler settings, and the debt standard's pin. It is

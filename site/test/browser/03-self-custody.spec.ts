@@ -40,7 +40,7 @@ test("self-custody: the bank declines, the client asks again, the bank confirms,
   await expect(bank.locator("#in-progress + .table-wrap")).toContainText("the client's wallet signature", { timeout: 15_000 });
 
   // One click: the wallet's address is read, the chain added and switched to, and the message
-  // proposed for signature (ADRs 0068, 0089). Declined the first time, the same button tries again.
+  // proposed for signature. Declined the first time, the same button tries again.
   await client.reload();
   await client.getByRole("button", { name: "Connect MetaMask and sign" }).click();
   await expect(client.getByRole("alert").filter({ hasText: "You declined in the wallet" })).toBeVisible();
@@ -74,7 +74,7 @@ test("self-custody: the bank declines, the client asks again, the bank confirms,
     await expect(account).toContainText("eligible, until", { timeout: 1_000 });
   }).toPass({ timeout: 30_000 });
 
-  // The client asks to close its account (ADR 0107): holding nothing yet, the request stands; the bank
+  // The client asks to close its account: holding nothing yet, the request stands; the bank
   // sees it with its reason; withdrawn, it is gone, and the account stays for the specs after this one.
   await client.reload();
   await account.getByText("Close this account…").click();
@@ -91,8 +91,8 @@ test("self-custody: the bank declines, the client asks again, the bank confirms,
   await bank.reload();
   await expect(bank.locator("#onboarded + .table-wrap tbody tr").filter({ hasText: wallet })).not.toContainText("asked to close");
 
-  // With an identity on the chain, the client's registration cannot be deleted, not even by an admin
-  // (ADR 0100): the wallet is offboarded first.
+  // With an identity on the chain, the client's registration cannot be deleted, not even by an admin:
+  // the wallet is offboarded first.
   const admin = await signedIn(browser, PEOPLE.operator);
   await admin.goto("/bank");
   const signUp = admin.getByRole("row").filter({ hasText: PEOPLE.selfCustody.email });

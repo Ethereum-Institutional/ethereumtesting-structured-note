@@ -5,7 +5,7 @@ import { CodeForm } from "../Forms";
 export const dynamic = "force-dynamic";
 
 /**
- * Where the code mail links (ADR 0099): the code box for the address in the link, so the code can be
+ * Where the code mail links: the code box for the address in the link, so the code can be
  * typed in a new tab or later. The link carries no code, and the page says nothing about whether the
  * address is registered: a code typed for an unknown address is refused like a wrong one.
  */

@@ -1,6 +1,6 @@
 import { test, expect, expectHealthy, signedIn, PEOPLE } from "./fixtures.ts";
 
-/** Every page at a phone's width (ADR 0102): nothing wider than the screen, the menu behind a button, tables as cards. */
+/** Every page at a phone's width: nothing wider than the screen, the menu behind a button, tables as cards. */
 const PAGES: Array<[string, keyof typeof PEOPLE | null]> = [
   ["/", null], ["/access?email=someone%40example.org", null], ["/", "operator"], ["/onboard", "selfCustody"],
   ["/bank", "operator"], ["/bank/clients", "operator"], ["/bank/deposit", "operator"], ["/bank/onboarding", "operator"], ["/bank/pool", "operator"],

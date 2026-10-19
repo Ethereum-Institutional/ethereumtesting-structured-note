@@ -13,7 +13,7 @@ import {NoteFactory} from "../src/factory/NoteFactory.sol";
 import {AgentPowers} from "../src/factory/AgentPowers.sol";
 
 /**
- * Issuance of a note through the note factory, in one transaction (ADR 0115): its series identity,
+ * Issuance of a note through the note factory, in one transaction: its series identity,
  * its terms, its T-REX suite with the programme's checks, its lifecycle contracts as clones,
  * allowlisted on the deposit, the notional minted to the Issuer's inventory, and the note handed to
  * the governance controller. Used by the issuance script and the tests alike.
@@ -95,7 +95,7 @@ library Issuance {
         l.settlement = LockedSettlement(n.settlement);
     }
 
-    // --- restrictions (ADR 0085), as the factory applies them ---
+    // --- restrictions, as the factory applies them ---
 
     function payingAgentRestrictions() internal pure returns (AgentRestrictions memory) {
         return AgentPowers.payingAgent();

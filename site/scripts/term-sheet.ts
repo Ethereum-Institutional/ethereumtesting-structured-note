@@ -1,12 +1,12 @@
 /**
- * The deployment's term sheet (ADR 0095), built before the note is issued: the record, its hash,
+ * The deployment's term sheet, built before the note is issued: the record, its hash,
  * the address it is published at, and the terms derived from it, which the issuance script reads.
  * Run by ops/deploy-stack.sh from the repository root:
  *
  *   node site/scripts/term-sheet.ts
  *
  * The figures are the payoff specification's illustrative ones (spike 3), with Twin Win applicable
- * (C5, ADR 0015), until the bank's term sheet gives them. Dates are offsets from the chain's own
+ * (C5), until the bank's term sheet gives them. Dates are offsets from the chain's own
  * clock: four quarterly observations, each with its Record Time two days and its Payment Date five
  * days after it. Off the local node, NOTE_NAME, NOTE_SYMBOL and TERM_SHEET_BASE must be set.
  */
@@ -29,7 +29,7 @@ const param = (key: string, localDefault: string) => {
   const set = process.env[key]?.trim();
   if (set) return set;
   if (local) return localDefault;
-  throw new Error(`${key} must be set off the local node (ADR 0027)`);
+  throw new Error(`${key} must be set off the local node`);
 };
 const manifest = JSON.parse(readFileSync(MANIFEST, "utf8"));
 const now = Number((await client.getBlock()).timestamp);

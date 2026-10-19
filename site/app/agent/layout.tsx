@@ -3,7 +3,7 @@ import { StaffShell } from "../staff/StaffShell";
 
 export const dynamic = "force-dynamic";
 
-/** The Agent's portal: the notes and their lifecycle, governance, keys, and the participants without their facts (ADR 0089). */
+/** The Agent's portal: the notes and their lifecycle, governance, keys, and the participants without their facts. */
 export default async function AgentLayout({ children }: { children: React.ReactNode }) {
   const low = await lowKeys().catch(() => []);
   return (

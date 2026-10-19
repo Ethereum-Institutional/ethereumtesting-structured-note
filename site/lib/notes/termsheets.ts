@@ -6,7 +6,7 @@ import { chainClient } from "./registry.ts";
 import { differences, hashOf, validate, type ChainTerms, type TermSheet } from "./termsheet.ts";
 
 /**
- * Where term sheets are kept and published (ADR 0095): each record by the hash its note carries,
+ * Where term sheets are kept and published: each record by the hash its note carries,
  * the deployment's own in its manifest and the site's in its store, and the claim on a note's
  * identity that names it.
  */

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 export type NavItem = { href: string; label: string; badge?: number; children?: Array<{ href: string; label: string }> };
 
-/** A console's navigation column (ADRs 0073, 0076): the Operator pages and the client's Onboard pages. */
+/** A console's navigation column: the Operator pages and the client's Onboard pages. */
 export function ConsoleNav({ label, items }: { label: string; items: NavItem[] }) {
   const path = usePathname();
   const at = (href: string) => path === href;

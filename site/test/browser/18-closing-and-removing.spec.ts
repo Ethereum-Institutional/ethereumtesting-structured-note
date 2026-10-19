@@ -1,6 +1,6 @@
 import { test, expect, expectHealthy, signedIn, PEOPLE } from "./fixtures.ts";
 
-test("an account holding the note cannot be closed; a client with an account on the chain cannot be removed; one without is removed, to be added again (ADRs 0107, 0108)", async ({ browser }) => {
+test("an account holding the note cannot be closed; a client with an account on the chain cannot be removed; one without is removed, to be added again", async ({ browser }) => {
   // The self-custody client of spec 03 holds units since spec 09: its request is refused, naming them.
   const client = await signedIn(browser, PEOPLE.selfCustody);
   await client.goto("/onboard");

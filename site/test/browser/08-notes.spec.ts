@@ -8,7 +8,7 @@ test("staff issue a note; the page carries the issuance to the end, and the Ledg
   const scenario = form.locator('select[name="scenario"]');
   const value = await scenario.locator("option", { hasText: "early redemption" }).first().getAttribute("value");
   await scenario.selectOption(value!);
-  // The calendar is configured, and previewed before issuing (ADR 0073): quarterly mirrors a real note.
+  // The calendar is configured, and previewed before issuing: quarterly mirrors a real note.
   await form.getByLabel("Observations (coupon dates)").fill("4");
   await form.getByLabel("Time between observations").fill("3");
   await form.getByLabel("Unit", { exact: true }).selectOption("months");
@@ -28,7 +28,7 @@ test("staff issue a note; the page carries the issuance to the end, and the Ledg
   await expect(row).toContainText("issuing");
   await expect(row.locator(".pill")).toHaveText("issued", { timeout: 120_000 });
   await expect(row).toContainText("Date 4:");
-  // Each note opens on its own page, with its contracts (ADR 0078).
+  // Each note opens on its own page, with its contracts.
   await row.getByRole("link", { name: /Series 2/ }).click();
   await expect(staff).toHaveURL(/\/agent\/notes\/note_/);
   await expect(staff.locator(".facts").first()).toContainText("XS0000001239");

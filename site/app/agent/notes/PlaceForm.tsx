@@ -6,7 +6,7 @@ import { PendingButton } from "../../PendingButton";
 export type Placeable = { id: string; label: string; regS: boolean };
 
 /**
- * Placing units with an onboarded account (ADRs 0075, 0089): the account, the units and the price a unit.
+ * Placing units with an onboarded account: the account, the units and the price a unit.
  * The note is asked first whether its leg could move, so an account the onboarding agent has not vouched for is
  * refused here with its reason (S-09), before anything is sent.
  */

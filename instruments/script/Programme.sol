@@ -13,7 +13,7 @@ interface IRoleAdmin {
 }
 
 /**
- * The note programme on the scaffolding (ADR 0115): its sanctions module, its governance controller
+ * The note programme on the scaffolding: its sanctions module, its governance controller
  * and its note factory, each naming the others, built once before any note. Used by the deploy
  * scripts and the tests alike.
  *

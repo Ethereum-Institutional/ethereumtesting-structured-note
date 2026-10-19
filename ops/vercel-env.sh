@@ -5,7 +5,7 @@
 # variable of type sensitive, which this team requires, so no secret passes through a terminal or a
 # transcript. Prints the names it set, never the values.
 #
-# Onboarding rests on ERC-3643 identities and claims (ADRs 0088, 0089): the external credential
+# Onboarding rests on ERC-3643 identities and claims: the external credential
 # platform's settings are removed from the project, not set.
 #
 #   ./ops/vercel-env.sh ops/addresses.sepolia.json ops/networks/sepolia.json ops/keys.sepolia.env
@@ -30,7 +30,7 @@ project, team = sys.argv[1], sys.argv[2]
 sys.path.insert(0, os.path.join(os.environ["ROOT"], "ops"))
 from site_env import site_env
 env = site_env(os.environ["MANIFEST"], os.environ["NETWORK"], embed_manifest=True)
-# The secret Vercel's cron presents to carry background jobs on (ADR 0116): made here, sent straight
+# The secret Vercel's cron presents to carry background jobs on: made here, sent straight
 # to the project, never shown; each run replaces it.
 import secrets
 env["CRON_SECRET"] = secrets.token_urlsafe(32)
@@ -46,8 +46,8 @@ for key, value in env.items():
         print(f"set {key}")
     except urllib.error.HTTPError as e:
         print(f"FAILED {key}: {json.loads(e.read()).get('error', {}).get('message')}")
-# The external credential platform's settings, and the staff token before them (ADR 0055), are
-# removed from the project: nothing reads them since 0.2.0 (ADR 0089).
+# The external credential platform's settings, and the staff token before them, are
+# removed from the project: nothing reads them since 0.2.0.
 RETIRED = {
     "BANK_ISSUER_TOKEN", "BANK_ISSUER_URL", "BANK_ISSUER_API_KEY", "CREDENTIAL_VERIFIER_URL",
     "ADMISSION_ISSUER_DID", "ADMISSION_ISSUER_PUBKEY", "ADMISSION_SCHEMAS", "ADMISSION_CORPORATE_ISSUERS",

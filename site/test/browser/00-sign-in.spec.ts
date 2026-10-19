@@ -26,7 +26,7 @@ async function visitor(browser: Browser) {
   return page;
 }
 
-test("sign-in by emailed code: a visitor confirms its address with one, staff approve, it signs in with another; a code works once, and five wrong tries spend it (ADR 0093)", async ({ browser }) => {
+test("sign-in by emailed code: a visitor confirms its address with one, staff approve, it signs in with another; a code works once, and five wrong tries spend it", async ({ browser }) => {
   // Registration: the same panel asks for the code that was mailed.
   const email = "visitor@codes.example";
   const page = await visitor(browser);
@@ -71,7 +71,7 @@ test("sign-in by emailed code: a visitor confirms its address with one, staff ap
   await expect(replay.getByRole("alert")).toContainText("That code is not right");
 
   // The mail links to a page that takes the code for its address, opened here in a fresh browser as
-  // if from the mail later; the link carries the address, never the code (ADR 0099).
+  // if from the mail later; the link carries the address, never the code.
   const linked = PEOPLE.selfCustody.email;
   const asker = await visitor(browser);
   const askFor = asker.locator("section.panel").filter({ has: asker.getByRole("heading", { name: "Already registered" }) });

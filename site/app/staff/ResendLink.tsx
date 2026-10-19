@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import type { FormState } from "../actions";
 import { PendingButton } from "../PendingButton";
 
-/** Sends a fresh confirmation code to a registration that has not confirmed its address (ADRs 0077, 0093). */
+/** Sends a fresh confirmation code to a registration that has not confirmed its address. */
 export function ResendLink({ id, email, action }: { id: string; email: string; action: (prev: FormState, f: FormData) => Promise<FormState> }) {
   const [state, run] = useActionState(action, {});
   return (

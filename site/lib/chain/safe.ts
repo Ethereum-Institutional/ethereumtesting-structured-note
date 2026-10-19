@@ -4,7 +4,7 @@ import type { signers } from "./signer.ts";
 import { until } from "./until.ts";
 
 /**
- * Acting through one of the deployment's multi-signature wallets (Safe 1.4.1, ADRs 0016, 0072).
+ * Acting through one of the deployment's multi-signature wallets (Safe 1.4.1).
  * Two owners whose keys the site holds sign the wallet's own transaction hash, and an ordinary key
  * sends it, so the wallet acts exactly as it would on its owners' signatures from their devices.
  */

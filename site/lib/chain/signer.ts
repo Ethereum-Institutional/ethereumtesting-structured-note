@@ -14,7 +14,7 @@ import { getStore } from "../store.ts";
  * other chain a missing key is an error, never a fallback to a published key.
  *
  * Every transaction waits for its receipt inside its signer's queue (see queue.ts), and holds the
- * key's lease in the database while it does (ADR 0116): no two servers send with one key at once,
+ * key's lease in the database while it does: no two servers send with one key at once,
  * and the lease carries the key's next nonce, so a node that lags behind cannot hand out one already
  * used. On the local
  * chain, a receipt that never arrives is almost always a transaction above a nonce gap left by a
@@ -25,7 +25,7 @@ import { getStore } from "../store.ts";
 
 export const LOCAL_CHAIN_ID = 31337;
 
-/** Who each capacity is, for messages and the Keys page (ADR 0080). */
+/** Who each capacity is, for messages and the Keys page. */
 export const CAPACITY_LABEL: Record<string, string> = {
   issuer: "Issuer",
   agent: "Agent",
@@ -50,7 +50,7 @@ export const CAPACITY_LABEL: Record<string, string> = {
 /** Capacities that only sign, and send nothing themselves: they need no ETH. */
 export const SIGNS_ONLY = new Set(["servicing1", "servicing2", "agentGov1", "agentGov2", "issuerGov1", "issuerGov2", "cosigner1", "cosigner2"]);
 
-/** Below this a key is low, and every Operator page says so (ADR 0080). */
+/** Below this a key is low, and every Operator page says so. */
 export const feeBuffer = (env: NodeJS.ProcessEnv = process.env) => parseEther(env.FEE_BUFFER_ETH?.trim() || "0.001");
 
 /** A transaction refused before signing: its key cannot pay twice its estimated fees. */
@@ -89,7 +89,7 @@ const LOCAL_KEYS: Record<string, Hex> = {
   // Two of the three owners of the Agent's servicing wallet: mnemonic indices 19 and 20 (Ceremony).
   servicing1: "0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e",
   servicing2: "0xeaa861a9a01391ed3d587d8a5a84ca56ee277629a8b02c22093a419bf240e65d",
-  // Two of the three owners of each institution's governance wallet (ADR 0082): the Agent's
+  // Two of the three owners of each institution's governance wallet: the Agent's
   // (indices 10, 11), the Issuer's (13, 14) and the co-signing institution's (16, 17).
   agentGov1: "0xf214f2b2cd398c806f84e317254e0f0b801d0643303237d97a22a48e01628897",
   agentGov2: "0x701b615bbdfb9de65240bc28bd21bbc0d996645a3dd57e7b12bc2bdf6f192c82",
@@ -103,7 +103,7 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
   const local = chain.id === LOCAL_CHAIN_ID;
   // How long a sent transaction is waited for. The local node mines at once; Ethereum Sepolia makes a
   // block every 12 s and a large transaction can wait several, so 25 s gave up on issuances that
-  // then landed (ADR 0103).
+  // then landed.
   const receiptTimeout = local ? 25_000 : 150_000;
   const configured = env.SIGNER_KEYS ? (JSON.parse(env.SIGNER_KEYS) as Record<string, Hex>) : {};
   const keys = local ? { ...LOCAL_KEYS, ...configured } : configured;
@@ -132,7 +132,7 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
   }
 
   /**
-   * Refuses before signing when the key cannot pay twice the transaction's estimated fees (ADR 0080).
+   * Refuses before signing when the key cannot pay twice the transaction's estimated fees.
    * An estimate that fails is left to the transaction itself, with a generous ceiling assumed here.
    */
   async function ensureFees(capacity: string, estimate: () => Promise<bigint>, ceiling: bigint, value = 0n): Promise<void> {
@@ -229,12 +229,12 @@ export function signers(chain: Chain, rpcUrl: string, env: NodeJS.ProcessEnv = p
     return account(capacity).sign({ hash });
   }
 
-  /** Signs a 32-byte digest as an Ethereum signed message, as an ONCHAINID claim is signed (ADR 0088). */
+  /** Signs a 32-byte digest as an Ethereum signed message, as an ONCHAINID claim is signed. */
   async function signMessageHash(capacity: string, hash: Hex): Promise<Hex> {
     return account(capacity).signMessage({ message: { raw: hash } });
   }
 
-  /** Sends ETH from a capacity, for topping up another key (ADR 0080). */
+  /** Sends ETH from a capacity, for topping up another key. */
   async function transfer(capacity: string, to: Address, value: bigint): Promise<Hex> {
     return enqueue(capacity, () =>
       leased(capacity, async (nonce, sent) => {

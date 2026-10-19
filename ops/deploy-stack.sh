@@ -3,12 +3,12 @@
 #
 # The order cannot be changed:
 #   - the scaffolding (identities, T-REX, claim issuers, the deposit) exists before any note
-#   - the deposit exists before the venue can wrap it in its adapter (ADR 0038)
+#   - the deposit exists before the venue can wrap it in its adapter
 #   - the adapter holds a balance before the factory can verify it, which the pool needs
 #   - the router and position manager exist before custody accounts can approve them
 #   - the ceremony moves every role, the venue's included, so it comes last
 #
-# The conversion pool is deployed by default, gated on the same ONCHAINID identities (ADR 0090):
+# The conversion pool is deployed by default, gated on the same ONCHAINID identities:
 # POOL=0 leaves it out.
 #
 # On a fork of a public network (ops/dry-run-fork.sh) nothing is installed: Permit2 and the wallet
@@ -17,7 +17,7 @@ set -euo pipefail
 export PATH="$HOME/.foundry/bin:$PATH"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-# KEYS names the key file; the local node's published keys by default (ADR 0051).
+# KEYS names the key file; the local node's published keys by default.
 source "${KEYS:-./ops/keys.env}"
 
 RPC="${RPC:-http://127.0.0.1:8545}"
@@ -25,7 +25,7 @@ FS="--rpc-url $RPC --broadcast ${FORGE_FLAGS:-}"
 # Ethereum Sepolia runs Amsterdam, which prices state creation far above what forge simulates (the
 # foundry.toml EVM version): a 10 KB contract costs some 15M gas, not 2.1M. So on a public network
 # forge skips its own simulation and takes each transaction's gas from the chain's estimate, one
-# transaction at a time so each is estimated on the state the one before it left (ADR 0098).
+# transaction at a time so each is estimated on the state the one before it left.
 [ "${PUBLIC_NETWORK:-0}" = 1 ] && FS="$FS --skip-simulation --slow"
 
 step() { printf '\n\033[1m── %s\033[0m\n' "$1"; }

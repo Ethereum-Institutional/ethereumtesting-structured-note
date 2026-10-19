@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
-/// Stand-in for an institution's multi-signature wallet (ADR 0024): reports a threshold and
+/// Stand-in for an institution's multi-signature wallet: reports a threshold and
 /// executes calls for its owner. The integration test uses the real wallet.
 contract MockWallet {
     uint256 public threshold;

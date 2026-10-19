@@ -3,7 +3,7 @@ import "./globals.css";
 import { TableLabels } from "./TableLabels";
 
 // A step that sends a transaction waits for it to be mined: on Ethereum Sepolia that can take
-// minutes for a large one, so every page may run for up to five (ADR 0103).
+// minutes for a large one, so every page may run for up to five.
 export const maxDuration = 300;
 
 export const metadata: Metadata = {

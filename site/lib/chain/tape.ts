@@ -92,7 +92,7 @@ const AGENTS: Entry[] = [
   { signature: "function removeAgent(address agent)", meaning: "Removed an agent", tone: "control", args: ["account"] },
 ];
 
-/** The note: an ERC-3643 token (T-REX), whose agents act within their restrictions (ADRs 0085, 0088). */
+/** The note: an ERC-3643 token (T-REX), whose agents act within their restrictions. */
 const NOTE_TOKEN: Entry[] = [
   ...ERC20,
   ...OWNABLE,
@@ -109,7 +109,7 @@ const NOTE_TOKEN: Entry[] = [
   { signature: "function setAgentRestrictions(address agent, (bool disableMint, bool disableBurn, bool disablePartialFreeze, bool disableAddressFreeze, bool disableRecovery, bool disableForceTransfer, bool disablePause) restrictions)", meaning: "Limited an agent to the powers named", tone: "control", args: ["account", "restrictions"] },
 ];
 
-/** The tokenized deposit (ADR 0086). */
+/** The tokenized deposit. */
 const DEPOSIT_TOKEN: Entry[] = [
   ...ROLES,
   ...ERC20,
@@ -125,7 +125,7 @@ const DEPOSIT_TOKEN: Entry[] = [
   { signature: "function setIdentityRegistry(address registry)", meaning: "Pointed the deposit at a new identity registry", tone: "control", args: ["account"] },
 ];
 
-/** An ONCHAINID identity: keys, and the claims institutions add to it (ADR 0088). */
+/** An ONCHAINID identity: keys, and the claims institutions add to it. */
 const IDENTITY: Entry[] = [
   { signature: "function addKey(bytes32 key, uint256 purpose, uint256 keyType)", meaning: "Added a key to an identity: management (1) or claim (3), the latter the client's consent to an institution vouching for it", tone: "onboard", args: ["ref", "number", "number"] },
   { signature: "function removeKey(bytes32 key, uint256 purpose)", meaning: "Removed a key from an identity", tone: "onboard", args: ["ref", "number"] },
@@ -262,7 +262,7 @@ export const REGISTRY: Record<string, Entry[]> = {
     { signature: "function propose(address seller, address buyer, uint64 units, uint256 price, uint48 deadline)", meaning: "Proposed a delivery-versus-payment trade", tone: "trade", args: ["account", "account", { amountIn: "note" }, { amountIn: "deposit" }, "time"] },
     { signature: "function accept(uint256 id)", meaning: "Accepted a trade: both legs settled together", tone: "trade", args: ["number"] },
     { signature: "function cancel(uint256 id)", meaning: "Cancelled a proposed trade", tone: "ops", args: ["number"] },
-    // The locked settlement of notes issued from ADR 0081 on: accept and cancel are the same calls.
+    // The locked settlement of notes issued from on: accept and cancel are the same calls.
     { signature: "function offer(uint8 side, address counterparty, uint64 units, uint256 price, uint48 deadline)", meaning: "Offered to sell or to buy units, its side locked until it settles or ends", tone: "trade", args: ["number", "account", { amountIn: "note" }, { amountIn: "deposit" }, "time"] },
     { signature: "function release(uint256 id)", meaning: "Released an offer's lock, past its deadline or with the note paused", tone: "ops", args: ["number"] },
   ],
@@ -368,7 +368,7 @@ const PUBLIC_INFRASTRUCTURE: Record<string, { key: string; label: string }> = {
 };
 KIND_OF_KEY["public.delegationManager"] = "delegationManager";
 
-/** The contracts of a note issued from the site (ADR 0072): `notes.<symbol>.<part>`, decoded as the live note's are. */
+/** The contracts of a note issued from the site: `notes.<symbol>.<part>`, decoded as the live note's are. */
 const NOTE_PARTS: Record<string, string> = { note: "note", determinations: "determinations", recordDates: "recordDates", identityRegistry: "identityRegistry", payingAgent: "payingAgent", settlement: "settlement", noteIdentity: "identity" };
 
 function kindOfKey(key: string): string | undefined {
@@ -545,7 +545,7 @@ export class Tape {
     return `[${(value as unknown[]).length} calls]`;
   }
 
-  /** A note's issuance, in the words of its term sheet's headline and who serves it (ADR 0091). */
+  /** A note's issuance, in the words of its term sheet's headline and who serves it. */
   private issuance(p: Issuance): string {
     return [
       `${p.name} (${p.symbol})`,
@@ -603,7 +603,7 @@ function outcome(o: Record<string, unknown>): string {
   return parts.join("; ");
 }
 
-/** An agent's restrictions, as the powers it keeps (ADR 0085). */
+/** An agent's restrictions, as the powers it keeps. */
 function restrictions(r: Record<string, boolean>): string {
   const powers: Array<[string, string]> = [
     ["disableMint", "mint"], ["disableBurn", "burn"], ["disablePartialFreeze", "partial freeze"], ["disableAddressFreeze", "freeze an address"],
@@ -613,7 +613,7 @@ function restrictions(r: Record<string, boolean>): string {
   return kept.length ? `may only ${kept.join(", ")}` : "may do nothing";
 }
 
-/** The claim topics of the deployment, by name (ADR 0088). */
+/** The claim topics of the deployment, by name. */
 const TOPICS = new Map<string, string>(
   ["claim.deposit-eligible", "claim.note-eligible", "claim.term-sheet", "claim.pool-access"].map((t) => [BigInt(keccak256(toBytes(t))).toString(), t]),
 );

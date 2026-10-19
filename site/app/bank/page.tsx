@@ -7,7 +7,7 @@ import { Decide, when } from "../staff/parts";
 
 export const dynamic = "force-dynamic";
 
-/** Sign-ups: the bank approves who may use the site, its clients and its staff alike; an admin may delete a registration (ADR 0100). */
+/** Sign-ups: the bank approves who may use the site, its clients and its staff alike; an admin may delete a registration. */
 export default async function SignUps() {
   const op = (await currentStaff("bank"))!;
   const admin = isAdmin(op.email);

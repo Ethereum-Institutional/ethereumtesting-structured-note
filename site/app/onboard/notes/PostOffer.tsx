@@ -4,7 +4,7 @@ import { useRef } from "react";
 import type { ChainParams } from "@/lib/chains";
 import { WalletSteps } from "./WalletSteps";
 
-/** A client's own open offer, to sell units it holds or to buy (ADR 0081), made in MetaMask. */
+/** A client's own open offer, to sell units it holds or to buy, made in MetaMask. */
 export function PostOffer({
   noteId,
   symbol,

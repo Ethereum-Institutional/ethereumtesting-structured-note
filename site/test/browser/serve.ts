@@ -45,7 +45,7 @@ const next = spawn("npx", ["next", "start", "-p", String(PORT)], {
     SITE_URL: SITE,
     MANIFEST_PATH: MANIFEST,
     RPC_URL: lagging.url,
-    // The operator demonstrates every portal; the banker is the bank's staff alone (ADR 0089).
+    // The operator demonstrates every portal; the banker is the bank's staff alone.
     OPERATOR_EMAILS: PEOPLE.operator.email,
     BANK_EMAILS: PEOPLE.banker.email,
     ONBOARDING_EMAILS: "",

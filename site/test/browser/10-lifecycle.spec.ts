@@ -57,7 +57,7 @@ test("staff determine a note's first date from the scenario's Levels, the model 
   await coupon.getByRole("button", { name: "Pay what is held" }).click();
   await expect(coupon.getByRole("alert")).toContainText("cannot yet receive the deposit");
 
-  // S-33: the statement does not claim zero while money is held for the wallet (ADR 0094).
+  // S-33: the statement does not claim zero while money is held for the wallet.
   await staff.reload();
   const statement = staff.getByRole("region", { name: "Reconciliation" });
   await expect(statement.getByRole("status")).toContainText("Redeemed, not closed: 2 check(s) fail");

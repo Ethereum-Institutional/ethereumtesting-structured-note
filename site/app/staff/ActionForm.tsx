@@ -7,7 +7,7 @@ export type ActionState = { ok?: string; error?: string };
 
 /**
  * A form whose action says how it went, beside its button: the refusal of a contract, in words, or
- * what was done. For the lifecycle's steps, where a refusal is the useful answer (ADR 0078).
+ * what was done. For the lifecycle's steps, where a refusal is the useful answer.
  */
 export function ActionForm({
   action,

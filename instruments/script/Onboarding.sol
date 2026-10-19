@@ -9,7 +9,7 @@ import {ExpiringClaimIssuer} from "../src/claims/ExpiringClaimIssuer.sol";
 import {Scaffolding} from "./Scaffolding.sol";
 
 /**
- * Onboarding by role (ADR 0088), as the deploy script and the tests do it. In operation each step
+ * Onboarding by role, as the deploy script and the tests do it. In operation each step
  * is a portal's: the bank's for the identity and the deposit claim, the onboarding agent's for the
  * note claim.
  *

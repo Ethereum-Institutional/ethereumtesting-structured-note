@@ -13,7 +13,7 @@ interface IWalletFactory {
 }
 
 /**
- * The note programme (ADR 0115): the institutions' multi-signature wallets, created once for the
+ * The note programme: the institutions' multi-signature wallets, created once for the
  * deployment, then the sanctions module, the governance controller and the note factory.
  *
  * Four wallets from the canonical deployment ops/setup-multisig.sh installs: the Agent's

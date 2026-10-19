@@ -8,7 +8,7 @@ import {Scaffolding} from "./Scaffolding.sol";
 import {Onboarding} from "./Onboarding.sol";
 
 /**
- * Deploys the scaffolding, onboards the cast by role, and opens their deposit accounts (ADR 0088).
+ * Deploys the scaffolding, onboards the cast by role, and opens their deposit accounts.
  *
  * Run from instruments/ after script/00_DeployBase.s.sol, whose manifest it extends, and before
  * the venue, which wraps the deposit. Onboarding here is each institution acting directly,
@@ -43,7 +43,7 @@ contract DeployInstruments is Script {
                 bank: vm.addr(k.bank),
                 onboardingAgent: vm.addr(k.onboarding),
                 maxClaimValidity: MAX_CLAIM_VALIDITY,
-                // Local defaults. On any other chain each value must be set explicitly (ADR 0027).
+                // Local defaults. On any other chain each value must be set explicitly.
                 depositName: _param("DEPOSIT_NAME", "Euro Tokenized Deposit"),
                 depositSymbol: _param("DEPOSIT_SYMBOL", "EURTD")
             })
@@ -97,7 +97,7 @@ contract DeployInstruments is Script {
         vm.stopBroadcast();
     }
 
-    /// The bank, as the pool's liquidity provider, has an identity like any participant (ADR 0090),
+    /// The bank, as the pool's liquidity provider, has an identity like any participant,
     /// managed by its own key, so that it can admit itself to the pool. Its deposit is its own
     /// account, allowlisted, so it needs no deposit claim.
     function _onboardBank(Scaffolding.Deployed memory d, Keys memory k) private {

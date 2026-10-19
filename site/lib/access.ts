@@ -11,7 +11,7 @@ export { isOperator, normaliseEmail };
  * Registration and access.
  *
  * A visitor registers with name, organisation and email, and is sent a six-digit code, which it
- * types into the page it is on (ADR 0093). A code cannot be used up by a mail scanner, as a link
+ * types into the page it is on. A code cannot be used up by a mail scanner, as a link
  * could. It lasts ten minutes, works once, and is spent after five wrong tries; asking for a new
  * one retires the one before. Only a salted hash of it is stored. A first code verifies the address
  * and places the registration in the approval queue. Once an operator approves it, a code starts
@@ -56,7 +56,7 @@ const codeHash = (salt: string, code: string) => sha256(`${salt}:${code}`);
 
 /**
  * The page that takes the code for this address, linked from the mail so it can be opened in a new
- * tab or later. The link carries the address only, never the code: sign-in stays code-only (ADR 0099).
+ * tab or later. The link carries the address only, never the code: sign-in stays code-only.
  */
 export function codePageUrl(origin: string, email: string): string {
   return `${origin.replace(/\/+$/, "")}/access?email=${encodeURIComponent(email)}`;
@@ -201,7 +201,7 @@ export async function currentOperator(): Promise<Registrant | null> {
   return r && isOperator(r.email) ? r : null;
 }
 
-/** The signed-in registrant, if staff in the given portal (ADR 0089). */
+/** The signed-in registrant, if staff in the given portal. */
 export async function currentStaff(role: Role): Promise<Registrant | null> {
   const r = await currentRegistrant();
   return r && hasRole(r.email, role) ? r : null;
@@ -215,7 +215,7 @@ export async function signOut() {
 }
 
 /**
- * An admin deletes a registration (ADR 0100): the registration, its codes, sessions and onboarding
+ * An admin deletes a registration: the registration, its codes, sessions and onboarding
  * requests, so the address may register afresh; the audit log keeps the deletion. Off-chain only,
  * and refused while any wallet onboarded for it holds an identity on the chain, which no deletion
  * here could remove: the claims are revoked and the wallet offboarded first.
@@ -240,7 +240,7 @@ export async function deleteRegistration(registrantId: string): Promise<string> 
 }
 
 /** Operator decisions. The caller must be a current operator; checked here, not only in the page. */
-/** Staff send a fresh confirmation code to a registration that has not confirmed its address (ADRs 0077, 0093). */
+/** Staff send a fresh confirmation code to a registration that has not confirmed its address. */
 export async function resendConfirmation(registrantId: string, origin: string): Promise<void> {
   const op = await currentOperator();
   if (!op) throw new Error("Not permitted.");
@@ -263,7 +263,7 @@ export async function decide(registrantId: string, decision: "approve" | "revoke
 
   if (decision === "approve") {
     // An unverified registration may be approved ahead of its confirmation: signing in still
-    // needs a code sent to the address, so approval alone gives no access (ADR 0077).
+    // needs a code sent to the address, so approval alone gives no access.
     if (r.status !== "pending" && r.status !== "revoked" && r.status !== "unverified") return;
     await store.setStatus(r.id, "approved", { decidedAt: now(), decidedBy: op.email });
     await store.audit({ at: now(), actor: op.email, action: "approved", subject: r.email });

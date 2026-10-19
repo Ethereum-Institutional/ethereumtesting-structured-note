@@ -1,5 +1,5 @@
 /**
- * The solution overview as a PDF (ADR 0097): docs/solution-overview.html printed by headless
+ * The solution overview as a PDF: docs/solution-overview.html printed by headless
  * Chromium, through the document's own print styles, so the PDF and the page the site serves
  * come from one source. Run from site/:
  *

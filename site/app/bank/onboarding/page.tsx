@@ -18,7 +18,7 @@ import { Address } from "../../Address";
 export const dynamic = "force-dynamic";
 
 /**
- * The bank's onboarding (ADR 0089): the routes clients ask for, confirmed against the bank's
+ * The bank's onboarding: the routes clients ask for, confirmed against the bank's
  * records; the wallets it has vouched for; and its claim on each, revoked or renewed here.
  */
 export default async function BankOnboarding() {

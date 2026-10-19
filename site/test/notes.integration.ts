@@ -1,5 +1,5 @@
 /**
- * Notes issued from the site, against the local chain (ADRs 0072, 0073): issued from the site, step by step,
+ * Notes issued from the site, against the local chain: issued from the site, step by step,
  * through the lagging RPC, and checked on-chain.
  *
  *   ../ops/reset.sh && npm run test:admission
@@ -65,7 +65,7 @@ test("a note is issued from the site in two steps, the Issuer's wallet's one tra
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "totalSupply" }), 20n);
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "balanceOf", args: [m.parties.issuer as Address] }), 20n, "the Issuer's inventory");
 
-  // The same fixed implementations as the note under review (ADR 0088), and open for transfers.
+  // The same fixed implementations as the note under review, and open for transfers.
   const authority = (a: Address) => client.readContract({ address: a, abi: NOTE, functionName: "getImplementationAuthority" });
   assert.equal(await authority(note), await authority(m.assets.note!.address as Address));
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "paused" }), false);
@@ -78,7 +78,7 @@ test("a note is issued from the site in two steps, the Issuer's wallet's one tra
   assert.equal(Number(first.recordTime) - Number(first.date), 60);
   assert.deepEqual(n.calendar?.map((c) => c.date), [0, 1, 2, 3].map((k) => Number(first.date) + k * 300));
 
-  // Agents as the issuance script leaves them, each restricted to its own powers (ADR 0085).
+  // Agents as the issuance script leaves them, each restricted to its own powers.
   const restricted = (a: Address) => client.readContract({ address: note, abi: NOTE, functionName: "getAgentRestrictions", args: [a] });
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "isAgent", args: [n.addresses.payingAgent as Address] }), true);
   const pa = await restricted(n.addresses.payingAgent as Address);
@@ -122,7 +122,7 @@ test("a note with six observations, an hour apart, is issued with that schedule"
   assert.equal(Number(last.recordTime) - Number(last.date), 720, "a fifth of an hour");
 });
 
-test("an issuance that lands after the site stopped waiting is picked up when the step runs again, not issued twice (ADR 0103)", async () => {
+test("an issuance that lands after the site stopped waiting is picked up when the step runs again, not issued twice", async () => {
   const started = await notes.startNote(operator as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 1, unit: "hours" }, units: 7 });
   const landed = await notes.advanceIssuance(started.id);
   assert.equal(landed!.step, 1, landed!.error);
@@ -141,7 +141,7 @@ test("an issuance that lands after the site stopped waiting is picked up when th
   assert.equal(n.status, "issued", n.error);
 });
 
-test("a step in flight is left alone, not marked issued; one claimed longer ago than a page may run is released and run again; a stopped issuance stays stopped (ADR 0105)", async () => {
+test("a step in flight is left alone, not marked issued; one claimed longer ago than a page may run is released and run again; a stopped issuance stays stopped", async () => {
   const started = await notes.startNote(operator as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 1, unit: "hours" }, units: 4 });
   const inFlight = { ...started, step: -1, claimedAt: new Date().toISOString() };
   assert.ok(await store.updateNote(inFlight as any, 0));
@@ -164,7 +164,7 @@ test("a step in flight is left alone, not marked issued; one claimed longer ago 
   await assert.rejects(notes.stopIssuance({ ...operator, email: "someone@corp.example" } as any, started.id), /Not permitted/);
 });
 
-// --- selling restrictions and placement (ADR 0075; S-08, S-09) ---
+// --- selling restrictions and placement (S-08, S-09) ---
 
 const place = await import("../lib/notes/place.ts");
 const { privateKeyToAccount } = await import("viem/accounts");
@@ -187,7 +187,7 @@ async function admitted(id: string, route: "bank-custody" | "self-custody", wall
 
 /**
  * The onboarding agent approves an account the deployment onboarded for cash only: its identity's
- * manager records the client's consent, the client asks, and the onboarding agent vouches (ADR 0089).
+ * manager records the client's consent, the client asks, and the onboarding agent vouches.
  */
 async function approveForNote(id: string, manager: "depositAgent" | "custodian") {
   const a = (await store.admissionById(id))!;
@@ -254,13 +254,13 @@ test("S-08 for a custody account: the custodian accepts in the same action, and 
   // The chain is the record: both placements, each settled.
   const offers = (await place.offersOf((await store.noteById(n.id))!)).map((x) => `${x.id}:${x.kind}:${x.status}`);
   assert.deepEqual(offers.sort(), ["1:placement:settled", "2:placement:settled"]);
-  // A custody account holding units cannot be closed (ADR 0107): the refusal names the note.
+  // A custody account holding units cannot be closed: the refusal names the note.
   const { stillHeld } = await import("../lib/identity/closing.ts");
   const held = await stillHeld(account);
   assert.ok(held.some((h) => h.startsWith("1 units of ")), held.join("; "));
 });
 
-// --- transfers, buy-backs and the inventory (ADR 0081; S-11 to S-14, S-16) ---
+// --- transfers, buy-backs and the inventory (S-11 to S-14, S-16) ---
 
 const NOTE_VIEWS = parseAbi(["function balanceOf(address) view returns (uint256)", "function getFrozenTokens(address) view returns (uint256)", "function totalSupply() view returns (uint256)"]);
 const clientB = { ...operator, id: "reg_client_b", email: "treasury@second.example" };
@@ -373,12 +373,12 @@ test("S-13: the Issuer buys units back into its inventory; S-14: no more can be 
   assert.equal(await client.readContract({ address: n.addresses.note as Address, abi: NOTE_VIEWS, functionName: "totalSupply" }), total - 2n, "the note's total reduced");
 });
 
-// --- determinations, payments and closure (ADR 0078) ---
+// --- determinations, payments and closure ---
 
 const life = await import("../lib/notes/lifecycle.ts");
 const reconcile = await import("../lib/notes/reconcile.ts");
 const registry = await import("../lib/notes/registry.ts");
-/** A note's reconciliation statement (ADR 0094), now or as at another moment. */
+/** A note's reconciliation statement, now or as at another moment. */
 const statementOf = async (n: { addresses: Record<string, string> }, asAt?: import("../lib/notes/reconcile.ts").AsAt) =>
   reconcile.statementOf((await registry.noteOnRecord(n.addresses.note))!, asAt);
 const SUPPLY = parseAbi(["function totalSupply() view returns (uint256)", "function paused() view returns (bool)"]);
@@ -497,7 +497,7 @@ test("a four-date note through its life: each date determined from the scenario'
   const paid = await life.paymentsTo(custody);
   assert.deepEqual(paid.filter((p) => p.note.id === n.id).map((p) => `${p.kind}:${p.amount}`), ["coupon:5000", "coupon:5000", "coupon:5000", "redemption:180000"]);
 
-  // As at the block of the first statement, before any date, the same note was open, with the same figures (ADR 0094).
+  // As at the block of the first statement, before any date, the same note was open, with the same figures.
   const before = await statementOf((await store.noteById(n.id))!, { kind: "block", block: BigInt(open.block) });
   assert.equal(before.state, "open");
   assert.equal(before.block, open.block, "read at the block asked for");
@@ -517,7 +517,7 @@ test("every note the factory issued has a statement, the deployment's note under
   const s = await reconcile.statementOf(underReview!);
   assert.equal(s.note.symbol, "EURWAN");
   assert.deepEqual(s.checks.filter((c) => !c.ok), [], "the note under review reconciles, its term sheet matching it");
-  // Its term sheet (ADR 0095): the record it was issued from, held, and published at the address its identity carries.
+  // Its term sheet: the record it was issued from, held, and published at the address its identity carries.
   const { hashOf, validate } = await import("../lib/notes/termsheet.ts");
   const deployed = loadManifest().termSheet as import("../lib/notes/termsheet.ts").TermSheet;
   assert.deepEqual(validate(deployed), []);
@@ -648,7 +648,7 @@ test("a note is issued from a term sheet staff upload: checked first, then its r
   assert.ok(statement.checks.find((c) => c.label === "The term sheet matches the note")?.ok, "the terms on the chain are the record's");
 });
 
-// --- ETH for fees (ADR 0080) ---
+// --- ETH for fees ---
 
 test("a key that cannot pay its fees is refused before signing, named, warned about, and topped up from the best-funded key", async () => {
   const keys = await import("../lib/chain/keys.ts");

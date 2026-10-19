@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * While something is being built step by step, such as a note's issuance (ADR 0072), asks the site
+ * While something is being built step by step, such as a note's issuance, asks the site
  * every few seconds to move it on, then re-renders the page. Stops when the page is left. The
  * action must be safe to repeat.
  */

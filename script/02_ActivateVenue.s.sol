@@ -28,13 +28,13 @@ interface IDepositGateway {
 
 /**
  * Verifies and enables the adapter, opens the pool at par, admits the cast to the pool, and has
- * the Deposit Agent provide the pool's liquidity (ADRs 0038, 0090).
+ * the Deposit Agent provide the pool's liquidity.
  *
  * Admission is the bank's pool-access claim on each participant's ONCHAINID identity
  * (script/PoolAccess.sol), standing in for the verification that precedes it in operation. The
  * Deposit Agent, investor A and investor B are admitted. Investor C is onboarded to the deposit
- * but not admitted, so the pool refuses it while the deposit does not: the pool's own perimeter
- * (ADR 0031). Investor D is onboarded nowhere.
+ * but not admitted, so the pool refuses it while the deposit does not: the pool's own perimeter.
+ * Investor D is onboarded nowhere.
  *
  * The pool quotes currency1 per currency0 in base units, and the currencies are ordered by
  * address, so the opening price is derived from whichever order the deployment produced and
@@ -43,7 +43,7 @@ interface IDepositGateway {
 contract ActivateVenue is Script {
     uint24 constant FEE = 500; // 0.05%
     int24 constant TICK_SPACING = 10;
-    /// @dev About 0.5% either side of par (ADR 0038).
+    /// @dev About 0.5% either side of par.
     int24 constant RANGE_TICKS = 50;
 
     uint256 constant LOCAL_SEED_DEPOSIT = 1_000_000_00; // EUR 1,000,000.00
@@ -111,8 +111,8 @@ contract ActivateVenue is Script {
 
     function _key(Ctx memory c) internal pure returns (PoolKey memory) {
         (Currency c0, Currency c1) = c.adapter < c.paymentToken
-            ? (Currency.wrap(c.adapter), Currency.wrap(c.paymentToken))
-            : (Currency.wrap(c.paymentToken), Currency.wrap(c.adapter));
+            ? (Currency.wrap(c.adapter), Currency.wrap(c.paymentToken)):
+  (Currency.wrap(c.paymentToken), Currency.wrap(c.adapter));
         return PoolKey({currency0: c0, currency1: c1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(c.hook)});
     }
 

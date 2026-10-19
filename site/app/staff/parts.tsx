@@ -2,12 +2,12 @@ import type { Client, Registrant } from "@/lib/store";
 import { decideAction, resendLinkAction } from "../actions";
 import { ResendLink } from "./ResendLink";
 
-/** What the staff portals share (ADRs 0073, 0089): the client picker, sign-up decisions, links and times. */
+/** What the staff portals share: the client picker, sign-up decisions, links and times. */
 
 export const day = (iso: string) => iso.slice(0, 10);
 export const ageDays = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
 
-/** The client an onboarding is for: chosen from the bank's records (ADR 0089). */
+/** The client an onboarding is for: chosen from the bank's records. */
 export function ClientReference({ clients, known }: { clients: Client[]; known?: string }) {
   if (!clients.length) {
     return <p className="muted">The bank has no client yet: add one under Clients.</p>;

@@ -26,7 +26,7 @@ import { requestCloseAction, withdrawCloseAction } from "../actions";
 export const dynamic = "force-dynamic";
 
 /**
- * The client's account (ADR 0089): onboarded for the deposit first, by the route it chooses, then
+ * The client's account: onboarded for the deposit first, by the route it chooses, then
  * access to the note. Its bank confirms its KYB, the wallet or account gets an identity, the bank
  * vouches for it, and the onboarding agent vouches for the note once asked.
  */

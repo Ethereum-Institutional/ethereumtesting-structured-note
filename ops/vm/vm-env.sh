@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Writes the settings for the site on the bank's virtual machine (ADR 0098): ops/vm/site.env, the
+# Writes the settings for the site on the bank's virtual machine: ops/vm/site.env, the
 # same chain settings our public site has (ops/site_env.py), the manifest beside it, and a database
 # password, all readable by the owner only and excluded from git. Prints names, never values.
 #

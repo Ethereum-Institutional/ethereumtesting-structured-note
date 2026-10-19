@@ -34,7 +34,7 @@ export async function confirmed(eth: any, hash: string): Promise<void> {
 
 /**
  * Refuses before anything is sent when the client's wallet cannot pay twice the transactions'
- * estimated fees (ADR 0080). A transaction that cannot be estimated yet (it depends on an earlier
+ * estimated fees. A transaction that cannot be estimated yet (it depends on an earlier
  * one, such as an approval) is assumed at a generous ceiling.
  */
 export async function ensureWalletFees(eth: any, chain: ChainParams, from: string, txs: Array<{ to: string; data: string }>): Promise<void> {

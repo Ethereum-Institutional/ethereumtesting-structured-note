@@ -36,7 +36,7 @@ interface IDepositGateway {
 /**
  * Deploys the venue around the deposit: the pool manager (locally), the permissioned-pool
  * periphery, the checker, the pool's gate and the compliance hook, and wraps the deposit in its
- * permissions adapter (ADRs 0030, 0031, 0038, 0090).
+ * permissions adapter.
  *
  * The gate reads the pool's ERC-3643 identity registry, deployed with the scaffolding: a wallet
  * converts when it holds a valid pool-access claim and its recorded country is one the pool
@@ -48,7 +48,7 @@ interface IDepositGateway {
  * script/02_ActivateVenue.s.sol.
  *
  * Every venue contract is owned by the deployer until the ceremony hands it to the controller
- * (ADR 0039).
+ *.
  */
 contract DeployVenue is Script {
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
@@ -83,7 +83,7 @@ contract DeployVenue is Script {
         ERC7943AllowlistChecker checker = ERC7943AllowlistChecker(v.checker);
         checker.registerAsset(deposit);
         checker.setCredentialGate(deposit, v.gate);
-        // The Deposit Agent is the pool's only liquidity provider (ADR 0038).
+        // The Deposit Agent is the pool's only liquidity provider.
         checker.setLiquidityRestricted(deposit, true);
         checker.setLiquidityApproved(deposit, depositAgent, true);
         vm.stopBroadcast();
@@ -124,7 +124,7 @@ contract DeployVenue is Script {
         v.posm = _deployPositionManager(v.manager, v.weth, v.factory);
     }
 
-    /// The 30 states of the European Economic Area, Switzerland and the United Kingdom (ADR 0033),
+    /// The 30 states of the European Economic Area, Switzerland and the United Kingdom,
     /// by ISO 3166-1 numeric code, as the identity storage records countries.
     function _jurisdictions() internal pure returns (uint16[] memory js) {
         uint16[32] memory list = [

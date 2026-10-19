@@ -9,7 +9,7 @@ import { confirmed, ensureWalletFees, onChain, watchToken, walletError } from ".
 type Prepared = { error?: string; approvals?: Array<{ to: string; data: string; label: string }>; swap?: { to: string; data: string }; quote?: QuoteView };
 
 /**
- * Converts in the pool from the client's own wallet (ADR 0070): a quote from the pool as the
+ * Converts in the pool from the client's own wallet: a quote from the pool as the
  * amount is typed; then, in MetaMask, any approvals still missing (once per token, for 30 days)
  * and the swap, with a minimum-received 0.5% below the quote.
  */

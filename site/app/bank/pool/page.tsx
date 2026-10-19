@@ -9,7 +9,7 @@ import { accountNamer } from "@/lib/identity/names";
 export const dynamic = "force-dynamic";
 
 /**
- * Admission to the conversion pool (ADR 0090): the bank vouches with the pool-access claim on its
+ * Admission to the conversion pool: the bank vouches with the pool-access claim on its
  * client's identity, and revokes it here. The pool's gate reads the claim through the
  * pool's own identity registry, with the client's country and any supervisory withdrawal.
  */

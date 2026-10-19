@@ -3,7 +3,7 @@ import { StaffShell } from "../staff/StaffShell";
 
 export const dynamic = "force-dynamic";
 
-/** The bank's portal (ADRs 0089, 0090): sign-ups, its clients' records, their onboarding for the deposit, and their admission to the conversion pool. */
+/** The bank's portal: sign-ups, its clients' records, their onboarding for the deposit, and their admission to the conversion pool. */
 export default async function BankLayout({ children }: { children: React.ReactNode }) {
   const store = getStore();
   const [registrants, admissions] = await Promise.all([store.listRegistrants(), store.listAdmissions(500)]);

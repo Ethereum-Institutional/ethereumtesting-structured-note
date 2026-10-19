@@ -1,5 +1,5 @@
 /**
- * A note's calendar and its scenario, from what staff choose at issuance (ADR 0073): the number of
+ * A note's calendar and its scenario, from what staff choose at issuance: the number of
  * observations (coupon dates), and the time between them. Pure, so the form previews exactly
  * what the server fixes on-chain.
  *

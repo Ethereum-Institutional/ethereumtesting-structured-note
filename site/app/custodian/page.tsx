@@ -11,10 +11,10 @@ import { accountNamer } from "@/lib/identity/names";
 export const dynamic = "force-dynamic";
 
 /**
- * The custodians (ADR 0089). Each opens segregated accounts for its clients, signs for them, and
+ * The custodians. Each opens segregated accounts for its clients, signs for them, and
  * manages their identities, since key custody follows custody. The bank's custody platform opens
  * an account as soon as the bank confirms; a third-party custodian opens it here. The bank's
- * custody platform converts in the pool for an account the bank admitted (ADR 0090).
+ * custody platform converts in the pool for an account the bank admitted.
  */
 export default async function Accounts() {
   const nameOf = await accountNamer();

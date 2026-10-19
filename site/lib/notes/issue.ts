@@ -59,7 +59,7 @@ function context() {
   return { m, id: m.identity, factory: m.identity.noteFactory as Address, s: signers(chain, rpc) };
 }
 
-/** The note's observations and the time between them; notes issued before ADR 0073 had four, minutes apart. */
+/** The note's observations and the time between them; notes issued before had four, minutes apart. */
 const shapeOf = (n: DemoNote): { observations: number; interval: Interval } =>
   n.interval && n.observations ? { observations: n.observations, interval: n.interval } : { observations: 4, interval: { value: n.spacingMinutes ?? 10, unit: "minutes" } };
 
@@ -340,7 +340,7 @@ const CLAIM_TTL_MS = 6 * 60_000;
 /** Beyond every step: an issuance stopped by staff, so that a step still in flight cannot record itself after. */
 const STOPPED_STEP = 1_000;
 
-/** Staff stop an issuance that will not finish (ADR 0105). Whatever already landed on the chain stays. */
+/** Staff stop an issuance that will not finish. Whatever already landed on the chain stays. */
 export async function stopIssuance(staff: Registrant, id: string): Promise<void> {
   if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
   const store = getStore();
@@ -359,7 +359,7 @@ export async function advanceIssuance(id: string): Promise<DemoNote | null> {
   const store = getStore();
   let n = await store.noteById(id);
   if (!n || n.status !== "issuing") return n;
-  // A step in flight (ADR 0105). The page polls every few seconds while a step on Ethereum Sepolia
+  // A step in flight. The page polls every few seconds while a step on Ethereum Sepolia
   // can take minutes: leave it be, unless its claim is older than any page may run, in which case
   // the request running it was stopped, and the step is released to run again.
   if (n.step < 0) {

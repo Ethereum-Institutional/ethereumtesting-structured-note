@@ -35,7 +35,7 @@ interface IOwned {
 }
 
 /**
- * The programme's governance controller (ADR 0115): every note governed from issuance, both tiers,
+ * The programme's governance controller: every note governed from issuance, both tiers,
  * both thresholds, both delays, acts across notes, the programme's roles rotated once for the whole
  * book, determination correction, stewardship of the identity storage, recovery with its veto, the
  * venue, and the deployer's renunciation.

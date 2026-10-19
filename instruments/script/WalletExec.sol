@@ -32,7 +32,7 @@ interface ISafe {
 }
 
 /**
- * Acts through a multi-signature wallet from a script (ADR 0115): the wallet's signers sign the
+ * Acts through a multi-signature wallet from a script: the wallet's signers sign the
  * transaction, in ascending order of their addresses as the wallet requires, and whoever is
  * broadcasting submits it. Used where the Issuer's wallet issues notes.
  */

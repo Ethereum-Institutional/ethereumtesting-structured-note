@@ -27,7 +27,7 @@ contract RevertingRegistry {
 }
 
 /**
- * The pool's gate alone (ADR 0090), against a stand-in for the pool's identity registry. The
+ * The pool's gate alone, against a stand-in for the pool's identity registry. The
  * registry's own verification, claims and trusted issuers, is T-REX's, and is exercised end to end
  * against the deployment in test/PermissionedTrading.t.sol.
  *

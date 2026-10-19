@@ -8,7 +8,7 @@ import { factsFor, type ClientInput } from "./facts.ts";
 export { CORPORATE_STATUSES, INVESTOR_CLASSES, LEGAL_FORMS, type ClientInput } from "./facts.ts";
 
 /**
- * The bank's corporate clients (ADR 0089). Staff enter a client's facts once. They stay here, in
+ * The bank's corporate clients. Staff enter a client's facts once. They stay here, in
  * the bank's portal; what reaches the chain is the bank's claim, carrying the record's salted hash.
  * Every route then reads the client from here, so nothing the bank verified is typed twice.
  */
@@ -82,7 +82,7 @@ const IN_PROGRESS = ["awaiting-wallet", "awaiting-custodian", "failed"] as const
 
 /**
  * Removes a client from the bank's records, so that it can be added again with its facts put
- * right (ADR 0108). Refused while any account onboarded for it is on the chain, since that account's
+ * right. Refused while any account onboarded for it is on the chain, since that account's
  * bank claim carries this record's hash: the bank offboards it first. Onboardings in progress go
  * back to waiting for the bank, to be confirmed against the client as it is added again.
  */

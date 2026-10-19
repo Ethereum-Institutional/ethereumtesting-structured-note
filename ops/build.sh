@@ -7,7 +7,7 @@
 #
 # Also refuses to build if the submodules are missing. The instruments' dependencies (T-REX,
 # ONCHAINID, OpenZeppelin) are pinned in instruments/soldeer.lock and fetched here; moving a pin is
-# a deliberate act, recorded in an ADR (ADR 0085).
+# a deliberate act, recorded in an ADR.
 set -euo pipefail
 export PATH="$HOME/.foundry/bin:$PATH"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

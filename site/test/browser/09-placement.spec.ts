@@ -55,7 +55,7 @@ test("the note refuses a wallet until the onboarding agent vouches for it; the c
   await nav.getByRole("link", { name: /Notes/ }).click();
   const offer = client.getByRole("region", { name: "Offered to you" });
   await expect(offer).toContainText("€2,000.00, €1,000.00 a unit");
-  // With no ETH for fees, nothing is sent: the page says what the wallet needs (ADR 0080).
+  // With no ETH for fees, nothing is sent: the page says what the wallet needs.
   await setEth(wallet, 0n);
   await offer.getByRole("button", { name: "Accept with MetaMask" }).click();
   await expect(offer.getByRole("alert")).toContainText("Your wallet holds 0 ETH; these 2 transactions need about");

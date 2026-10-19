@@ -9,15 +9,15 @@ import { Bar } from "../Bar";
 import { ConsoleNav, type NavItem } from "../ConsoleNav";
 
 /**
- * Every staff portal (ADR 0089): its own role only, the navigation column beside it, and a warning
- * when any key the deployment signs with is low on ETH for fees (ADR 0080); and each load carries
+ * Every staff portal: its own role only, the navigation column beside it, and a warning
+ * when any key the deployment signs with is low on ETH for fees; and each load carries
  * the background jobs on.
  */
 export async function StaffShell({ role, items, children }: { role: Role; items: NavItem[]; children: React.ReactNode }) {
   const who = await currentStaff(role);
   if (!who) notFound();
   const low = await lowKeys().catch(() => []);
-  // Every staff page load carries the background jobs on, after the page is sent (ADR 0116).
+  // Every staff page load carries the background jobs on, after the page is sent.
   await kick();
   return (
     <div className="wrap">

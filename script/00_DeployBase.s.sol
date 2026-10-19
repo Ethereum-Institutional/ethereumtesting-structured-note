@@ -13,9 +13,9 @@ import {Manifest} from "./Manifest.sol";
  * On the local node: deploys the payment token stand-in, which only the optional conversion pool
  * uses (plan 0.2.0, decision 3). Investor D is funded but never onboarded: the control case.
  *
- * Anywhere else: reads the network file named by NETWORK_FILE (ADR 0029) and deploys nothing.
+ * Anywhere else: reads the network file named by NETWORK_FILE and deploys nothing.
  *
- * Onboarding rests on ERC-3643 identities and claims (ADR 0088), which the instruments deploy; no
+ * Onboarding rests on ERC-3643 identities and claims, which the instruments deploy; no
  * external credential service is involved.
  */
 contract DeployBase is Script {

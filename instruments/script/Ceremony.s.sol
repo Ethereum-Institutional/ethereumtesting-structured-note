@@ -7,7 +7,7 @@ import {Programme} from "./Programme.sol";
 import {Manifest} from "./Manifest.sol";
 
 /**
- * The governance ceremony, last (ADR 0115): the pool's identity registries and, where the pool is
+ * The governance ceremony, last: the pool's identity registries and, where the pool is
  * deployed, the venue handed to the governance controller; the pool's gate supervised by it; and
  * the deployer's renunciation of the deposit's and the gateway's administration, which the
  * controller already shares. Every note is the controller's from the moment it is issued, so the

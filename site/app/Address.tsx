@@ -2,7 +2,7 @@ import { loadManifest } from "@/lib/chain/manifest";
 import { explorerAddress } from "@/lib/explorer";
 
 /**
- * An address as the site shows it (ADR 0106): its start and end, linked to the chain's explorer
+ * An address as the site shows it: its start and end, linked to the chain's explorer
  * (Etherscan on Ethereum Sepolia), the whole address in its tooltip. The middle stays in the text,
  * hidden, so it is still found, read aloud and copied whole.
  */

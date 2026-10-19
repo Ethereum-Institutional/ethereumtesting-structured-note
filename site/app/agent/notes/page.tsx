@@ -11,7 +11,7 @@ import { NoteForm } from "./NoteForm";
 
 export const dynamic = "force-dynamic";
 
-/** Every note issued here, each opening on its own page (ADR 0078); and issuing another. */
+/** Every note issued here, each opening on its own page; and issuing another. */
 export default async function Notes() {
   const notes = await getStore().listNotes();
   const own = loadManifest().termSheet as TermSheet | undefined;

@@ -30,7 +30,7 @@ import {IVerifies} from "../src/interfaces/INote.sol";
 
 /**
  * The shared scaffolding of a deployment, built once: identities, T-REX, the institutions' claim
- * issuers, and the tokenized deposit with its eligibility (ADR 0088). Each note is then issued on
+ * issuers, and the tokenized deposit with its eligibility. Each note is then issued on
  * it (script/Issuance.sol). Used by the deploy script and the tests alike, so the tests exercise
  * exactly what is deployed.
  *
@@ -39,7 +39,7 @@ import {IVerifies} from "../src/interfaces/INote.sol";
  *   factory is handed to the bank.
  * - **T-REX.** One implementation of each contract, behind a fixed implementation authority, and
  *   the programme's extension of T-REX's factory, which the note factory comes to own.
- * - **The lifecycle implementations** (ADR 0115): the Determination Agent, the record-date module,
+ * - **The lifecycle implementations**: the Determination Agent, the record-date module,
  *   the Paying Agent and the settlement contract, each deployed once and cloned for every note.
  *   The note factory and the governance controller follow, in script/Programme.sol.
  * - **Claim issuers.** The bank's, which vouches that a client may hold its deposit, and the
@@ -49,7 +49,7 @@ import {IVerifies} from "../src/interfaces/INote.sol";
  *   registry binds to it, and the deposit's own identity registry on it, which trusts the bank
  *   alone. A client registered once is known to every registry.
  * - **The pool's identity registry** on the same storage, which trusts the bank alone for the
- *   pool-access claim (ADR 0090). It is never bound to the storage, so it only reads: a
+ *   pool-access claim. It is never bound to the storage, so it only reads: a
  *   client registered once is known to the pool too. The conversion pool's gate asks it.
  * - **The deposit** and its gateway. The bank administers the deposit's eligibility and mints and
  *   burns through the gateway; the deployer administers both contracts until the ceremony.
@@ -144,7 +144,7 @@ library Scaffolding {
         );
         d.depositRegistry.setIdentityRegistryStorage(address(d.identities));
 
-        // The pool's access: the bank's claim, from the bank's issuer (ADR 0090).
+        // The pool's access: the bank's claim, from the bank's issuer.
         (d.poolTopics, d.poolIssuers) = _topicsAndIssuers(d, c.deployer, ClaimTopics.POOL_ACCESS, address(d.bankIssuer));
         d.poolRegistry = IdentityRegistry(
             address(

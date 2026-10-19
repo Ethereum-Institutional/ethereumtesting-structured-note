@@ -13,7 +13,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 const STYLE = `<style>
 :root { --sitebar-h: 4.5rem; }
 body { margin: 0; }
-/* As app/Bar.tsx: a pine band, the title in the serif, the navigation in a cream pill (ADR 0061). */
+/* As app/Bar.tsx: a pine band, the title in the serif, the navigation in a cream pill. */
 .sitebar {
   position: sticky; top: 0; z-index: 40; height: var(--sitebar-h);
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;

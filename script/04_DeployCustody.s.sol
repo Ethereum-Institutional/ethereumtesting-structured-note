@@ -35,7 +35,7 @@ interface IDepositGateway {
 
 /**
  * Stands up two custodians and their segregated client accounts, then onboards the accounts by
- * role (ADR 0089). That ordering is the real one: the custodian opens the account, then the
+ * role. That ordering is the real one: the custodian opens the account, then the
  * institutions vouch for it.
  *
  * - **The bank's custody platform** (the Custodian's key) opens SEG-0001 to SEG-0004.
@@ -49,7 +49,7 @@ interface IDepositGateway {
  * - SEG-0003: the deposit only;
  * - SEG-0004: opened and funded with the payment token, onboarded nowhere: the control case.
  *
- * Where the conversion pool is deployed (ADR 0090), the bank admits SEG-0001 and SEG-0002 to it, and each of the bank's accounts sets its trading approvals.
+ * Where the conversion pool is deployed, the bank admits SEG-0001 and SEG-0002 to it, and each of the bank's accounts sets its trading approvals.
  */
 contract DeployCustody is Script {
     uint256 constant CLAIM = 3;

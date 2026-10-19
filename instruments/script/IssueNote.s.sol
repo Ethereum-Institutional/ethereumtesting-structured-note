@@ -17,16 +17,16 @@ interface IApprove {
 
 /**
  * Issues the deployment's first note through the note factory, in one transaction signed by the
- * Issuer's multi-signature wallet (ADR 0115): its series identity, its terms, its T-REX suite, its
+ * Issuer's multi-signature wallet: its series identity, its terms, its T-REX suite, its
  * lifecycle contracts allowlisted on the deposit, the notional minted to the Issuer's inventory,
  * the note opened, and the note handed to the governance controller. The bank then funds the
  * Agent's account, and units are placed with investors A and B by locked offer. No standing
  * approval: each distribution is approved for its amount when it opens.
  *
- * The note is issued from its term sheet (ADR 0095), which site/scripts/term-sheet.ts builds just
+ * The note is issued from its term sheet, which site/scripts/term-sheet.ts builds just
  * before: its name, symbol, size and terms are the record's, and the record's hash and address are
  * anchored on the note's identity. The figures are the illustrative ones of spike 3, with Twin Win
- * applicable (C5, ADR 0015), dated from the chain's own clock.
+ * applicable (C5), dated from the chain's own clock.
  *
  * Run from instruments/ after DeployInstruments. Extends the manifest under `noteSuite` and `lifecycle`.
  */
@@ -39,7 +39,7 @@ contract IssueNote is Script {
         string memory j = vm.readFile(_manifest());
         Scaffolding.Deployed memory d = Manifest.scaffolding(j);
         Programme.Deployed memory p = Manifest.programme(j);
-        // The term sheet, built by site/scripts/term-sheet.ts: the input to issuance (ADR 0095).
+        // The term sheet, built by site/scripts/term-sheet.ts: the input to issuance.
         string memory ts = vm.readFile(_termSheet());
 
         NoteFactory.Params memory params = Issuance.params(

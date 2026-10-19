@@ -76,7 +76,7 @@ const CASH = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
 ]);
 
-/** The two owners of the servicing wallet whose keys the site holds (ADR 0072). */
+/** The two owners of the servicing wallet whose keys the site holds. */
 const SERVICING_OWNERS = ["servicing1", "servicing2"];
 /** Holders paid per transaction. */
 const BATCH = 40;
@@ -141,7 +141,7 @@ const at = (t: number) => new Date(t * 1000).toISOString().slice(0, 16).replace(
 
 /**
  * Everything the Notes page shows of a note's life, read from the chain: at the latest block, or
- * at block `atBlock`, for a statement as at a moment past (ADR 0094).
+ * at block `atBlock`, for a statement as at a moment past.
  */
 export async function lifecycleOf(n: DemoNote, atBlock?: bigint): Promise<Lifecycle> {
   const { s } = context();
@@ -175,8 +175,8 @@ export async function lifecycleOf(n: DemoNote, atBlock?: bigint): Promise<Lifecy
       ? await Promise.all([
           c.readContract({ address: da, abi: DETERMINATIONS, functionName: "outcomeOf", args: [BigInt(k)], ...pin }).then(toOutcome),
           c.readContract({ address: da, abi: DETERMINATIONS, functionName: "levelsOf", args: [BigInt(k)], ...pin }),
-        ])
-      : [null, null];
+        ]):
+  [null, null];
 
     const events: EventView[] = [];
     for (const [kind, due] of [["coupon", outcome?.couponPaid], ["redemption", outcome?.redeemed]] as const) {
@@ -214,8 +214,8 @@ export async function lifecycleOf(n: DemoNote, atBlock?: bigint): Promise<Lifecy
             outcome.redeemed === Boolean(redemption) &&
             (!redemption || Number(outcome.redemptionPerCa) === redemption.perCaCents)
           );
-        })()
-      : null;
+        })():
+  null;
 
     const fallsAway = terminated && !determined;
     const dueToDetermine = !terminated && Number(next) === k;
@@ -354,8 +354,8 @@ async function holdersAt(s: ReturnType<typeof signers>, n: DemoNote, time: numbe
 }
 
 /**
- * Staff start paying date `k`'s coupon or redemption: a background job the server carries to its end
- * (ADR 0116). Refused at once where nothing is due, it is early, it is paid, or a run is under way.
+ * Staff start paying date `k`'s coupon or redemption: a background job the server carries to its end.
+ * Refused at once where nothing is due, it is early, it is paid, or a run is under way.
  */
 export async function startPayment(staff: Registrant, noteId: string, k: number, kind: "coupon" | "redemption"): Promise<Job> {
   const n = await noteFor(staff, noteId);

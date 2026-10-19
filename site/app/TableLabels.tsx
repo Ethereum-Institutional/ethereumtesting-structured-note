@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
 /**
- * Labels every table's cells with their column's heading (ADR 0102), so that on a phone each row
+ * Labels every table's cells with their column's heading, so that on a phone each row
  * reads as a card of label and value. The roles are set explicitly because a table restyled as
  * blocks loses them in some browsers' accessibility trees. Without this, a table scrolls in its box.
  */

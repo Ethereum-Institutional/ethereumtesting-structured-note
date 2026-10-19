@@ -8,7 +8,7 @@ test("the bank adds a client once; its facts stay in the bank's records, and onl
   await page.getByRole("navigation", { name: "The bank" }).getByRole("link", { name: "Clients" }).click();
   await expect(page).toHaveURL(/\/bank\/clients$/);
   const form = page.locator("form").filter({ has: page.getByLabel("Registration number") });
-  // No reference to type: the site assigns it (ADR 0067).
+  // No reference to type: the site assigns it.
   await expect(form.getByLabel("Client reference at the bank")).toHaveCount(0);
   await form.getByLabel("Legal name").fill(LEGAL_NAME);
   await form.getByLabel("Legal form").selectOption("PLC");

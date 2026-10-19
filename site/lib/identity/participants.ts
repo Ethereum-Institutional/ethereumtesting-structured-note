@@ -5,7 +5,7 @@ import { claimsOf, eligibility, poolStanding, type ClaimView, type Standing, typ
 import { dataOf } from "./onboarding.ts";
 
 /**
- * Onboarded wallets with their claims as the chain holds them now (ADRs 0089, 0090): whether each
+ * Onboarded wallets with their claims as the chain holds them now: whether each
  * institution's claim stands, until when, whether the wallet may hold each asset, and what the
  * conversion pool's gate says of it.
  */

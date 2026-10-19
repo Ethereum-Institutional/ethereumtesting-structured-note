@@ -8,7 +8,7 @@ import { notesOnRecord } from "@/lib/notes/registry";
 export const dynamic = "force-dynamic";
 
 /**
- * The participants as the Agent sees them (ADR 0089): as Issuing and Paying Agent and registrar it
+ * The participants as the Agent sees them: as Issuing and Paying Agent and registrar it
  * sees wallets, identities and which institutions vouched for each, never a client's facts.
  */
 export default async function Participants() {

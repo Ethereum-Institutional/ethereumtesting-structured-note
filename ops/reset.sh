@@ -3,7 +3,7 @@
 #
 # Deploying the stack takes minutes, one transaction a block. So the chain as the deployment
 # leaves it is saved once, with its manifest, and a reset restores that snapshot into a new chain
-# in seconds (ADR 0079). The snapshot is keyed by everything the deployment is made from (the
+# in seconds. The snapshot is keyed by everything the deployment is made from (the
 # contracts, the deployment scripts and settings, the dependencies' versions), so any change to
 # those deploys afresh. FRESH=1 always deploys afresh.
 set -euo pipefail

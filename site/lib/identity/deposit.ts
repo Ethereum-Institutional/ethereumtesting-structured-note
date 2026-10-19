@@ -9,7 +9,7 @@ import { context } from "./onchain.ts";
 import { accountNamer } from "./names.ts";
 
 /**
- * The bank's tokenized deposit (ADRs 0086, 0092): credits and debits through the deposit gateway,
+ * The bank's tokenized deposit: credits and debits through the deposit gateway,
  * each against a single-use booking reference the site assigns; holding part of a balance;
  * pausing the whole deposit; and moving it by order with a written reason. And the bank's view of
  * it: the supply, every holder and why it may hold, and every booking, read from the chain.
@@ -107,7 +107,7 @@ export async function setPaused(paused: boolean): Promise<Hex> {
   return tx;
 }
 
-/** The bank moves its deposit by order, with its written reason on-chain (ADR 0092). */
+/** The bank moves its deposit by order, with its written reason on-chain. */
 export async function enforce(from: Address, to: Address, amount: bigint, reason: string): Promise<Hex> {
   const { s } = context();
   if (!reason.trim()) throw new Error("Give the order and its reason.");

@@ -21,7 +21,7 @@ function stuckNote(id: string) {
   writeFileSync(path, JSON.stringify(store));
 }
 
-test("an issuance whose step is in flight is left to finish, not marked issued; staff can stop one that will not (ADR 0105)", async ({ browser }) => {
+test("an issuance whose step is in flight is left to finish, not marked issued; staff can stop one that will not", async ({ browser }) => {
   stuckNote("note_stuck_browser");
   const page = await signedIn(browser, PEOPLE.operator);
   await page.goto("/agent/notes");

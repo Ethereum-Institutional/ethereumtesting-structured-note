@@ -11,8 +11,8 @@ import { termSheetOfNote, type NoteTermSheet } from "./termsheets.ts";
 import { accountNamer } from "../identity/names.ts";
 
 /**
- * A note's reconciliation statement (ADR 0094), generalising its close-out statement (S-33,
- * ADR 0084) to any moment of its life: as at the close of a day, now, or a block. Read from the
+ * A note's reconciliation statement, generalising its close-out statement (S-33,)
+ * to any moment of its life: as at the close of a day, now, or a block. Read from the
  * chain alone, every figure at the one block, so anyone with the chain can reproduce it.
  *
  * It sets out each holder's position (units in and out, balance, units locked by open offers,
@@ -89,7 +89,7 @@ export type Statement = {
   };
   distributions: Distribution[];
   openOffers: OpenOffer[];
-  /** The term sheet the note's identity names (ADR 0095). */
+  /** The term sheet the note's identity names. */
   termSheet: { hash: string; uri: string; held: boolean; differences: string[] } | null;
 };
 
@@ -271,12 +271,12 @@ export async function statementOf(rec: NoteOnRecord, asAt: AsAt = { kind: "now" 
       label: "The term sheet matches the note",
       ok: Boolean(sheet?.record) && sheet!.differences.length === 0,
       detail: !sheet
-        ? "the note's identity names no term sheet"
-        : !sheet.record
-          ? `the term sheet ${sheet.hash} the note's identity names is not held here`
-          : sheet.differences.length
-            ? `the terms on the chain differ: ${sheet.differences.join("; ")}`
-            : `the record at ${sheet.hash} gives exactly the terms the Determination Agent holds`,
+        ? "the note's identity names no term sheet":
+  !sheet.record
+          ? `the term sheet ${sheet.hash} the note's identity names is not held here`:
+  sheet.differences.length
+            ? `the terms on the chain differ: ${sheet.differences.join("; ")}`:
+  `the record at ${sheet.hash} gives exactly the terms the Determination Agent holds`,
     },
   ];
   if (life.terminated) {

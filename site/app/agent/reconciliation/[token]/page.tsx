@@ -8,7 +8,7 @@ import { TermSheetView } from "../TermSheetView";
 
 export const dynamic = "force-dynamic";
 
-/** One note's reconciliation statement, as at a day, now, or a block (ADR 0094). */
+/** One note's reconciliation statement, as at a day, now, or a block. */
 export default async function NoteReconciliation({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ asAt?: string }> }) {
   const { token } = await params;
   const { asAt = "now" } = await searchParams;

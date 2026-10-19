@@ -27,7 +27,7 @@ function List({ def, items }: { def: FieldDef; items: Item[] }) {
   );
 }
 
-/** A term sheet, field by field in its sections, every "not applicable" with its reason (ADR 0095). */
+/** A term sheet, field by field in its sections, every "not applicable" with its reason. */
 export function TermSheetView({ t, hash, href }: { t: TermSheet; hash: string; href: string }) {
   const sections = [...new Set(FIELDS.map((f) => f.section))];
   return (

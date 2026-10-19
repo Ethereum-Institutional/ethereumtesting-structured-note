@@ -4,7 +4,7 @@ import type { Registrant } from "@/lib/store";
 import { rolesOf } from "@/lib/operators";
 import { BarMenu } from "./BarMenu";
 
-/** The portals a staff member may open, in the bar's order (ADR 0089). */
+/** The portals a staff member may open, in the bar's order. */
 export const PORTALS = [
   { role: "bank", href: "/bank", label: "Bank" },
   { role: "onboarding", href: "/onboarding", label: "Onboarding agent" },

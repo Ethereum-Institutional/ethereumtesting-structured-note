@@ -6,7 +6,7 @@ import { signers } from "../chain/signer.ts";
 import { minimumReceived, quoteExactIn, type PoolState } from "./quote.ts";
 
 /**
- * Conversion in the pool (ADR 0070): quotes from the pool's own state, the swap plan the venue
+ * Conversion in the pool: quotes from the pool's own state, the swap plan the venue
  * expects (swap exact-in, settle all, take all, through the permissioned router), the one-time
  * Permit2 approvals a self-custody wallet signs, the custodian's conversion for a custody account,
  * and the bank's credit of the deposit.
@@ -38,7 +38,7 @@ const SWAP_EXACT_IN_SINGLE = 0x06;
 const SETTLE_ALL = 0x0c;
 const TAKE_ALL = 0x0f;
 
-/** Whether this deployment has the conversion pool: by default it does (ADR 0090). */
+/** Whether this deployment has the conversion pool: by default it does. */
 export function hasPool(m: Manifest = loadManifest()): boolean {
   return Boolean(m.venue && m.pool);
 }
@@ -137,7 +137,7 @@ export async function balances(owner: Address): Promise<WalletView> {
 export type TxRequest = { to: Address; data: Hex; label: string };
 
 /**
- * What a self-custody wallet must send before converting `amountIn` (ADR 0070): the token's
+ * What a self-custody wallet must send before converting `amountIn`: the token's
  * approval to Permit2 if missing, and Permit2's allowance to the router if short or lapsing, for 30
  * days. Once set, each conversion is the swap alone.
  */
@@ -168,7 +168,7 @@ export async function convertForCustody(account: Address, direction: Direction, 
   const { chain, rpc } = context();
   const q = await quote(direction, amountIn);
   // Read again for a few seconds before concluding the balance is short: just after a credit, a
-  // load-balanced RPC may still answer from the block before it (ADR 0059's lagging node).
+  // load-balanced RPC may still answer from the block before it ('s lagging node).
   let held = 0n;
   for (let tries = 0; tries < 8; tries++) {
     const have = await balances(account);
@@ -184,4 +184,4 @@ export async function convertForCustody(account: Address, direction: Direction, 
   return { tx, quote: q };
 }
 
-/** The bank credits the deposit to an account (ADR 0070): the Deposit Agent through the gateway, against a single-use booking reference. */
+/** The bank credits the deposit to an account: the Deposit Agent through the gateway, against a single-use booking reference. */

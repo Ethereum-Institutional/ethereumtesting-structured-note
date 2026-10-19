@@ -21,11 +21,11 @@ interface IIdentityStorage {
 }
 
 /**
- * The bank's pool-access claim (ADR 0090), as the deploy scripts and the venue tests write it,
+ * The bank's pool-access claim, as the deploy scripts and the venue tests write it,
  * standing in for the verification that precedes it in operation: the bank has found its client a
  * professional or institutional investor, and screened it.
  *
- * The claim is the same shape as every claim of the deployment (ADR 0088): its data carries the
+ * The claim is the same shape as every claim of the deployment: its data carries the
  * claim's issue, its lapse and the hash of the record kept off-chain; the bank's key
  * signs it over the identity, the topic and the data; and it is added to the identity under the
  * bank's claim key, which the client's consent gave it.

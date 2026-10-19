@@ -5,7 +5,7 @@ import { signers } from "../chain/signer.ts";
 import { until } from "../chain/until.ts";
 
 /**
- * Identities and claims on the chain (ADRs 0088, 0089): ONCHAINID identities created by the bank,
+ * Identities and claims on the chain: ONCHAINID identities created by the bank,
  * claim keys as a client's consent, claims each institution signs and adds, the wallet registered
  * in the shared identity storage, and the hand-over of a self-custody identity to its client.
  *
@@ -25,9 +25,9 @@ const MANAGEMENT = 1n;
 const CLAIM = 3n;
 const ECDSA = 1n;
 const COUNTRY = 276;
-/** How long a claim runs (ADR 0088): the claim issuers allow at most a year. */
+/** How long a claim runs: the claim issuers allow at most a year. */
 export const CLAIM_DAYS = 180;
-/** How long a pool-access claim runs (ADR 0090): the longest the pool accepts between screenings. */
+/** How long a pool-access claim runs: the longest the pool accepts between screenings. */
 export const POOL_CLAIM_DAYS = 90;
 
 const ID_FACTORY = parseAbi([
@@ -155,7 +155,7 @@ export async function eligibility(wallet: Address): Promise<{ deposit: boolean; 
   return { deposit, note, pool };
 }
 
-/** What the conversion pool's gate says of a wallet now (ADR 0090); null where there is no pool. */
+/** What the conversion pool's gate says of a wallet now; null where there is no pool. */
 export async function poolStanding(wallet: Address): Promise<Standing | null> {
   const { m, s } = context();
   if (!m.venue) return null;
@@ -206,7 +206,7 @@ export async function consent(identity: Address, managerCapacity: string, instit
   const purposes = await s.publicClient.readContract({ address: identity, abi: IDENTITY, functionName: "getKeyPurposes", args: [keyOf(institution)] });
   if (purposes.includes(CLAIM)) return;
   await s.send(managerCapacity, { address: identity, abi: IDENTITY, functionName: "addKey", args: [keyOf(institution), CLAIM, ECDSA] });
-  // So the claim that follows is estimated against a chain that has the consent (ADR 0059).
+  // So the claim that follows is estimated against a chain that has the consent.
   await until(() => s.publicClient.readContract({ address: identity, abi: IDENTITY, functionName: "getKeyPurposes", args: [keyOf(institution)] }), (p) => p.includes(CLAIM));
 }
 
@@ -219,8 +219,8 @@ export async function vouch(identity: Address, topic: Topic, recordHash: Hex): P
   const { s } = context();
   const { capacity, issuer } = vouchers()[topic];
   const block = await s.publicClient.getBlock();
-  // Dated a few minutes back: a claim must not look issued in the future to a node a block behind
-  // (ADR 0059), which is where the transaction is estimated.
+  // Dated a few minutes back: a claim must not look issued in the future to a node a block behind,
+  // which is where the transaction is estimated.
   const issuedAt = Number(block.timestamp) - 300;
   const validUntil = issuedAt + (topic === "pool" ? POOL_CLAIM_DAYS : CLAIM_DAYS) * 86_400;
   const data = encodeAbiParameters([{ type: "uint48" }, { type: "uint48" }, { type: "bytes32" }], [issuedAt, validUntil, recordHash]);
@@ -238,11 +238,11 @@ export async function revoke(topic: Topic, signature: Hex): Promise<void> {
   const revoked = await s.publicClient.readContract({ address: issuer, abi: ISSUER, functionName: "isClaimRevoked", args: [signature] });
   if (revoked) return;
   await s.send(capacity, { address: issuer, abi: ISSUER, functionName: "revokeClaimBySignature", args: [signature] });
-  // So what follows reads a chain that has the revocation (ADR 0059).
+  // So what follows reads a chain that has the revocation.
   await until(() => s.publicClient.readContract({ address: issuer, abi: ISSUER, functionName: "isClaimRevoked", args: [signature] }), (r) => r);
 }
 
-/** Hands a self-custody identity to its client (ADR 0089): the wallet becomes its manager, and the bank leaves. */
+/** Hands a self-custody identity to its client: the wallet becomes its manager, and the bank leaves. */
 export async function handOver(identity: Address, wallet: Address): Promise<void> {
   const { s } = context();
   const bank = s.address("depositAgent");

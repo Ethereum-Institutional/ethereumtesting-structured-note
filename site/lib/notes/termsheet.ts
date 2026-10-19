@@ -1,7 +1,7 @@
 import { keccak256, toBytes, type Hex } from "viem";
 
 /**
- * The term sheet as data (ADR 0095): a record with every field typed, any field that may be "not
+ * The term sheet as data: a record with every field typed, any field that may be "not
  * applicable" saying so explicitly, and a canonical form whose hash the note's identity carries.
  * The record is the input to issuance: the terms the Determination Agent fixes on the chain are
  * derived from it here, and nowhere else.

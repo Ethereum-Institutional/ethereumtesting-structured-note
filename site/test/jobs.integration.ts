@@ -1,5 +1,5 @@
 /**
- * Background jobs and the per-key send lease (ADR 0116), against the local chain: two servers sending
+ * Background jobs and the per-key send lease, against the local chain: two servers sending
  * with one key at once each get their own nonce, and two workers never run the same step.
  *
  *   ../ops/reset.sh && npm run test:admission

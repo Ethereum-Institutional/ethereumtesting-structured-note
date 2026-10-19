@@ -4,7 +4,7 @@ import { parseAsAt, positionsCsv, statementOf } from "@/lib/notes/reconcile";
 
 export const dynamic = "force-dynamic";
 
-/** A note's reconciliation statement as JSON or as a CSV of its positions (ADR 0094). The Agent's staff only. */
+/** A note's reconciliation statement as JSON or as a CSV of its positions. The Agent's staff only. */
 export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   if (!(await currentStaff("agent"))) return new Response("Not found", { status: 404 });
   const { token } = await params;

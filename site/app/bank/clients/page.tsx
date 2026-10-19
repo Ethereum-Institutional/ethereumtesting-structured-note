@@ -9,7 +9,7 @@ import { ageDays, day } from "../../staff/parts";
 
 export const dynamic = "force-dynamic";
 
-/** The bank's KYB records (ADR 0089): the facts, kept here, and the hash its claims carry. */
+/** The bank's KYB records: the facts, kept here, and the hash its claims carry. */
 export default async function Clients() {
   const clients = await getStore().listClients();
   return (

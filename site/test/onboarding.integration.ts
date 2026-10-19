@@ -1,5 +1,5 @@
 /**
- * Onboarding by role, end to end against the local chain (ADRs 0088 to 0090): every custody route,
+ * Onboarding by role, end to end against the local chain: every custody route,
  * the note's request and the onboarding agent's decision, admission to the conversion pool,
  * revocation and renewal by each claim's own issuer, offboarding, and an identity brought from
  * elsewhere. The site's own code runs
@@ -173,7 +173,7 @@ test("an identity brought from elsewhere is registered for the note only if a tr
   let a = await onboarding.requestExisting(r, identity);
   const typedData = await onboarding.startExistingWallet(r, a.id, wallet, SITE);
   // The message names the site that asks, when, and a nonce; past its expiry it is refused on this
-  // route too (ADR 0100).
+  // route too.
   assert.equal(typedData.message.site, SITE);
   assert.ok(Number(typedData.message.issuedAt) < Number(typedData.message.expiresAt));
   assert.match(typedData.message.nonce, /^[0-9a-f]{32}$/);
@@ -228,7 +228,7 @@ test("an identity brought from elsewhere is registered for the note only if a tr
   assert.match(undone, /^0x0{40}$/i, "the bad registration is undone");
 });
 
-test("a client asks to close its account: refused while it holds the deposit; asked, withdrawn and asked again; the bank closes it, and the wallet is in no registry (ADR 0107)", async () => {
+test("a client asks to close its account: refused while it holds the deposit; asked, withdrawn and asked again; the bank closes it, and the wallet is in no registry", async () => {
   const closing = await import("../lib/identity/closing.ts");
   const deposit = await import("../lib/identity/deposit.ts");
   const { c, r } = await aClient(5);
@@ -268,7 +268,7 @@ test("a client asks to close its account: refused while it holds the deposit; as
   assert.match(gone, /^0x0{40}$/i, "in no registry");
 });
 
-test("the bank removes a client to add it again: refused while an account for it is onboarded; an onboarding in progress returns to the bank and is confirmed against the client added again (ADR 0108)", async () => {
+test("the bank removes a client to add it again: refused while an account for it is onboarded; an onboarding in progress returns to the bank and is confirmed against the client added again", async () => {
   // The self-custody client of the earlier test is onboarded on the chain: its record stays.
   const onboarded = (await store.admissionById(selfCustody.id))!;
   const ref = onboarding.dataOf(onboarded).kycReference!;

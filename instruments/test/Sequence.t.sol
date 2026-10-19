@@ -7,7 +7,7 @@ import {LockedSettlement} from "../src/LockedSettlement.sol";
 import {Stack, IERC20Like} from "./Stack.sol";
 
 /**
- * The order of lifecycle events (docs/lifecycle-sequence.md, ADR 0096), walked in that order on one
+ * The order of lifecycle events (docs/lifecycle-sequence.md), walked in that order on one
  * note. Each step is taken when the sequence allows it, after it has been tried too early or out of
  * turn and refused; the step numbers are the document's.
  *

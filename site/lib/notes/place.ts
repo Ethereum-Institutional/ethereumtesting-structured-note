@@ -10,9 +10,9 @@ import { custodian } from "../identity/custody.ts";
 import { until } from "../chain/until.ts";
 
 /**
- * Selling restrictions, placement, transfers and buy-backs (ADRs 0075, 0081; S-08 to S-14).
+ * Selling restrictions, placement, transfers and buy-backs (S-08 to S-14).
  *
- * - **Eligibility for the note** is the onboarding agent's claim on the client's identity (ADR 0089),
+ * - **Eligibility for the note** is the onboarding agent's claim on the client's identity,
  *   which the note's identity registry verifies; the site asks the note, never decides itself.
  * - **Offers.** Every movement of units settles through the note's locked settlement contract: an
  *   offer locks its proposer's side (units frozen in the seller's own wallet, or the price held by
@@ -78,7 +78,7 @@ function context() {
   const rpc = process.env.RPC_URL?.trim();
   if (!rpc) throw new Error("RPC_URL is not set");
   const chain = defineChain({ id: m.chainId, name: `chain ${m.chainId}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
-  // Events over the note's life are read where the Ledger reads them (ADR 0071).
+  // Events over the note's life are read where the Ledger reads them.
   const logs = createPublicClient({ chain, transport: http(process.env.LEDGER_RPC_URL?.trim() || rpc) });
   return { m, s: signers(chain, rpc), logs };
 }
@@ -118,7 +118,7 @@ export type Offer = {
   settledTx: string | null;
 };
 
-/** A transfer the bank arranged between two client wallets, awaiting the seller's offer (ADR 0081). */
+/** A transfer the bank arranged between two client wallets, awaiting the seller's offer. */
 export type Arranged = {
   ref: string;
   seller: string; // admission
@@ -131,7 +131,7 @@ export type Arranged = {
   offerId?: string;
 };
 
-/** Whether the note settles by locked offer (notes issued from ADR 0081 on). */
+/** Whether the note settles by locked offer (notes issued from on). */
 export const lockedSettlement = (n: DemoNote) => (n.data as Record<string, any>).settlement === "locked";
 
 /** Every account the site onboarded, by address, for naming the parties to an offer. */
@@ -142,7 +142,7 @@ async function admissionsByAddress(): Promise<Map<string, Admission>> {
   return map;
 }
 
-/** Every offer on the note's settlement contract, newest first: at the latest block, or at block `at` (ADR 0094). */
+/** Every offer on the note's settlement contract, newest first: at the latest block, or at block `at`. */
 export async function offersOf(n: DemoNote, at?: bigint): Promise<Offer[]> {
   if (!lockedSettlement(n)) return [];
   const { s } = context();
@@ -406,7 +406,7 @@ async function recordArranged(noteId: string, change: (list: Arranged[]) => Arra
 }
 
 /**
- * The bank arranges a transfer (ADR 0081): the seller, the buyer (or none, for an open offer), the
+ * The bank arranges a transfer: the seller, the buyer (or none, for an open offer), the
  * units and the price. Whichever side is a custody account acts at once through the custodian; a
  * client's own wallet acts in MetaMask. Between two wallets the arrangement waits for the seller.
  */

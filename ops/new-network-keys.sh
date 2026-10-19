@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Generates a fresh key set for a deployment on a public network (ADR 0051): one new mnemonic,
+# Generates a fresh key set for a deployment on a public network: one new mnemonic,
 # with every capacity at the same index as on the local node (keys.env) and the ceremony's wallet
-# signers at indices 10 to 21, and the third-party custodian at 22 (ADR 0089). The local node's
-# published keys are never used off it: on the test network they carry EIP-7702 delegations set by whoever holds them (ADR 0041).
+# signers at indices 10 to 21, and the third-party custodian at 22. The local node's
+# published keys are never used off it: on the test network they carry EIP-7702 delegations set by whoever holds them.
 #
 #   ./ops/new-network-keys.sh base-sepolia-integration
 #

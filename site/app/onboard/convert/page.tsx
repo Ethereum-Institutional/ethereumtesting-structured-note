@@ -12,8 +12,8 @@ import { accountOf, walletOf } from "../account";
 export const dynamic = "force-dynamic";
 
 /**
- * Converting in the pool from the client's own wallet (ADR 0070), once the bank has admitted it
- * (ADR 0090): the page says what the pool's gate says of the wallet.
+ * Converting in the pool from the client's own wallet, once the bank has admitted it:
+ * the page says what the pool's gate says of the wallet.
  */
 export default async function Convert() {
   const who = await currentRegistrant();
@@ -51,8 +51,8 @@ export default async function Convert() {
           )}
           <p className="pool-standing">
             {standing === "admitted"
-              ? "The pool admits your wallet: your bank's pool-access claim stands on your identity."
-              : `The pool does not admit your wallet yet: ${standing ?? "its gate could not be read"}. Your bank admits wallets to the pool.`}
+              ? "The pool admits your wallet: your bank's pool-access claim stands on your identity.":
+  `The pool does not admit your wallet yet: ${standing ?? "its gate could not be read"}. Your bank admits wallets to the pool.`}
           </p>
           {standing === "admitted" && <ConvertPanel
             wallet={address}
@@ -63,10 +63,10 @@ export default async function Convert() {
             prepare={prepareConversionAction}
             done={conversionDoneAction}
           />}
-        </section>
-      ) : held ? (
-        <section className="panel"><p className="muted" style={{ margin: 0 }}>Your bank holds your account in custody and converts in the pool on your instruction.</p></section>
-      ) : (
+        </section>)
+  : held ? (
+        <section className="panel"><p className="muted" style={{ margin: 0 }}>Your bank holds your account in custody and converts in the pool on your instruction.</p></section>)
+  : (
         <section className="panel"><p className="muted" style={{ margin: 0 }}>Onboard a wallet first, under <Link href="/onboard">Account</Link>.</p></section>
       )}
     </>

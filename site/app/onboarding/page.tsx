@@ -10,7 +10,7 @@ import { accountNamer } from "@/lib/identity/names";
 export const dynamic = "force-dynamic";
 
 /**
- * Requests for the note (ADR 0089). The onboarding agent sees the client's answers and that the
+ * Requests for the note. The onboarding agent sees the client's answers and that the
  * bank's claim stands, which the client consented to it relying on, and never the bank's record.
  */
 export default async function NoteRequests() {

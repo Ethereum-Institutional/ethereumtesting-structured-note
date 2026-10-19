@@ -18,7 +18,7 @@ export type Manifest = {
   chainId: number;
   parties: Record<string, Address>;
   assets: Record<string, Token>;
-  /** The conversion pool (ADR 0090): deployed by default; absent where POOL=0 left it out. */
+  /** The conversion pool: deployed by default; absent where POOL=0 left it out. */
   venue?: {
     poolManager: Address;
     permit2: Address;
@@ -42,7 +42,7 @@ export type Manifest = {
   };
   lens?: { stateView: Address };
   network?: { local: boolean; poolManager: Address; weth: Address };
-  /** The shared scaffolding (ADR 0088): identities, T-REX, the claim issuers, the deposit's eligibility. */
+  /** The shared scaffolding: identities, T-REX, the claim issuers, the deposit's eligibility. */
   identity?: {
     idFactory: Address;
     trexFactory: Address;
@@ -58,13 +58,13 @@ export type Manifest = {
     depositEligibleTopic: number | string;
     noteEligibleTopic: number | string;
     termSheetTopic: number | string;
-    /** The pool's identity registry, read-only, and its topics and trusted issuers (ADR 0090). */
+    /** The pool's identity registry, read-only, and its topics and trusted issuers. */
     poolRegistry?: Address;
     poolTopics?: Address;
     poolIssuers?: Address;
     poolAccessTopic?: number | string;
   };
-  /** The deployment's term sheet, the record its note was issued from (ADR 0095). */
+  /** The deployment's term sheet, the record its note was issued from. */
   termSheet?: unknown;
   /** The main note's T-REX suite. */
   noteSuite?: { identityRegistry: Address; compliance: Address; trustedIssuers: Address; claimTopics: Address; identity?: Address; series?: number };
@@ -255,7 +255,7 @@ export function addressBook(m: Manifest): Map<string, { key: string; label: stri
   return book;
 }
 
-/** Capacities whose manifest key does not read as their name (ADR 0089). */
+/** Capacities whose manifest key does not read as their name. */
 const PARTY_NAMES: Record<string, string> = {
   accessIssuer: "Onboarding agent",
   onboardingAgent: "Onboarding agent",

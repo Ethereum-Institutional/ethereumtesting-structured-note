@@ -24,7 +24,7 @@ interface IERC20Like {
 
 /**
  * The deployment the tests run against, built by the same libraries as the deploy scripts: the
- * scaffolding, the programme (its controller and note factory, ADR 0115), one note issued by the
+ * scaffolding, the programme (its controller and note factory), one note issued by the
  * Issuer's wallet into the controller's care, and its cast onboarded by role.
  *
  * The institutions' wallets are stand-ins. The Issuer's inventory is a holder like any other; the
@@ -179,7 +179,7 @@ abstract contract Stack is Test {
         d.gateway.credit(wallet, cents, keccak256(abi.encode(wallet, cents, block.timestamp, gasleft())));
     }
 
-    /// Adds an agent with every power, as the note's owner does: the controller (ADR 0115).
+    /// Adds an agent with every power, as the note's owner does: the controller.
     function _addAgent(address who) internal {
         vm.prank(address(p.controller));
         l.note.addAgent(who);

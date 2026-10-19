@@ -1,5 +1,5 @@
 /**
- * The onboarding routes as people see them (ADR 0089). Kept free of server code, so client pages
+ * The onboarding routes as people see them. Kept free of server code, so client pages
  * and the Ledger can name a route.
  */
 export const ROUTE_LABEL: Record<string, string> = {

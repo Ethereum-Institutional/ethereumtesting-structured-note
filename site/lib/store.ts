@@ -31,7 +31,7 @@ export type Registrant = {
 export type AuditEntry = { at: string; actor: string; action: string; subject: string };
 
 /**
- * A participant's onboarding (ADR 0089): its custody route, its wallet and identity, the claims
+ * A participant's onboarding: its custody route, its wallet and identity, the claims
  * each institution added, and its request for the note and the decision on it. The table keeps
  * its earlier name, `admissions`, so placement and the Ledger read it as before.
  */
@@ -45,7 +45,7 @@ export type AdmissionStatus =
   | "offboarded"
   | "failed";
 
-/** How the participant holds its wallet (ADR 0089). */
+/** How the participant holds its wallet. */
 export type AdmissionRoute = "bank-custody" | "third-party" | "self-custody" | "existing-identity";
 
 export type Admission = {
@@ -61,7 +61,7 @@ export type Admission = {
 };
 
 /**
- * A corporate client as the bank's onboarding records it (ADR 0089): the facts staff entered once,
+ * A corporate client as the bank's onboarding records it: the facts staff entered once,
  * kept here in the bank's portal and nowhere else, with the salt and hash a claim carries.
  */
 export type Client = {
@@ -70,7 +70,7 @@ export type Client = {
   kycReference: string;
   /** The facts, as staff entered and the bank verified them. */
   claims: Record<string, unknown>;
-  /** The record's salt and its hash, which the bank's claim carries (ADR 0088, Q1). */
+  /** The record's salt and its hash, which the bank's claim carries (Q1). */
   salt: `0x${string}`;
   recordHash: `0x${string}`;
   /** When the facts were last verified: the client's screening date. */
@@ -79,11 +79,11 @@ export type Client = {
   createdAt: string;
   /** Earlier records for the same client, superseded by a re-screen. */
   previous: Array<{ recordHash: string; issuedAt: string }>;
-  /** The client asked, from Onboard, for its account to be held in custody (ADR 0076). */
+  /** The client asked, from Onboard, for its account to be held in custody. */
   custodyRequest?: { registrantId: string; email: string; at: string };
 };
 
-/** A note issued from the site (ADRs 0072, 0073): its terms, its contracts as they are deployed, and its life. */
+/** A note issued from the site: its terms, its contracts as they are deployed, and its life. */
 export type DemoNote = {
   id: string;
   /** The number in the note's name, foreseen from the factory's series when issuance starts and
@@ -94,7 +94,7 @@ export type DemoNote = {
   name: string;
   symbol: string;
   scenario: string;
-  /** Notes issued before ADR 0073: minutes between four observations. */
+  /** Notes issued before: minutes between four observations. */
   spacingMinutes?: number;
   observations?: number;
   interval?: { value: number; unit: "minutes" | "hours" | "days" | "months" };
@@ -102,7 +102,7 @@ export type DemoNote = {
   status: "issuing" | "issued" | "failed" | "closed";
   /** The next issuance step to run; issuance is a sequence of single transactions. Negative while one is in flight. */
   step: number;
-  /** When the step in flight was claimed: a claim older than a page may run is released (ADR 0105). */
+  /** When the step in flight was claimed: a claim older than a page may run is released. */
   claimedAt?: string;
   createdAt: string;
   by: string;
@@ -115,7 +115,7 @@ export type DemoNote = {
 };
 
 /**
- * A background job: work the server carries to its end with no page open (ADR 0116). Its steps are
+ * A background job: work the server carries to its end with no page open. Its steps are
  * worked out from the chain's state each time, so running one again is safe.
  */
 export type Job = {
@@ -182,7 +182,7 @@ export interface Store {
   sessionRegistrant(hash: string, now: string): Promise<string | null>;
   deleteSession(hash: string): Promise<void>;
   deleteSessionsFor(registrantId: string): Promise<void>;
-  /** Removes a registration and what is kept only for it: its codes, sessions and onboarding requests (ADR 0100). */
+  /** Removes a registration and what is kept only for it: its codes, sessions and onboarding requests. */
   deleteRegistrant(id: string): Promise<void>;
 
   audit(e: AuditEntry): Promise<void>;
@@ -202,7 +202,7 @@ export interface Store {
 
   putClient(c: Client): Promise<void>;
   updateClient(c: Client): Promise<void>;
-  /** Removes a client from the bank's records (ADR 0108). */
+  /** Removes a client from the bank's records. */
   deleteClient(id: string): Promise<void>;
   clientById(id: string): Promise<Client | null>;
   clientByReference(kycReference: string): Promise<Client | null>;
@@ -234,7 +234,7 @@ export interface Store {
   /** The index's events matching `q`, in chain order. */
   events(deployment: string, q: EventQuery): Promise<IndexedEvent[]>;
 
-  /** Term sheets by the hash their notes carry (ADR 0095). Content-addressed, so never replaced. */
+  /** Term sheets by the hash their notes carry. Content-addressed, so never replaced. */
   putTermSheet(hash: string, record: unknown): Promise<void>;
   termSheet(hash: string): Promise<unknown | null>;
 }
@@ -245,7 +245,7 @@ export interface Store {
 
 // The schema, applied on first use. Tables a release retires are dropped here, so a database the
 // site has used before carries nothing that still points at a registration: the one-time sign-in
-// links went with ADR 0093, and their rows blocked deleting a registration (ADR 0100).
+// links went with, and their rows blocked deleting a registration.
 const DDL = `
 drop table if exists links;
 create table if not exists registrants (
@@ -880,12 +880,12 @@ export function getStore(): Store {
 }
 
 // --------------------------------------------------------------------------------------------
-// One deployment at a time (ADR 0083)
+// One deployment at a time
 // --------------------------------------------------------------------------------------------
 
 /**
  * The deployment the site runs against: its chain and its identity storage, which every deployment
- * has its own of (ADRs 0083, 0088). Null where no manifest is configured, when nothing is scoped.
+ * has its own of. Null where no manifest is configured, when nothing is scoped.
  */
 export function currentDeployment(): string | null {
   try {
@@ -898,7 +898,7 @@ export function currentDeployment(): string | null {
 }
 
 /**
- * Admissions and notes belong to the deployment whose contracts they act on (ADR 0083). Each is
+ * Admissions and notes belong to the deployment whose contracts they act on. Each is
  * stamped with it when written, and only the current deployment's are read; a row with no stamp
  * belongs to an earlier deployment. The rows stay in the store as history. Registrants, sessions,
  * clients (the bank's KYB) and the audit log are the bank's, not a deployment's, and carry over.

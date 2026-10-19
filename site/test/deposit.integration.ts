@@ -1,5 +1,5 @@
 /**
- * The bank's tokenized deposit from the site, against the local chain (ADRs 0086, 0092): credit and
+ * The bank's tokenized deposit from the site, against the local chain: credit and
  * debit against bookings, a hold on part of a balance, the pause, and a move by order with its
  * reason, each read back from the chain through the lagging RPC, and the bank's view of it all.
  *

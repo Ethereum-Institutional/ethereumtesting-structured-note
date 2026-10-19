@@ -18,7 +18,7 @@ interface IERC20From {
 }
 
 /**
- * The instruments and their identities (ADRs 0085 to 0088): the note as an ERC-3643 token, one
+ * The instruments and their identities: the note as an ERC-3643 token, one
  * identity per client with claims by role, claims that lapse and can be revoked, agents limited
  * to their own powers, and the tokenized deposit's eligibility, spender check, freezing and forced
  * transfer.
@@ -171,10 +171,10 @@ contract InstrumentsTest is Stack {
         assertEq(l.note.totalSupply(), 0);
     }
 
-    // --- agents, each restricted (ADR 0085) ---
+    // --- agents, each restricted ---
 
     /// The Issuer issues through the factory and holds no power over a note once issued: its
-    /// inventory is a holder like any other (ADR 0115).
+    /// inventory is a holder like any other.
     function test_theIssuerHoldsNoAgentPower() public {
         assertFalse(l.note.isAgent(inventory));
         vm.startPrank(inventory);
@@ -289,7 +289,7 @@ contract InstrumentsTest is Stack {
     }
 
     /// The bank moves its deposit by order, with its written reason: paused or frozen, to an
-    /// account that can receive, never to nowhere, and only the bank (ADR 0092).
+    /// account that can receive, never to nowhere, and only the bank.
     function test_theBankEnforcesWithItsReason() public {
         vm.prank(bank);
         d.gateway.credit(b, 100, "booking-e1");
