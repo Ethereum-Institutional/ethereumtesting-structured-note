@@ -111,8 +111,9 @@ async function sync(): Promise<number> {
   let cursor = lease.block === undefined ? (await deploymentBlock(c, m)) - 1n : BigInt(String(lease.block));
   try {
     const head = await c.getBlockNumber();
-    const local = m.chainId === 31337;
-    const to = local ? head : head - SETTLE;
+    // INDEX_SETTLE_BLOCKS overrides the wait, so tests can hold the local index back as a public network does.
+    const settle = process.env.INDEX_SETTLE_BLOCKS ? BigInt(process.env.INDEX_SETTLE_BLOCKS) : m.chainId === 31337 ? 0n : SETTLE;
+    const to = head - settle;
     if (to <= cursor) return Number(cursor);
     const owners = await contractsOfNotes(c, factory);
     const times = new Map<bigint, number>();

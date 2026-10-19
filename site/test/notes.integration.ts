@@ -260,6 +260,21 @@ test("S-08 for a custody account: the custodian accepts in the same action, and 
   assert.ok(held.some((h) => h.startsWith("1 units of ")), held.join("; "));
 });
 
+test("a placement completes while the index still lags the chain, as on a public network: the new offer is read from the contract", async () => {
+  // The first note issued here, so the notes the trading tests use keep the positions they expect.
+  const n = (await store.listNotes()).find((x) => x.symbol === "EURWAN2" && x.status === "issued")!;
+  await credit(LOCAL.custody.accounts["SEG-0003"], 100_000n);
+  process.env.INDEX_SETTLE_BLOCKS = "100000"; // the index reads nothing newer than it already holds
+  try {
+    const offer = await place.placeUnits(operator as any, n.id, "adm_test_seg3", 1, 100_000n);
+    assert.equal(offer.status, "settled");
+    assert.equal(offer.units, 1);
+    assert.equal(offer.kind, "placement");
+  } finally {
+    delete process.env.INDEX_SETTLE_BLOCKS;
+  }
+});
+
 // --- transfers, buy-backs and the inventory (S-11 to S-14, S-16) ---
 
 const NOTE_VIEWS = parseAbi(["function balanceOf(address) view returns (uint256)", "function getFrozenTokens(address) view returns (uint256)", "function totalSupply() view returns (uint256)"]);

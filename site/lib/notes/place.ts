@@ -187,10 +187,39 @@ export async function offersOf(n: DemoNote, at?: bigint): Promise<Offer[]> {
     .reverse();
 }
 
+/**
+ * One offer: from the index of the programme's events, or, for an offer too new to be there yet (on a
+ * public network the index waits a few blocks for the chain to settle), from the settlement
+ * contract itself, which holds every offer's terms and state.
+ */
 async function offerById(n: DemoNote, id: string): Promise<Offer> {
-  const o = (await offersOf(n)).find((x) => x.id === id);
-  if (!o) throw new Error(`No offer ${id} on ${n.symbol}.`);
-  return o;
+  const listed = (await offersOf(n)).find((x) => x.id === id);
+  if (listed) return listed;
+  const { s } = context();
+  const [proposer, counterpartyRaw, side, units, deadline, state, price] = await s.publicClient.readContract({ address: n.addresses.settlement as Address, abi: SETTLEMENT, functionName: "offers", args: [BigInt(id)] });
+  if (same(proposer, ZERO)) throw new Error(`No offer ${id} on ${n.symbol}.`);
+  const byAddress = await admissionsByAddress();
+  const issuer = s.address("issuer");
+  const nameOf = (a: Address | null) => (!a ? null : same(a, issuer) ? "issuer" : byAddress.get(a.toLowerCase())?.id ?? null);
+  const sells = Number(side) === SELL;
+  const counterparty = same(counterpartyRaw, ZERO) ? null : counterpartyRaw;
+  return {
+    id,
+    kind: same(proposer, issuer) ? (sells ? "placement" : "buy-back") : "transfer",
+    side: sells ? "sell" : "buy",
+    proposer,
+    counterparty,
+    units: Number(units),
+    priceCents: String(price),
+    deadline: Number(deadline),
+    status: STATES[Number(state)] ?? "none",
+    proposerAdmission: nameOf(proposer),
+    counterpartyAdmission: nameOf(counterparty),
+    seller: sells ? proposer : counterparty,
+    buyer: sells ? counterparty : proposer,
+    offeredTx: "",
+    settledTx: null,
+  };
 }
 
 /** The offer a transaction made, read from its receipt, so the site knows its number at once. */
