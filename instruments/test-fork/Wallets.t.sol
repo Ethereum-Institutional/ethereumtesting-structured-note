@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
-pragma solidity 0.8.34;
+pragma solidity 0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 import {GovernanceController} from "../src/GovernanceController.sol";
-import {IdentityRegistry} from "../src/IdentityRegistry.sol";
-import {StructuredNote} from "../src/StructuredNote.sol";
+import {INote, IOwnable2Step} from "../src/interfaces/INote.sol";
+import {ClaimTopics} from "../src/claims/ClaimTopics.sol";
+
+interface ITrusted {
+    function hasClaimTopic(address issuer, uint256 topic) external view returns (bool);
+}
 
 interface IWallet {
     function nonce() external view returns (uint256);
@@ -47,14 +51,12 @@ contract WalletsTest is Test {
 
     string manifest;
     GovernanceController g;
-    IdentityRegistry registry;
-    StructuredNote note;
+    INote note;
 
     function setUp() public {
         manifest = vm.readFile("../ops/addresses.json");
         g = GovernanceController(vm.parseJsonAddress(manifest, ".governance.controller"));
-        registry = IdentityRegistry(vm.parseJsonAddress(manifest, ".instruments.registry"));
-        note = StructuredNote(vm.parseJsonAddress(manifest, ".instruments.note"));
+        note = INote(vm.parseJsonAddress(manifest, ".instruments.note"));
     }
 
     /// Two of the wallet's signers sign the wallet transaction; the first signer submits it.
@@ -104,11 +106,12 @@ contract WalletsTest is Test {
 
     /// Tier 2: proposed by one institution's wallet, approved by another's, executed after the delay.
     function test_tier2ThroughTheRealWallets() public {
+        address dealer = makeAddr("a further onboarding agent's claim issuer");
         uint256 id = g.proposalCount() + 1;
         _exec(
             vm.parseJsonAddress(manifest, ".governance.agentGovernance"),
             10,
-            abi.encodeCall(GovernanceController.proposeSetMaxValidity, (180 days, "Shorter validity window"))
+            abi.encodeCall(GovernanceController.proposeSetTrustedIssuer, (dealer, _noteTopic(), "Dealer appointed"))
         );
         (uint256 inst, uint256 sigs) = g.approvals(id);
         assertEq(inst, 1);
@@ -123,13 +126,18 @@ contract WalletsTest is Test {
         assertEq(sigs, 4, "two institutions, two signatures each");
         vm.warp(g.proposal(id).readyAt);
         g.execute(id);
-        assertEq(registry.maxValidity(), 180 days);
+        assertTrue(ITrusted(vm.parseJsonAddress(manifest, ".noteSuite.trustedIssuers")).hasClaimTopic(dealer, ClaimTopics.NOTE_ELIGIBLE));
+    }
+
+    function _noteTopic() internal pure returns (uint256[] memory topics) {
+        topics = new uint256[](1);
+        topics[0] = ClaimTopics.NOTE_ELIGIBLE;
     }
 
     /// The deployer renounced everything (the overview requires it, verified under test).
     function test_theDeployerRenounced() public view {
         address deployer = vm.parseJsonAddress(manifest, ".parties.issuer");
-        assertFalse(note.hasRole(0x00, deployer));
-        assertFalse(registry.hasRole(0x00, deployer));
+        assertEq(IOwnable2Step(address(note)).owner(), address(g));
+        assertFalse(note.isAgent(deployer));
     }
 }

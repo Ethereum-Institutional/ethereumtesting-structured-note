@@ -16,7 +16,7 @@
   --disp: "Literata", "Iowan Old Style", Georgia, serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --ls-eyebrow: 0.02em; --radius-xs: 6px; --radius-sm: 12px; --radius-panel: 16px;
-  --pad: clamp(1.25rem, 4vw, 3rem);
+  --pad: clamp(1.25rem, 2.5vw, 2.5rem);
   color-scheme: dark;
 }
 
@@ -27,7 +27,8 @@ body {
   font-family: var(--sans); font-size: 16px; line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
-.wrap { max-width: 1160px; margin: 0 auto; padding: 0 var(--pad) 3rem; }
+/* The page uses the screen's width, with a margin each side; prose keeps its own measure. */
+.wrap { max-width: 2400px; margin: 0 auto; padding: 0 var(--pad) 3rem; }
 .narrow { max-width: 34rem; }
 
 /* The header band, full bleed from inside .wrap: one gradient drawn past both edges. */
@@ -147,7 +148,7 @@ th { font-family: var(--sans); font-size: 0.75rem; letter-spacing: 0.01em; color
 .progress li.current .mark { background: var(--cream); color: var(--ink); border-color: var(--cream); }
 .progress li.done { color: var(--fg2); }
 .progress li.done .mark { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
-.stack-actions { display: grid; gap: 0.5rem; min-width: 20rem; white-space: normal; }
+.stack-actions { display: grid; gap: 0.5rem; min-width: 14rem; white-space: normal; }
 .stack-actions summary { cursor: pointer; color: var(--fg2); font-size: 0.875rem; }
 .stack-actions details[open] { background: var(--bg3); border-radius: 12px; padding: 0.75rem 0.9rem; }
 .stack-actions details[open] summary { margin-bottom: 0.75rem; }
@@ -157,8 +158,8 @@ label .muted { font-weight: 400; font-size: 0.75rem; }
 footer { padding: 3rem 0 4rem; color: var(--fg3); font-size: 0.75rem; }
 .mono { font-family: var(--mono); font-size: 0.85em; }
 
-/* The Operator console: a navigation column beside each page (ADR 0073). */
-.console { display: grid; grid-template-columns: 12.5rem minmax(0, 1fr); gap: 2.25rem; align-items: start; }
+/* The Operator console: a navigation column beside each page. */
+.console { display: grid; grid-template-columns: 12rem minmax(0, 1fr); gap: 2.5rem; align-items: start; }
 .console-main > h2:first-child { margin-top: 0; }
 .console-nav { position: sticky; top: 1.5rem; }
 .console-nav ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; }
@@ -169,13 +170,13 @@ footer { padding: 3rem 0 4rem; color: var(--fg3); font-size: 0.75rem; }
 .console-nav a:hover { background: var(--bg2); color: var(--fg); }
 .console-nav a[aria-current="page"] { background: var(--bg3); color: var(--fg); font-weight: 600; }
 @media (max-width: 860px) {
-  .console { grid-template-columns: 1fr; gap: 1.25rem; }
+  .console { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
   .console-nav { position: static; }
   .console-nav > ul { display: flex; flex-wrap: wrap; gap: 0.35rem; }
   .console-nav ul ul { display: flex; gap: 0.35rem; margin: 0; padding: 0; border: 0; }
 }
 
-/* The client's Onboard pages (ADR 0076): its account, as a card with its actions beside it. */
+/* The client's Onboard pages: its account, as a card with its actions beside it. */
 .console-nav .badge { display: inline-grid; place-items: center; min-width: 1.35rem; height: 1.35rem; margin-left: 0.5rem; padding: 0 0.35rem; border-radius: 999px; background: var(--accent-bg); color: var(--accent); font-size: 0.75rem; font-weight: 600; }
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.55rem 1.5rem; margin: 0 0 1.25rem; }
 .facts dt { color: var(--fg3); font-size: 0.875rem; }
@@ -189,7 +190,7 @@ footer { padding: 3rem 0 4rem; color: var(--fg3); font-size: 0.75rem; }
 .offer:first-of-type { border-top: 0; padding-top: 0; }
 @media (max-width: 560px) { .facts { grid-template-columns: 1fr; gap: 0.15rem; } .facts dd { margin-bottom: 0.6rem; } }
 
-/* A note's lifecycle (ADR 0078): one card per scheduled date. */
+/* A note's lifecycle: one card per scheduled date. */
 .timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.9rem; }
 .date-card { background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--border2); border-radius: 14px; padding: 1rem 1.15rem; display: grid; gap: 0.75rem; }
 .date-card.due { border-left-color: var(--cream); }
@@ -200,3 +201,76 @@ footer { padding: 3rem 0 4rem; color: var(--fg3); font-size: 0.75rem; }
 .date-card .event { display: grid; gap: 0.6rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
 .model.ok { color: var(--accent); }
 .model.bad { color: var(--err, #e5735f); }
+
+/* A record set out as terms and values. */
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1.25rem; margin: 0 0 1rem; }
+.facts dt { color: var(--fg2); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+
+/* An address or a transaction hash is one long word: it breaks rather than widening the page. */
+body { overflow-wrap: break-word; }
+h1, h2, h3, .notice, .facts dd, code { overflow-wrap: anywhere; }
+
+/* Phones: the menu folds away, the portal's tabs scroll in one strip, each table row
+   reads as a card, and nothing is wider than the screen. */
+.bar-toggle { display: none; }
+/* The menu sits in one row beside the title where the screen allows; narrower, it folds. */
+@media (max-width: 1100px) {
+  .bar { padding: 0.75rem 0; }
+  .bar-toggle { display: inline-block; color: var(--cream); border-color: rgba(244, 240, 230, 0.4); }
+  .bar nav { display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0.1rem; padding: 0.6rem; }
+  .bar nav[data-open="true"] { display: flex; }
+  .bar nav a { padding: 0.6rem 0.6rem; border-radius: 8px; }
+  .bar nav a:hover { background: rgba(20, 19, 15, 0.06); text-decoration: none; }
+  .bar nav > span { padding: 0.5rem 0.6rem 0.2rem; overflow-wrap: anywhere; }
+  .bar nav form { padding: 0.3rem 0.6rem 0.2rem; }
+}
+@media (max-width: 720px) {
+  header.masthead { margin-bottom: 1.5rem; }
+}
+@media (max-width: 860px) {
+  .console-nav > ul { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--pad)); padding: 0 var(--pad) 0.25rem; }
+  .console-nav > ul::-webkit-scrollbar { display: none; }
+  .console-nav li { flex: none; }
+  .console-nav > ul > li:has(> ul) { display: flex; align-items: center; }
+  .console-nav .group { display: none; }
+  .console-nav a { white-space: nowrap; }
+}
+@media (max-width: 640px) {
+  input:not([type]), input[type="email"], input[type="text"], input[type="date"], input[type="number"], select, textarea { font-size: 16px; }
+  .panel { padding-left: 1rem; padding-right: 1rem; }
+  table.labelled, table.labelled tbody, table.labelled tr, table.labelled td { display: block; width: 100%; }
+  table.labelled thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  table.labelled tr { padding: 0.65rem 0; border-bottom: 1px solid var(--border); }
+  table.labelled tr:last-child { border-bottom: 0; }
+  table.labelled td { border: 0; padding: 0.2rem 0 0.2rem 8.25rem; position: relative; overflow-wrap: anywhere; }
+  table.labelled td:not([data-label]) { padding-left: 0; }
+  table.labelled td:empty { display: none; }
+  table.labelled td::before { content: attr(data-label); position: absolute; left: 0; top: 0.3rem; width: 7.5rem; color: var(--fg3); font-size: 0.75rem; }
+  table.labelled td:not([data-label])::before { content: none; }
+  .table-wrap { overflow-x: visible; }
+}
+
+/* An address: its start and end, the middle kept in the text but not shown. */
+code.addr { white-space: nowrap; font-size: 0.8125rem; }
+code.addr .addr-mid { font-size: 0; }
+code.addr .addr-mid::before { content: "…"; font-size: 0.8125rem; }
+a.addr-link { text-decoration-color: var(--border2); }
+a.addr-link:hover { text-decoration-color: var(--fg); }
+
+/* An action whose label has a tooltip says so with the cursor. */
+summary[title] { cursor: help; }
+summary[title]:hover { color: var(--fg); }
+
+/* The note a governance page acts on, chosen first. */
+.note-picker { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; margin: 0 0 1rem; }
+.note-picker label { display: flex; flex-direction: column; gap: 0.25rem; min-width: min(28rem, 100%); }
+
+/* The book's figures at a glance. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.75rem; margin: 0 0 0.75rem; }
+.tiles > div { border: 1px solid var(--border2); border-radius: 6px; padding: 0.6rem 0.75rem; }
+.tiles dt { font-size: 0.8rem; color: var(--fg2); }
+.tiles dd { margin: 0.2rem 0 0; font-size: 1.4rem; font-weight: 600; }
+.tiles > div.attention { border-color: var(--warn, #b7791f); }
+td.due-now { font-weight: 600; }

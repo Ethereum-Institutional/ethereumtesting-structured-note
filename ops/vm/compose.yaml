@@ -1,0 +1,28 @@
+# The site and its database on the bank's virtual machine. The VM needs outbound HTTPS
+# to its Ethereum Sepolia RPC and to Resend, and nothing inbound but the bank's own TLS proxy in
+# front of port 3020: the site sets secure cookies and HSTS, so it is served over HTTPS only.
+#
+#   ./ops/vm/vm-env.sh <manifest> <network file> <key file>   writes ops/vm/site.env, owner-only
+#   docker compose -f ops/vm/compose.yaml up -d
+name: structured-note
+services:
+  site:
+    image: structured-note-site:0.3.1
+    build: { context: ../.., dockerfile: ops/vm/Dockerfile }
+    env_file: site.env
+    environment:
+      POSTGRES_URL: postgres://site:${DB_PASSWORD:?run vm-env.sh}@db:5432/site
+      MANIFEST_PATH: /run/manifest.json
+    volumes:
+      - ./manifest.json:/run/manifest.json:ro
+    ports: ["127.0.0.1:3020:3020"]
+    depends_on: { db: { condition: service_healthy } }
+    restart: unless-stopped
+  db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: site, POSTGRES_PASSWORD: "${DB_PASSWORD:?run vm-env.sh}", POSTGRES_DB: site }
+    volumes: [db:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "site"], interval: 5s, retries: 20 }
+    restart: unless-stopped
+volumes:
+  db:

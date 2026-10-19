@@ -6,7 +6,7 @@
 
 <style>
 :root {
-  /* The house style of the organisation's pages, as on the rest of the site (ADR 0061). */
+  /* The house style of the organisation's pages, as on the rest of the site. */
   --ink:       #14130f;
   --cream:     #f2efe9;
   --pine:      #1a5c4d;
@@ -353,7 +353,7 @@ footer {
 }
 
 
-/* ---- the house style (ADR 0061): serif headings, small sans labels, a pine title block, rounded panels ---- */
+/* ---- the house style: serif headings, small sans labels, a pine title block, rounded panels ---- */
 h1, h2, .tier h4 { font-weight: 400; letter-spacing: -0.02em; }
 h1 { line-height: 1.06; max-width: 18ch; }
 header.masthead {
@@ -434,7 +434,7 @@ a:hover { text-decoration-color: var(--fg); }
     <li><a href="#architecture" data-t="architecture"><span class="t-lbl">Architecture</span><span class="t-ttl">System architecture</span></a></li>
     <li><a href="#contracts" data-t="contracts"><span class="t-lbl">Contracts</span><span class="t-ttl">Contract inventory</span></a></li>
     <li><a href="#parties" data-t="parties"><span class="t-lbl">Parties</span><span class="t-ttl">Parties and roles</span></a></li>
-    <li><a href="#identity" data-t="identity"><span class="t-lbl">Identity</span><span class="t-ttl">Identity Registry</span></a></li>
+    <li><a href="#identity" data-t="identity"><span class="t-lbl">Identity</span><span class="t-ttl">Identities and claims</span></a></li>
     <li><a href="#instrument" data-t="instrument"><span class="t-lbl">Instrument</span><span class="t-ttl">Instrument terms</span></a></li>
     <li><a href="#lifecycle" data-t="lifecycle"><span class="t-lbl">Lifecycle</span><span class="t-ttl">Transaction lifecycle</span></a></li>
     <li><a href="#governance" data-t="governance"><span class="t-lbl">Governance</span><span class="t-ttl">Governance and intervention</span></a></li>
@@ -462,12 +462,14 @@ a:hover { text-decoration-color: var(--fg); }
   <p class="eyebrow">Solution overview / for review</p>
   <h1>Structured Note Smart Contract Issuance</h1>
   <p class="standfirst">
-    The Agent acting as Issuing &amp; Paying Agent, Registrar &amp; Transfer Agent for a simulated
-    native Structured Note issuance on the Base Sepolia testnet.
+    The Agent acting as Issuing &amp; Paying Agent, Registrar &amp; Transfer Agent for a programme
+    of simulated native Structured Notes, each issued as an ERC-3643 token on Ethereum Sepolia under
+    one governance framework, and settled in the bank's tokenized deposit.
   </p>
   <div class="meta">
     <span><b>Status</b> Draft for review</span>
-    <span><b>Network</b> Base Sepolia testnet</span>
+    <span><b>Release</b> 0.3.0</span>
+    <span><b>Network</b> Ethereum Sepolia testnet</span>
     <span><b>Notional</b> Zero, simulated</span>
     <span><b>Denomination</b> 1 unit = &euro;1,000</span>
     <span><b>Cryptocurrency</b> None</span>
@@ -485,8 +487,9 @@ a:hover { text-decoration-color: var(--fg); }
     </p>
     <h3>Design basis</h3>
     <ul class="plain">
-      <li><strong>Identity Registry.</strong> On-chain investor whitelist, managed by the Agent via multi-signature, enforcing selling restrictions. Every component defers to it.</li>
-      <li><strong>Cash leg.</strong> Settlement in a simulated tokenized deposit, so both legs of delivery versus payment are permissioned.</li>
+      <li><strong>Identities and claims.</strong> Each client has one on-chain identity, and each institution vouches on it for what it is responsible for: the bank for its deposit, the onboarding agent for the note. Each instrument's identity registry decides, at every transfer, whether the claims it requires stand. This is ERC-3643, the standard of the bank's parallel proof of concept.</li>
+      <li><strong>Cash leg.</strong> Settlement in the bank's tokenized deposit, an allowlist token whose eligibility comes from the same identities, so both legs of delivery versus payment are permissioned.</li>
+      <li><strong>One programme, many notes.</strong> The supporting contracts are shared scaffolding: one governance controller, one note factory, one identity storage and one deposit serve every note. The factory issues each note whole, in one transaction, from its term sheet, and several notes can be issued in one call.</li>
       <li><strong>Register.</strong> Maintained off-chain by the Agent and authoritative. On-chain state is evidence of the Register and is reconciled against it.</li>
     </ul>
     <div class="notice">
@@ -534,12 +537,12 @@ a:hover { text-decoration-color: var(--fg); }
           <tr>
             <td class="key">Selling restrictions</td>
             <td>Enforced at primary placement. Not systematically policed in the secondary market</td>
-            <td><b>Enforced at every transfer</b>, on-chain, before value moves. Reissuing under a different restriction is a change of required flags</td>
+            <td><b>Enforced at every transfer</b>, on-chain, before value moves. Reissuing under a different restriction is a change of the claim the note requires</td>
           </tr>
           <tr>
             <td class="key">Corporate actions</td>
             <td>Instruction, reconciliation and correction span multiple systems and counterparties, with touchpoints at each</td>
-            <td><b>Determination, snapshot and distribution in one place</b>, with reference asset data feeding the contract directly and triggers evaluated against it</td>
+            <td><b>Determination, record dates and distribution in one place</b>, with reference asset data feeding the contract directly and triggers evaluated against it</td>
           </tr>
           <tr>
             <td class="key">Reconciliation</td>
@@ -597,7 +600,7 @@ a:hover { text-decoration-color: var(--fg); }
           <tr>
             <td class="key">Investor onboarding</td>
             <td>An investor base is already onboarded to existing infrastructure</td>
-            <td>The onboarding model, whitelist governance and custodian treatment that a first live onboarding would use. The binding constraint here is distribution rather than technology</td>
+            <td>The onboarding model, claim governance and custodian treatment that a first live onboarding would use. The binding constraint here is distribution rather than technology</td>
           </tr>
         </tbody>
       </table>
@@ -614,47 +617,50 @@ a:hover { text-decoration-color: var(--fg); }
     <p class="sec-label">Status</p>
     <h2>Build status</h2>
     <p class="lead">
-      As of 1 October 2026 the design is built end to end and runs under test on a local chain, and as
-      an integration deployment on Base Sepolia. The execution this document describes is deployed
-      afresh once the internal assurance review is complete, so that the evidence comes from the
-      version that passed review.
+      Release 0.3.0 is built end to end and deployed to Ethereum Sepolia, with every contract
+      verified on Etherscan. It turns the 0.2.0 design, built around one demonstration note, into a
+      note programme: one governance controller and one note factory serve every note, and the site
+      runs the book as a desk would. Every test runs on a local chain; a rehearsal on a local fork of
+      Ethereum Sepolia precedes each live deployment. The site at
+      <code>structurednote-project.ethereumtesting.com</code> points at this deployment. It remains
+      a proof of concept on a public test network, with simulated instruments and parties.
     </p>
     <div class="scroller stack">
       <table>
         <thead><tr><th>Area</th><th>Built and demonstrated</th><th>Scenarios</th></tr></thead>
         <tbody>
-          <tr><td><b>Onboarding</b></td><td>Three routes: an account the bank holds in custody, a client's own wallet bound by one signature once the bank confirms its KYB, and credentials presented from a holder wallet. Grants are written only once the credentials they rest on are anchored. Offboarding, revocation at the bank, and one wallet per KYB</td><td>S&#8209;02, S&#8209;03</td></tr>
-          <tr><td><b>Issuance and placement</b></td><td>Notes issued from the Agent's console on the same contracts as the note under review, with a scenario's terms and a calendar chosen at issuance. Approval under Regulation S per client, then placement by delivery versus payment</td><td>S&#8209;07 to S&#8209;09</td></tr>
-          <tr><td><b>Lifecycle</b></td><td>Each date determined by the Calculation Agent's signature and recomputed on-chain, and checked against the independent payoff model. Coupons and redemptions paid by the Agent's multi-signature servicing wallet to the holders of record, with amounts held for a holder who cannot receive them. Early and final redemption, then closure</td><td>S&#8209;15, S&#8209;16, S&#8209;18, S&#8209;30, S&#8209;32, S&#8209;34</td></tr>
-          <tr><td><b>Trading</b></td><td>Transfers settle by offer, each side locked until it settles or ends: units frozen in the seller's own wallet, or the price held by the settlement contract. Offers are arranged by the bank or open to any approved client. Buy back into the Issuer's inventory, and reduction of the tranche bounded by that inventory</td><td>S&#8209;11 to S&#8209;14</td></tr>
-          <tr><td><b>Governance</b></td><td>Tier 1 register correction with its written reason; Tier 2 proposals with institution thresholds, the timelock and an execution window, each institution's wallet signing as itself. The Agent alone cannot force a transfer</td><td>S&#8209;22 to S&#8209;26</td></tr>
-          <tr><td><b>Conversion pool</b></td><td>A whitelisted wallet converts the euro payment token into the tokenized deposit and back; a wallet not whitelisted is refused at the pool</td><td>S&#8209;27, S&#8209;28</td></tr>
-          <tr><td><b>Evidence</b></td><td>The lifecycle reconstructed from chain events alone, the register reconciled against the chain, and every transaction and event scanned for personal data. For a redeemed note, a close-out statement read from the chain: supply zero, the holder list empty, every distribution paid with nothing held, nothing left in the Paying Agent or the settlement contract, and every account's position reconciled to zero</td><td>S&#8209;33, S&#8209;35, S&#8209;36</td></tr>
+          <tr><td><b>Onboarding</b></td><td>Five portals behind one sign-in by emailed code: the bank, the onboarding agent, the Agent, the custodians and the client. The bank creates each client's identity and vouches for its deposit; the onboarding agent relies on the bank's KYB while the bank's claim stands, and vouches for the note, once for every note of the programme. Four routes: an account in the bank's custody, an account with a third-party custodian, the client's own wallet (the bank sets the identity up, then hands it over), and an identity brought from elsewhere. A custody account's reference on the chain is opaque: <code>SEG-</code> and part of a hash, with the mapping kept only in the site's records. Claims lapse and are revoked by the institution that gave them</td><td>S&#8209;02 to S&#8209;05</td></tr>
+          <tr><td><b>Issuance and placement</b></td><td>The note factory is owned by the Issuer's two-of-three multi-signature wallet. Each note is issued whole, in one transaction, with its own lifecycle contracts as minimal clones of fixed implementations; several notes can be issued in one call. The factory assigns each note a series number and takes an optional ISIN, both stated on the note's identity, and allowlists the note's Paying Agent and settlement on the deposit. The note passes to the governance controller in the same transaction, so the Issuer holds no power over it afterwards. Staff issue from an uploaded term-sheet record, or a demonstration note with an adjustable offer period before the first observation and adjustable spacing between dates. Placement by locked offer, delivery against payment</td><td>S&#8209;06 to S&#8209;09</td></tr>
+          <tr><td><b>Lifecycle</b></td><td>Each date determined by the Calculation Agent's signature and recomputed on-chain, proposed with its Levels and their source, approved by a second person with the Calculation Agent duty, and, for a demonstration note, checked against the independent payoff model. Record dates as a compliance module. Coupons and redemptions paid by the Agent's multi-signature servicing wallet to the holders of record, each distribution funded by an approval of exactly its amount when it opens, proposed and approved by two people with the payments duty, with amounts held for a holder who cannot receive them. Early and final redemption, then closure. The order of events written from the contracts and walked step by step by a test</td><td>S&#8209;15, S&#8209;16, S&#8209;18 to S&#8209;20, S&#8209;30 to S&#8209;32, S&#8209;34</td></tr>
+          <tr><td><b>Trading</b></td><td>Transfers settle by locked offer, each side locked until it settles or ends. Offers are arranged by the bank or open to any eligible client. Buy back into the Issuer's inventory, and reduction of the tranche bounded by that inventory</td><td>S&#8209;11 to S&#8209;14</td></tr>
+          <tr><td><b>Governance</b></td><td>One controller for every note, every act naming the note it concerns. Tier 1, each act with its written reason: register correction; a freeze on one note or every note; wallet recovery across every note the wallet holds; a sanctions designation that stops an account on every note at once. Tier 2 proposals with institution thresholds, the timelock and an execution window, each institution's wallet signing as itself: among them the correction of a determination, the rotation of a programme role for every note in one act, retiring a redeemed note, and handing the T-REX factory to a successor. The Agent alone cannot force a transfer</td><td>S&#8209;21 to S&#8209;26</td></tr>
+          <tr><td><b>The desk</b></td><td>The Book: every note on one page, what each needs next, and what awaits approval, is running or has failed. Issuance and payments run as background jobs that finish with no page open, carried on after the response, by every staff page load and by a daily scheduled run. One sender per key across servers. An index of the programme's events in the database, so pages read the book in one query. Holdings across every note on the participants page, and the register reconciliation across every note</td><td>&mdash;</td></tr>
+          <tr><td><b>The deposit</b></td><td>The bank credits and debits against booking references, holds part of a balance, pauses the deposit, and moves it by order with its reason on-chain, from its Deposit page</td><td>S&#8209;12</td></tr>
+          <tr><td><b>Conversion pool</b></td><td>Deployed by default. A wallet the bank has admitted with its pool-access claim converts the euro payment token into the deposit and back; a wallet not admitted is refused at the pool, though the deposit would accept it</td><td>S&#8209;27 to S&#8209;29</td></tr>
+          <tr><td><b>Evidence</b></td><td>The lifecycle reconstructed from chain events alone, and every transaction and event scanned for personal data. A reconciliation statement for every note, as at the close of any day, now or a block, in JSON and CSV: positions, cash, distributions, open offers and the term sheet, each checked; for a redeemed note, closed only when every position is at zero. An audit log of every act on the site, automatic approvals included</td><td>S&#8209;33, S&#8209;35, S&#8209;36</td></tr>
         </tbody>
       </table>
     </div>
+    <p>
+      Issuing one note costs about 5.7 million gas, down from about 10.5 million in 0.2.0, because
+      each note's lifecycle contracts are now minimal clones rather than full deployments.
+    </p>
     <h3>Not yet complete</h3>
     <ul class="plain">
       <li><strong>Shown in contract tests.</strong>
         <ul class="plain">
           <li>S-01: the deployer's renunciation;</li>
-          <li>S-04: a second registrar's participant, its registrar visible but not its identity;</li>
-          <li>S-06: the terms and calendar, which have no write path after deployment, and each date determined once;</li>
           <li>S-10: units are indivisible, so no holding falls below one;</li>
-          <li>S-19 and S-20: a determination by another signer, replayed, or signed for another network;</li>
-          <li>S-21: a distribution reversed and restated;</li>
-          <li>S-29: liquidity positions cannot be transferred;</li>
+          <li>S-21: a distribution reversed and restated as its own pair of acts. On the site, a paid coupon is reversed and restated through the correction of its determination;</li>
           <li>S-31: redemption without a breach, Twin Win included, among 25 payoff vectors matched to the cent.</li>
         </ul>
       </li>
-      <li><strong>Partly built.</strong>
-        <ul class="plain">
-          <li>S-05: the registry refuses the Agent acting on another registrar's participant. The same scoping in the credential layer is not yet built, because the protocol's registrar role is global.</li>
-          <li>S-17: a custody account is paid as a holder of record, but under the ordinary payment event. The nominee suspense account and its distinct event are not built.</li>
-        </ul>
-      </li>
-      <li><strong>The holder-wallet route for an officer</strong> waits on the bank's side, and an inclusion proof for each anchored credential on the protocol.</li>
-      <li><strong>Hardening before execution:</strong> a separate key for each capacity, the freeze of the contracts once the payoff items are confirmed by the Issuer and the Calculation Agent, the internal assurance review, and token naming.</li>
+      <li><strong>Partly built.</strong> S-17: a custody account is paid as a holder of record, under the ordinary payment event. The nominee suspense account and its distinct event are not built.</li>
+      <li><strong>Not yet in the programme's register of roles:</strong> the payer and the onboarding agent. The register holds the servicing wallet, the Calculation Agent and the funder.</li>
+      <li><strong>Not yet on the desk:</strong> an audit log filtered by note and by person (the log shows the latest entries across the programme), and, on the Book, funding against what is due, offers expiring and amounts held.</li>
+      <li><strong>Waiting on the bank:</strong> its list of term-sheet fields, which is fitted to the term-sheet record's field catalogue, and its detailed order of lifecycle events, which is mapped to the order the contracts enforce.</li>
+      <li><strong>Waiting on the Issuer and the Calculation Agent:</strong> confirmation of the payoff positions the specification takes (barrier observation, boundaries, memory, Twin Win, rounding, record time inclusivity and the stop on transfers).</li>
+      <li><strong>Hardening before execution:</strong> each wallet owner signing from its own device rather than the site holding two owners' keys of each wallet, four eyes required of a person rather than the automatic second approver, the freeze of the contracts once the payoff positions are confirmed, the internal assurance review, and token naming.</li>
     </ul>
   </section>
 
@@ -663,13 +669,16 @@ a:hover { text-decoration-color: var(--fg); }
     <h2>System architecture</h2>
     <p>
       An instruction originates in institution systems, crosses an integration layer, and settles on
-      the shared ledger. The integration layer is the only component built specifically for this
-      transaction, and it is where the boundary on personal data is enforced.
+      the shared ledger. The integration layer is the site's five portals, each signing as the
+      institution whose role it is; it is built for this programme, and it is where the boundary on
+      personal data is enforced. Behind the portals, issuance and payments run as background jobs in
+      the site's database, each key sends one transaction at a time across servers, and an index of
+      the programme's events lets every page read the book in one query.
     </p>
     <figure>
       <div class="scroller">
         <svg viewBox="0 0 1060 470" width="1060" height="470" role="img"
-             aria-label="Three-lane architecture. Institution systems on the left, an integration layer in the middle, and the shared ledger on the right. The Identity Registry sits at the centre of the ledger lane. A dashed boundary marks the limit of personal data.">
+             aria-label="Three-lane architecture. Institution systems on the left, an integration layer in the middle, and the shared ledger on the right. Identities and claims sit at the centre of the ledger lane. A dashed boundary marks the limit of personal data.">
           <defs>
             <marker id="h1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" class="d-head"/>
@@ -697,37 +706,37 @@ a:hover { text-decoration-color: var(--fg); }
 
           <rect x="16" y="190" width="268" height="66" class="d-box"/>
           <text x="30" y="214" class="d-t">Core banking and books of record</text>
-          <text x="30" y="231" class="d-sub">KYC identity register, personal data</text>
+          <text x="30" y="231" class="d-sub">KYB records, personal data</text>
           <text x="30" y="247" class="d-sub">the authoritative Register</text>
 
           <rect x="16" y="272" width="268" height="52" class="d-box"/>
           <text x="30" y="296" class="d-t">Digital asset platform</text>
-          <text x="30" y="313" class="d-sub">smart contract deployment, key custody</text>
+          <text x="30" y="313" class="d-sub">deployment, key custody</text>
 
           <rect x="332" y="54"  width="236" height="48" class="d-box-a"/>
-          <text x="346" y="76"  class="d-t">Instruction adapter</text>
-          <text x="346" y="92"  class="d-sub">event to transaction to record</text>
+          <text x="346" y="76"  class="d-t">Portals, by role</text>
+          <text x="346" y="92"  class="d-sub">bank, onboarding agent, Agent, custodians</text>
 
           <rect x="332" y="118" width="236" height="48" class="d-box-a"/>
-          <text x="346" y="140" class="d-t">Credential bridge</text>
-          <text x="346" y="156" class="d-sub">KYC outcome to whitelist flags</text>
+          <text x="346" y="140" class="d-t">Claims writer</text>
+          <text x="346" y="156" class="d-sub">KYB outcome to a signed claim</text>
 
           <rect x="332" y="182" width="236" height="48" class="d-box-a"/>
-          <text x="346" y="204" class="d-t">Commitment writer</text>
+          <text x="346" y="204" class="d-t">Record hashes</text>
           <text x="346" y="220" class="d-sub">salted hash, never the file</text>
 
           <rect x="332" y="246" width="236" height="48" class="d-box-a"/>
           <text x="346" y="268" class="d-t">Reconciliation</text>
-          <text x="346" y="284" class="d-sub">Register against on-chain balances</text>
+          <text x="346" y="284" class="d-sub">a statement at any block</text>
 
           <rect x="616" y="54"  width="204" height="58" class="d-box"/>
           <text x="630" y="78"  class="d-t">Structured Note token</text>
-          <text x="630" y="95"  class="d-sub">restricted transfer, snapshots</text>
+          <text x="630" y="95"  class="d-sub">ERC-3643, record dates</text>
           <text x="630" y="108" class="d-sub">decimals = 0, 1 unit = &euro;1,000</text>
 
           <rect x="840" y="54"  width="204" height="58" class="d-box"/>
-          <text x="854" y="78"  class="d-t">Digital monies</text>
-          <text x="854" y="95"  class="d-sub">simulated tokenized deposit</text>
+          <text x="854" y="78"  class="d-t">Tokenized deposit</text>
+          <text x="854" y="95"  class="d-sub">the bank's, allowlist, ERC-7943</text>
           <text x="854" y="108" class="d-sub">decimals = 2</text>
 
           <rect x="616" y="128" width="204" height="52" class="d-box"/>
@@ -735,12 +744,12 @@ a:hover { text-decoration-color: var(--fg); }
           <text x="630" y="169" class="d-sub">coupon, MER, redemption</text>
 
           <rect x="840" y="128" width="204" height="52" class="d-box"/>
-          <text x="854" y="152" class="d-t">DvP settlement</text>
-          <text x="854" y="169" class="d-sub">both legs, atomic</text>
+          <text x="854" y="152" class="d-t">Locked settlement</text>
+          <text x="854" y="169" class="d-sub">DvP, both legs, atomic</text>
 
           <rect x="616" y="196" width="428" height="52" class="d-box-k"/>
-          <text x="630" y="220" class="d-t">Identity Registry contract</text>
-          <text x="630" y="237" class="d-sub">whitelist, selling restrictions, multi-signature managed</text>
+          <text x="630" y="220" class="d-t">Identities and claims</text>
+          <text x="630" y="237" class="d-sub">one ONCHAINID identity per client; each asset's registry trusts its issuers</text>
 
           <rect x="616" y="264" width="204" height="52" class="d-box-s"/>
           <text x="630" y="288" class="d-t">Governance controls</text>
@@ -752,7 +761,7 @@ a:hover { text-decoration-color: var(--fg); }
 
           <rect x="616" y="332" width="428" height="52" class="d-box"/>
           <text x="630" y="356" class="d-t">Permissioned conversion pool: euro payment token to deposit</text>
-          <text x="630" y="373" class="d-sub">whitelist checked at the wallet, before the pool, not at the asset</text>
+          <text x="630" y="373" class="d-sub">the bank's pool-access claim, checked at the wallet, not at the asset</text>
 
           <path d="M284 80  H332" class="d-flow-a" marker-end="url(#h2)"/>
           <path d="M284 148 H332" class="d-flow-a" marker-end="url(#h2)"/>
@@ -771,8 +780,9 @@ a:hover { text-decoration-color: var(--fg); }
       <figcaption>
         Left to right is the flow of an instruction. The dashed line marks the limit of personal
         data. Legal names, registered addresses, entity identifiers and account numbers remain in core
-        banking. On-chain data is limited to a wallet address, whitelist flags, and a salted
-        commitment to the off-chain record.
+        banking. On-chain data is limited to a wallet address, its identity contract, a country code,
+        and the claims institutions add to the identity, each carrying a salted hash of the record
+        behind it.
       </figcaption>
     </figure>
   </section>
@@ -781,116 +791,153 @@ a:hover { text-decoration-color: var(--fg); }
     <p class="sec-label">Contracts</p>
     <h2>Contract inventory</h2>
     <p>
-      Twelve contracts across four layers. Provenance determines audit scope, so each is marked by
-      whether it is written for this transaction or used as shipped from an upstream source.
+      The contracts sit in five layers. Provenance determines audit scope, so each is marked by
+      whether it is written for this transaction or used as shipped from an upstream source. The
+      token, its registries and the identities are T-REX and ONCHAINID, the reference
+      implementations of ERC-3643, used as shipped behind an implementation authority that no one
+      can change. Each note has its own lifecycle contracts (determinations, record dates, Paying
+      Agent and settlement), deployed as minimal clones of fixed implementations, so that a fault in
+      one note cannot reach another's balances.
     </p>
     <figure>
       <div class="scroller">
-        <svg viewBox="0 0 1060 566" width="1060" height="566" role="img"
-             aria-label="Contract inventory in four layers: instruments, servicing, control, and venue. Contracts written for this transaction are outlined in accent; contracts used as shipped are outlined plainly.">
+        <svg viewBox="0 0 1060 646" width="1060" height="646" role="img"
+             aria-label="Contract inventory in five layers: instruments, identity, issuance and servicing, control, and venue. Contracts written for this transaction are outlined in accent; contracts used as shipped are outlined plainly.">
 
           <text x="30" y="38" class="d-lanelbl">INSTRUMENTS</text>
-          <rect x="30"  y="50" width="184" height="76" class="d-box-a"/>
-          <text x="44"  y="74" class="d-t">Structured Note</text>
-          <text x="44"  y="92" class="d-sub">restricted transfer</text>
-          <text x="44"  y="106" class="d-sub">snapshot, documents</text>
-          <text x="44"  y="119" class="d-sub">decimals = 0</text>
-
+          <rect x="30" y="50" width="184" height="76" class="d-box"/>
+          <text x="44" y="74" class="d-t">Structured Note</text>
+          <text x="44" y="92" class="d-sub">T-REX token, ERC-3643</text>
+          <text x="44" y="106" class="d-sub">decimals = 0</text>
           <rect x="234" y="50" width="184" height="76" class="d-box-a"/>
-          <text x="248" y="74" class="d-t">Digital monies</text>
-          <text x="248" y="92" class="d-sub">tokenized deposit</text>
-          <text x="248" y="106" class="d-sub">gateway mint authority</text>
-          <text x="248" y="119" class="d-sub">decimals = 2</text>
+          <text x="248" y="74" class="d-t">Record-date module</text>
+          <text x="248" y="92" class="d-sub">compliance module</text>
+          <text x="248" y="106" class="d-sub">holders of record, the stop</text>
+          <rect x="438" y="50" width="184" height="76" class="d-box-a"/>
+          <text x="452" y="74" class="d-t">Tokenized deposit</text>
+          <text x="452" y="92" class="d-sub">allowlist, ERC-7943</text>
+          <text x="452" y="106" class="d-sub">decimals = 2</text>
+          <rect x="642" y="50" width="184" height="76" class="d-box-a"/>
+          <text x="656" y="74" class="d-t">Deposit gateway</text>
+          <text x="656" y="92" class="d-sub">credit and debit</text>
+          <text x="656" y="106" class="d-sub">against bookings</text>
+          <rect x="846" y="50" width="184" height="76" class="d-box-a"/>
+          <text x="860" y="74" class="d-t">Programme sanctions</text>
+          <text x="860" y="92" class="d-sub">compliance module</text>
+          <text x="860" y="106" class="d-sub">on every note</text>
 
-          <text x="30" y="152" class="d-lanelbl">SERVICING</text>
-          <rect x="30"  y="164" width="184" height="76" class="d-box-a"/>
-          <text x="44"  y="188" class="d-t">Paying Agent</text>
-          <text x="44"  y="206" class="d-sub">coupon, MER</text>
-          <text x="44"  y="220" class="d-sub">final redemption</text>
-          <text x="44"  y="233" class="d-sub">reads snapshots</text>
-
-          <rect x="234" y="164" width="184" height="76" class="d-box-a"/>
-          <text x="248" y="188" class="d-t">Determination Agent</text>
-          <text x="248" y="206" class="d-sub">signed levels</text>
-          <text x="248" y="220" class="d-sub">and triggers</text>
-          <text x="248" y="233" class="d-sub">EIP-712 payloads</text>
-
+          <text x="30" y="152" class="d-lanelbl">IDENTITY</text>
+          <rect x="30" y="164" width="184" height="76" class="d-box"/>
+          <text x="44" y="188" class="d-t">Identities</text>
+          <text x="44" y="206" class="d-sub">ONCHAINID, one per client</text>
+          <text x="44" y="220" class="d-sub">created by the bank</text>
+          <rect x="234" y="164" width="184" height="76" class="d-box"/>
+          <text x="248" y="188" class="d-t">Identity registries</text>
+          <text x="248" y="206" class="d-sub">T-REX, one per asset</text>
+          <text x="248" y="220" class="d-sub">on one identity storage</text>
           <rect x="438" y="164" width="184" height="76" class="d-box-a"/>
-          <text x="452" y="188" class="d-t">DvP Settlement</text>
-          <text x="452" y="206" class="d-sub">atomic two-leg</text>
-          <text x="452" y="220" class="d-sub">settlement</text>
-          <text x="452" y="233" class="d-sub">cash leg is a parameter</text>
+          <text x="452" y="188" class="d-t">Claim issuers</text>
+          <text x="452" y="206" class="d-sub">the bank's, the onboarding</text>
+          <text x="452" y="220" class="d-sub">agent's; claims expire</text>
+          <rect x="642" y="164" width="184" height="76" class="d-box-a"/>
+          <text x="656" y="188" class="d-t">Pool gate</text>
+          <text x="656" y="206" class="d-sub">the pool's own registry</text>
+          <text x="656" y="220" class="d-sub">jurisdiction, withdrawal</text>
+          <rect x="846" y="164" width="184" height="76" class="d-box-a"/>
+          <text x="860" y="188" class="d-t">Programme T-REX factory</text>
+          <text x="860" y="206" class="d-sub">each note's suite; retires</text>
+          <text x="860" y="220" class="d-sub">a redeemed note's registry</text>
 
-          <text x="30" y="266" class="d-lanelbl">CONTROL</text>
-          <rect x="30"  y="278" width="184" height="76" class="d-box-k"/>
-          <text x="44"  y="302" class="d-t">Identity Registry</text>
-          <text x="44"  y="320" class="d-sub">whitelist of record</text>
-          <text x="44"  y="334" class="d-sub">selling restrictions</text>
-          <text x="44"  y="347" class="d-sub">multi-signature managed</text>
+          <text x="30" y="266" class="d-lanelbl">ISSUANCE AND SERVICING</text>
+          <rect x="30" y="278" width="184" height="76" class="d-box-a"/>
+          <text x="44" y="302" class="d-t">Note factory</text>
+          <text x="44" y="320" class="d-sub">notes whole, one or many a call</text>
+          <text x="44" y="334" class="d-sub">the Issuer's wallet issues</text>
+          <rect x="234" y="278" width="184" height="76" class="d-box-a"/>
+          <text x="248" y="302" class="d-t">Determination Agent</text>
+          <text x="248" y="320" class="d-sub">a clone per note, signed</text>
+          <text x="248" y="334" class="d-sub">levels recomputed on-chain</text>
+          <rect x="438" y="278" width="184" height="76" class="d-box-a"/>
+          <text x="452" y="302" class="d-t">Paying Agent</text>
+          <text x="452" y="320" class="d-sub">a clone per note: coupon,</text>
+          <text x="452" y="334" class="d-sub">MER, redemption</text>
+          <rect x="642" y="278" width="184" height="76" class="d-box-a"/>
+          <text x="656" y="302" class="d-t">Locked settlement</text>
+          <text x="656" y="320" class="d-sub">delivery versus payment</text>
+          <text x="656" y="334" class="d-sub">each side locked</text>
 
-          <rect x="234" y="278" width="184" height="76" class="d-box-s"/>
-          <text x="248" y="302" class="d-t">Governance controls</text>
-          <text x="248" y="320" class="d-sub">two-tier intervention</text>
-          <text x="248" y="334" class="d-sub">quorum and timelock</text>
-          <text x="248" y="347" class="d-sub">fixed selector set</text>
-
-          <text x="30" y="380" class="d-lanelbl">VENUE</text>
-          <rect x="30"  y="392" width="184" height="76" class="d-box"/>
-          <text x="44"  y="416" class="d-t">Pool Manager</text>
-          <text x="44"  y="434" class="d-sub">Uniswap v4 core</text>
-          <text x="44"  y="448" class="d-sub">already on testnet</text>
-
+          <text x="30" y="380" class="d-lanelbl">CONTROL</text>
+          <rect x="30" y="392" width="184" height="76" class="d-box-s"/>
+          <text x="44" y="416" class="d-t">Governance controller</text>
+          <text x="44" y="434" class="d-sub">one for every note</text>
+          <text x="44" y="448" class="d-sub">two tiers, typed acts, roles</text>
           <rect x="234" y="392" width="184" height="76" class="d-box"/>
-          <text x="248" y="416" class="d-t">Permissions Adapter</text>
-          <text x="248" y="434" class="d-sub">holds the deposit token</text>
-          <text x="248" y="448" class="d-sub">used as shipped</text>
+          <text x="248" y="416" class="d-t">Institution wallets</text>
+          <text x="248" y="434" class="d-sub">Safe multi-signature</text>
+          <text x="248" y="448" class="d-sub">as shipped</text>
 
-          <rect x="438" y="392" width="184" height="76" class="d-box-a"/>
-          <text x="452" y="416" class="d-t">Permissioned hook</text>
-          <text x="452" y="434" class="d-sub">tests the swapper</text>
-          <text x="452" y="448" class="d-sub">in audit scope</text>
+          <text x="30" y="494" class="d-lanelbl">VENUE</text>
+          <rect x="30" y="506" width="184" height="76" class="d-box"/>
+          <text x="44" y="530" class="d-t">Pool Manager</text>
+          <text x="44" y="548" class="d-sub">Uniswap v4 core</text>
+          <text x="44" y="562" class="d-sub">as shipped</text>
+          <rect x="234" y="506" width="184" height="76" class="d-box"/>
+          <text x="248" y="530" class="d-t">Permissions Adapter</text>
+          <text x="248" y="548" class="d-sub">holds the deposit</text>
+          <text x="248" y="562" class="d-sub">as shipped</text>
+          <rect x="438" y="506" width="184" height="76" class="d-box-a"/>
+          <text x="452" y="530" class="d-t">Permissioned hook</text>
+          <text x="452" y="548" class="d-sub">tests the swapper</text>
+          <text x="452" y="562" class="d-sub">on every swap</text>
+          <rect x="642" y="506" width="184" height="76" class="d-box-a"/>
+          <text x="656" y="530" class="d-t">Checker and router</text>
+          <text x="656" y="548" class="d-sub">deposit eligibility</text>
+          <text x="656" y="562" class="d-sub">and the pool gate</text>
+          <rect x="846" y="506" width="184" height="76" class="d-box"/>
+          <text x="860" y="530" class="d-t">Position Manager</text>
+          <text x="860" y="548" class="d-sub">non-transferable</text>
+          <text x="860" y="562" class="d-sub">liquidity positions</text>
 
-          <rect x="642" y="392" width="184" height="76" class="d-box"/>
-          <text x="656" y="416" class="d-t">Position Manager</text>
-          <text x="656" y="434" class="d-sub">non-transferable</text>
-          <text x="656" y="448" class="d-sub">liquidity positions</text>
-
-          <rect x="846" y="392" width="184" height="76" class="d-box"/>
-          <text x="860" y="416" class="d-t">Universal Router</text>
-          <text x="860" y="434" class="d-sub">swap routing</text>
-          <text x="860" y="448" class="d-sub">used as shipped</text>
-
-          <rect x="30"  y="506" width="26" height="14" class="d-box-a"/>
-          <text x="66"  y="518" class="d-sub">Written for this transaction, in audit scope</text>
-          <rect x="386" y="506" width="26" height="14" class="d-box-s"/>
-          <text x="422" y="518" class="d-sub">Privileged capability</text>
-          <rect x="626" y="506" width="26" height="14" class="d-box"/>
-          <text x="662" y="518" class="d-sub">Used as shipped, upstream audited</text>
+          <rect x="30"  y="612" width="26" height="14" class="d-box-a"/>
+          <text x="66"  y="624" class="d-sub">Written for this transaction, in audit scope</text>
+          <rect x="386" y="612" width="26" height="14" class="d-box-s"/>
+          <text x="422" y="624" class="d-sub">Privileged capability</text>
+          <rect x="626" y="612" width="26" height="14" class="d-box"/>
+          <text x="662" y="624" class="d-sub">Used as shipped, upstream audited</text>
         </svg>
       </div>
       <figcaption>
-        The instrument and servicing layers are built on an established open standard for tokenized
-        debt securities, with only the wrappers and the payoff written here. The venue layer is used
-        as shipped apart from the hook, for which no production implementation is published upstream.
+        The instrument and identity layers are the ERC-3643 reference implementation, with only the
+        record-date and sanctions modules, the claim issuers, the deposit and the small extension to
+        T-REX's factory written here. Servicing is written for
+        this transaction, since no standard covers the payoff. The venue is used as shipped apart from
+        the hook, the checker, the router and the pool gate.
       </figcaption>
     </figure>
     <div class="scroller">
       <table>
         <thead><tr><th>Contract</th><th>Function</th><th>Controlled by</th><th>Audit</th></tr></thead>
         <tbody>
-          <tr><td class="key">Structured Note</td><td>Restricted-transfer security token with snapshot and document anchoring</td><td>Agent, Issuer</td><td><b>Tier 1</b></td></tr>
-          <tr><td class="key">Digital monies</td><td>Simulated tokenized deposit, mint and burn behind a gateway interface</td><td>Deposit Agent</td><td><b>Tier 1</b></td></tr>
-          <tr><td class="key">Paying Agent</td><td>Coupon, MER and final redemption computed against a record date snapshot</td><td>Agent</td><td><b>Tier 1</b></td></tr>
-          <tr><td class="key">Determination Agent</td><td>Accepts signed determinations of levels, barriers and triggers</td><td>Calculation Agent</td><td><b>Tier 1</b></td></tr>
-          <tr><td class="key">DvP Settlement</td><td>Atomic two-leg settlement, cash leg supplied as a constructor parameter</td><td>Counterparties</td><td>Tier 2</td></tr>
-          <tr><td class="key">Identity Registry</td><td>Grants of record: rights bitfield and expiry per address, written by the Access Issuer</td><td>Agent multi-signature, with a separate issuing key</td><td><b>Tier 1</b></td></tr>
-          <tr><td class="key">Instrument gates</td><td>One gate per instrument and venue, each testing the rights that instrument requires against the same registry</td><td>Immutable once deployed</td><td><b>Tier 1</b></td></tr>
-          <tr><td class="key">Governance controls</td><td>Two-tier intervention with quorum, timelock and a fixed selector set</td><td>Quorum across two institutions</td><td><b>Tier 1</b></td></tr>
-          <tr><td class="key">Permissioned hook</td><td>Tests the swapping party against the Identity Registry on every swap</td><td>None, immutable at pool creation</td><td>Tier 2</td></tr>
-          <tr><td class="key">Permissions Adapter</td><td>Sole holder of the deposit token, mints the virtual representation</td><td>Issuer of the deposit token</td><td>Declared</td></tr>
+          <tr><td class="key">Structured Note</td><td>ERC-3643 security token (T-REX), one per note: transfers only between accounts its identity registry verifies, under its compliance; agents limited to their own powers. Its identity states its term sheet and its series</td><td>Governance controller, from the transaction that issues it</td><td>Declared</td></tr>
+          <tr><td class="key">Record-date module</td><td>A compliance module, one clone per note: every balance at every past instant, and the stop on transfers at a possible redemption</td><td>None once bound</td><td><b>Tier 1</b></td></tr>
+          <tr><td class="key">Programme sanctions</td><td>One compliance module on every note: an account the controller designates can neither send nor receive any note, at once, including notes issued later</td><td>Governance controller, Tier 1</td><td><b>Tier 1</b></td></tr>
+          <tr><td class="key">Tokenized deposit</td><td>The bank's deposit: an allowlist ERC-20 with two decimals whose eligibility comes from the bank's identity registry; holds, pause and forced transfer by ERC-7943</td><td>The bank; its roles granted and revoked by the governance controller, by Tier 2 act</td><td><b>Tier 1</b></td></tr>
+          <tr><td class="key">Deposit gateway</td><td>Credits and debits the deposit against single-use booking references</td><td>The bank</td><td>Tier 2</td></tr>
+          <tr><td class="key">Identities</td><td>ONCHAINID identity per client, created by the bank through an identity factory; keys and claims</td><td>Whoever holds the client's wallet key</td><td>Declared</td></tr>
+          <tr><td class="key">Identity registries</td><td>T-REX identity registry per asset (each note, the deposit, the pool) on one identity storage, each with its required claim topics and trusted issuers. The bank registers wallets; the notes' registries only read the storage</td><td>The asset's owner</td><td>Declared</td></tr>
+          <tr><td class="key">Programme T-REX factory</td><td>T-REX's factory with one act added: unbinding a redeemed note's registry from the shared identity storage, which binds at most 300</td><td>Note factory, on the controller's Tier 2 act</td><td>Tier 2</td></tr>
+          <tr><td class="key">Claim issuers</td><td>The bank's and the onboarding agent's: a claim is valid only while it is unexpired, unrevoked and signed by the issuer's key</td><td>Each institution</td><td><b>Tier 1</b></td></tr>
+          <tr><td class="key">Note factory</td><td>Issues a note whole, in one transaction, from its term sheet, or several in one call; assigns its series number, takes an optional ISIN and up to four further claims the series requires; allowlists its Paying Agent and settlement on the deposit; hands it to the governance controller in the same transaction</td><td>The Issuer's 2-of-3 multi-signature wallet</td><td><b>Tier 1</b></td></tr>
+          <tr><td class="key">Determination Agent</td><td>One clone per note. Fixes the terms and calendar; accepts each determination signed by the Calculation Agent and recomputed on-chain</td><td>Calculation Agent, read from the programme's register of roles</td><td><b>Tier 1</b></td></tr>
+          <tr><td class="key">Paying Agent</td><td>One clone per note. Coupon, MER and final redemption to the holders of record, each funded by an approval of exactly its amount, with amounts held for a holder who cannot receive them</td><td>Agent's servicing wallet, read from the programme's register of roles</td><td><b>Tier 1</b></td></tr>
+          <tr><td class="key">Locked settlement</td><td>One clone per note. Delivery versus payment by offer, each side locked until it settles or ends</td><td>Counterparties</td><td><b>Tier 1</b></td></tr>
+          <tr><td class="key">Governance controller</td><td>Every privileged power over every note, the deposit's roles and the venue; two tiers, a fixed set of typed acts each naming its note; the programme's register of roles</td><td>Two of three institutions for Tier 2; the Agent's governance wallet for Tier 1</td><td><b>Tier 1</b></td></tr>
+          <tr><td class="key">Institution wallets</td><td>Safe multi-signature wallets, two of three: the Agent's governance wallet, the Issuer's, the co-signing institution's, and the Agent's servicing wallet, which is never an institution</td><td>Each institution</td><td>Declared</td></tr>
+          <tr><td class="key">Pool gate</td><td>The pool's perimeter: the bank's pool-access claim, the countries served, supervisory withdrawal</td><td>Governance controller</td><td><b>Tier 1</b></td></tr>
+          <tr><td class="key">Permissioned hook, checker and router</td><td>Test the swapping party against the deposit's eligibility and the pool gate on every swap</td><td>Governance controller</td><td>Tier 2</td></tr>
+          <tr><td class="key">Permissions Adapter</td><td>Sole holder of the deposit in the venue, mints its virtual representation</td><td>Governance controller</td><td>Declared</td></tr>
           <tr><td class="key">Position Manager</td><td>Issues non-transferable liquidity positions</td><td>Liquidity provider</td><td>Declared</td></tr>
           <tr><td class="key">Pool Manager</td><td>Uniswap v4 core, already deployed on the test network</td><td>None</td><td>Declared</td></tr>
-          <tr><td class="key">Universal Router</td><td>Swap routing</td><td>None</td><td>Declared</td></tr>
         </tbody>
       </table>
     </div>
@@ -902,7 +949,8 @@ a:hover { text-decoration-color: var(--fg); }
     <p>
       Each party is identified by capacity. No institution is named in the contracts, the deployed
       metadata or the repository, which is both a compliance requirement and a condition of reusing
-      the work for a subsequent transaction.
+      the work for a subsequent transaction. Each capacity signs with its own key, and each has its
+      own portal on the site.
     </p>
     <div class="scroller">
       <table>
@@ -910,16 +958,17 @@ a:hover { text-decoration-color: var(--fg); }
           <tr><th>Party</th><th>Role</th><th>Holds</th></tr>
         </thead>
         <tbody>
-          <tr><td><b>Issuer</b></td><td>Issues simulated note under existing MTN programme; authorises minting of token, sized to notional</td><td>Issuance authority</td></tr>
-          <tr><td><b>Guarantor</b></td><td>Provides unconditional Deed of Guarantee over Issuer obligations; documented off-chain</td><td>None</td></tr>
+          <tr><td><b>Issuer</b></td><td>Issues the simulated notes under the existing MTN programme, each from its term sheet, through the note factory; holds their inventory. Holds no power over a note once it is issued</td><td>The note factory, through its 2-of-3 multi-signature wallet</td></tr>
+          <tr><td><b>Guarantor</b></td><td>Provides an unconditional Deed of Guarantee over the Issuer's obligations; documented off-chain</td><td>None</td></tr>
           <tr><td><b>Calculation &amp; Determination Agent</b></td><td>Monitors barrier events; determines coupons, Mandatory Early Redemption and final redemption amounts</td><td>Determination signing key</td></tr>
-          <tr><td><b>Agent</b></td><td>Issuance of note, executes cash distributions on Calculation Agent instruction, Registrar and whitelisting / KYC</td><td>Registrar multi-signature</td></tr>
-          <tr><td><b>Platform Operator</b></td><td>Smart contract deployment; mint, transfer and burn on platform; whitelist enforcement</td><td>Deployment keys</td></tr>
-          <tr><td><b>Identity Registry contract</b></td><td>On-chain investor whitelist; managed by the Agent via multi-signature; enforces selling restrictions</td><td>Whitelist state</td></tr>
-          <tr><td><b>Second Registrar</b></td><td>Onboards and revokes its own participants under delegated authority; co-signs intervention</td><td>Scoped registrar rights</td></tr>
-          <tr><td><b>Custodian</b></td><td>Operates segregated per-client accounts; holder of record for its clients</td><td>Custody operator key</td></tr>
+          <tr><td><b>Agent</b></td><td>Issuance of the notes, cash distributions on the Calculation Agent's determination, Registrar; governs every note through the controller, and funds each distribution from its deposit account</td><td>Governance and servicing multi-signature wallets</td></tr>
+          <tr><td><b>Co-signing institution</b></td><td>A second registrar or an independent trustee, named by capacity: one of the three institutions whose wallets approve Tier 2 acts</td><td>Its multi-signature wallet</td></tr>
+          <tr><td><b>The bank</b></td><td>Holds its clients' KYB, creates their identities, vouches that each may hold its deposit, issues and administers the deposit, and admits clients to the conversion pool</td><td>Its claim issuer; the deposit's roles</td></tr>
+          <tr><td><b>Onboarding agent</b></td><td>Verifies clients for the note under its selling restrictions and vouches for them; a dealer, distributor, custodian or CSD</td><td>Its claim issuer</td></tr>
+          <tr><td><b>Custodians</b></td><td>The bank's custody platform and a third-party custodian, each operating segregated client accounts and managing their identities; holder of record for their clients</td><td>Custody operator keys</td></tr>
+          <tr><td><b>Platform Operator</b></td><td>Smart contract deployment; renounces every power at the ceremony</td><td>Deployment keys, then none</td></tr>
           <tr><td><b>Audit firm</b></td><td>Independent smart contract security audit. Proposed as a gate before mainnet rather than before testnet execution</td><td>None</td></tr>
-          <tr><td><b>Investors</b></td><td>Whitelisted participants in the PoC, one deliberately unqualified as a control case</td><td>Their own wallets</td></tr>
+          <tr><td><b>Investors</b></td><td>Onboarded participants in the PoC, one deliberately not onboarded as a control case</td><td>Their own wallets, or accounts in custody</td></tr>
         </tbody>
       </table>
     </div>
@@ -927,31 +976,33 @@ a:hover { text-decoration-color: var(--fg); }
 
 <section id="identity">
     <p class="sec-label">Identity</p>
-    <h2>Identity Registry</h2>
+    <h2>Identities and claims</h2>
     <p class="lead">
-      On-chain investor whitelist, managed by the Agent via multi-signature, enforcing selling
-      restrictions. The Agent maintains the off-chain KYB and KYC register and operates the issuing
-      and verifying services; the Identity Registry contract is the on-chain expression of what
-      those services have determined. Every other component defers to this contract, which makes it
-      the principal control in the design. Eligibility is established by
-      <strong>presentation and proof of address control</strong>, and is granted for a period rather
-      than indefinitely.
+      Each client has one on-chain identity, and each institution vouches on it, by a signed claim,
+      for what it is responsible for: the bank that the client may hold its deposit, the onboarding
+      agent that the client may hold the note. Each asset's identity registry then decides, at every
+      transfer, whether the claims it requires stand. This is ERC-3643, with ONCHAINID identities,
+      the standard of the bank's parallel proof of concept. The institutions keep their KYB and KYC
+      files; the chain carries only the claim that each has vouched, until when, and a salted hash
+      of the record behind it. Eligibility is <strong>vouched for by the institution responsible,
+      checked on-chain at every transfer, and granted for a period</strong> rather than indefinitely.
     </p>
     <figure>
       <div class="scroller">
         <svg viewBox="0 0 800 258" width="800" height="258" role="img"
-             aria-label="The Identity Registry contract on the left, with four arrows to its consumers: Structured Note transfer rules, digital monies transfer rules, DvP settlement, and the conversion pool.">
+             aria-label="A client's identity, on the left, with its claims, read by four consumers on the right through the identity registry of each asset: the Structured Note, the tokenized deposit, the locked settlement, and the conversion pool.">
           <defs>
             <marker id="h3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" class="d-head-a"/>
             </marker>
           </defs>
 
-          <rect x="16" y="86" width="222" height="86" class="d-box-k"/>
-          <text x="32" y="114" class="d-t">Identity Registry</text>
-          <text x="32" y="132" class="d-t">contract</text>
-          <text x="32" y="152" class="d-sub">single whitelist of record</text>
-          <text x="32" y="166" class="d-sub">Agent multi-signature</text>
+          <rect x="16" y="70" width="222" height="118" class="d-box-k"/>
+          <text x="32" y="98" class="d-t">One identity per client</text>
+          <text x="32" y="118" class="d-sub">ONCHAINID, created by the bank</text>
+          <text x="32" y="138" class="d-sub">claims: the bank's for the deposit,</text>
+          <text x="32" y="152" class="d-sub">the onboarding agent's for the note,</text>
+          <text x="32" y="166" class="d-sub">the bank's for pool access</text>
 
           <path d="M238 129 C 330 129, 340 34,  428 34"  class="d-flow-a" marker-end="url(#h3)"/>
           <path d="M238 129 C 330 129, 340 98,  428 98"  class="d-flow-a" marker-end="url(#h3)"/>
@@ -959,50 +1010,53 @@ a:hover { text-decoration-color: var(--fg); }
           <path d="M238 129 C 330 129, 340 226, 428 226" class="d-flow-a" marker-end="url(#h3)"/>
 
           <rect x="436" y="10" width="348" height="48" class="d-box"/>
-          <text x="450" y="32" class="d-t">Structured Note transfer rules</text>
-          <text x="450" y="48" class="d-sub">may this party hold or receive the Note</text>
+          <text x="450" y="32" class="d-t">Structured Note</text>
+          <text x="450" y="48" class="d-sub">its registry requires the onboarding agent's claim</text>
 
           <rect x="436" y="74" width="348" height="48" class="d-box"/>
-          <text x="450" y="96" class="d-t">Digital monies transfer rules</text>
-          <text x="450" y="112" class="d-sub">may this party hold the cash leg</text>
+          <text x="450" y="96" class="d-t">Tokenized deposit</text>
+          <text x="450" y="112" class="d-sub">its registry requires the bank's claim</text>
 
           <rect x="436" y="138" width="348" height="48" class="d-box"/>
-          <text x="450" y="160" class="d-t">DvP settlement</text>
+          <text x="450" y="160" class="d-t">Locked settlement</text>
           <text x="450" y="176" class="d-sub">both legs checked before either moves</text>
 
           <rect x="436" y="202" width="348" height="48" class="d-box"/>
           <text x="450" y="224" class="d-t">Conversion pool</text>
-          <text x="450" y="240" class="d-sub">may this wallet swap into the deposit</text>
+          <text x="450" y="240" class="d-sub">its registry requires the bank's pool-access claim</text>
         </svg>
       </div>
       <figcaption>
-        Four consumers, one whitelist of record. There is no second list capable of disagreeing with
-        the first.
+        One identity, created once, read by every asset. Each asks its own question of it, through
+        its own registry, on one shared identity storage: there is no second list capable of
+        disagreeing with the first, and no client is onboarded twice.
       </figcaption>
     </figure>
 
-    <h3>Credentials, and how eligibility is established</h3>
+    <h3>Claims, and how eligibility is established</h3>
     <p>
-      Eligibility is not asserted by the Agent on a participant's behalf. The participant
-      <strong>presents</strong> it, proves control of the address it should attach to, and receives
-      a grant that expires. Four credential types carry the exercise, each anchored on the entity
-      rather than on any natural person, since the investors here are institutions.
+      A claim is an institution's signed statement about an identity: a topic, the issuer that
+      vouches, the claim's issue and its lapse, a salted hash of the institution's own record, and the
+      institution's signature over all of it. The client consents first, by giving the institution a
+      claim key on its identity, and the institution then adds its claim. No claim issuer accepts a
+      claim that runs longer than a year.
     </p>
     <div class="scroller">
       <table>
-        <thead><tr><th>Credential</th><th>Subject</th><th>Carries</th></tr></thead>
+        <thead><tr><th>Claim</th><th>Vouched by</th><th>Attests</th><th>Runs</th></tr></thead>
         <tbody>
-          <tr><td class="key">Corporate identity</td><td>The investing entity</td><td>Legal name, legal form, registration number, jurisdiction, incorporation date, status. <b>Anchored on KYB</b></td></tr>
-          <tr><td class="key">Corporate officer</td><td>The individual acting</td><td>The corporation it relates to, role, effective and termination dates, board resolution reference, scope of authority</td></tr>
-          <tr><td class="key">Investor eligibility</td><td>The investing entity</td><td>Regulation S and Rule 144A eligibility, professional and accredited status, qualified institutional buyer status, jurisdiction, sanctions screening outcome. Determined by the Agent from the KYB file</td></tr>
-          <tr><td class="key">Wallet control</td><td>The address</td><td>Chain, address, address type, attestation method and signature. Binds a specific address to the holder</td></tr>
+          <tr><td class="key">Deposit eligible</td><td>The bank</td><td>The bank has onboarded the client, against its KYB record, and holds its deposit account</td><td>180 days</td></tr>
+          <tr><td class="key">Note eligible</td><td>The onboarding agent</td><td>The client is eligible for the programme's notes under their selling restrictions (Regulation S), and screened. One claim serves every note. The onboarding agent relies on the bank's KYB while the bank's claim stands, with the client's consent, and does not repeat it</td><td>180 days</td></tr>
+          <tr><td class="key">Pool access</td><td>The bank</td><td>The client is a professional or institutional investor, screened, admitted to convert between the payment token and the deposit</td><td>90 days</td></tr>
+          <tr><td class="key">Term sheet</td><td>The note itself</td><td>On the note's own identity: the hash of its term sheet and where it is published</td><td>Fixed at issuance</td></tr>
+          <tr><td class="key">Series</td><td>The note itself</td><td>On the note's own identity: the series number the factory assigned, and its ISIN where it has one</td><td>Fixed at issuance</td></tr>
         </tbody>
       </table>
     </div>
     <figure>
       <div class="scroller">
         <svg viewBox="0 0 1000 292" width="1000" height="292" role="img"
-             aria-label="Eligibility flow. A participant presents selected claims to the verifier, which checks validity, revocation and sanctions against the credential registries. The participant proves address control, the access issuer writes a time-boxed grant, and token and venue gates read it in a single storage read.">
+             aria-label="Onboarding flow. The client asks by its route and proves its wallet by one signature. The bank checks its own KYB record, creates the identity and registers the wallet. Each institution signs and adds its claim, with the client's consent. Each asset's identity registry checks the claims at every transfer.">
           <defs>
             <marker id="h8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" class="d-head-a"/>
@@ -1013,140 +1067,99 @@ a:hover { text-decoration-color: var(--fg); }
           </defs>
 
           <rect x="16" y="46" width="220" height="76" class="d-box"/>
-          <text x="30" y="70" class="d-t">Participant</text>
-          <text x="30" y="88" class="d-sub">presents selected claims</text>
-          <text x="30" y="102" class="d-sub">proves control of the address</text>
-          <text x="30" y="115" class="d-sub">by signature</text>
+          <text x="30" y="70" class="d-t">Client</text>
+          <text x="30" y="88" class="d-sub">asks by its route</text>
+          <text x="30" y="102" class="d-sub">proves its wallet</text>
+          <text x="30" y="115" class="d-sub">by one typed signature</text>
 
           <rect x="268" y="46" width="220" height="76" class="d-box"/>
-          <text x="282" y="70" class="d-t">Verifier</text>
-          <text x="282" y="88" class="d-sub">operated by the Agent</text>
-          <text x="282" y="102" class="d-sub">checks validity, revocation</text>
-          <text x="282" y="115" class="d-sub">and sanctions screening</text>
+          <text x="282" y="70" class="d-t">The bank</text>
+          <text x="282" y="88" class="d-sub">checks its own KYB record</text>
+          <text x="282" y="102" class="d-sub">creates the identity</text>
+          <text x="282" y="115" class="d-sub">and registers the wallet</text>
 
           <rect x="520" y="46" width="220" height="76" class="d-box-a"/>
-          <text x="534" y="70" class="d-t">Access Issuer</text>
-          <text x="534" y="88" class="d-sub">writes the grant on-chain</text>
-          <text x="534" y="102" class="d-sub">rights bitfield and expiry</text>
-          <text x="534" y="115" class="d-sub">operator key, never in process</text>
+          <text x="534" y="70" class="d-t">Claim issuers</text>
+          <text x="534" y="88" class="d-sub">each institution signs its claim</text>
+          <text x="534" y="102" class="d-sub">with its lapse and a salted</text>
+          <text x="534" y="115" class="d-sub">hash of its own record</text>
 
           <rect x="772" y="46" width="212" height="76" class="d-box-k"/>
-          <text x="786" y="70" class="d-t">Eligibility Registry</text>
-          <text x="786" y="88" class="d-sub">the whitelist of record</text>
-          <text x="786" y="102" class="d-sub">one storage read per check</text>
-          <text x="786" y="115" class="d-sub">grant lapses on expiry</text>
+          <text x="786" y="70" class="d-t">Identity registries</text>
+          <text x="786" y="88" class="d-sub">one per asset</text>
+          <text x="786" y="102" class="d-sub">check the claims it requires</text>
+          <text x="786" y="115" class="d-sub">at every transfer</text>
 
           <path d="M236 84 H268" class="d-flow-a" marker-end="url(#h8)"/>
           <path d="M488 84 H520" class="d-flow-a" marker-end="url(#h8)"/>
           <path d="M740 84 H772" class="d-flow-a" marker-end="url(#h8)"/>
 
           <rect x="268" y="190" width="220" height="70" class="d-box"/>
-          <text x="282" y="214" class="d-t">Credential registries</text>
-          <text x="282" y="232" class="d-sub">issuer keys and rotation</text>
-          <text x="282" y="246" class="d-sub">revocation and root freshness</text>
-          <path d="M378 190 V122" class="d-flow" marker-end="url(#h9)"/>
+          <text x="282" y="214" class="d-t">Consent</text>
+          <text x="282" y="232" class="d-sub">a claim key on the identity</text>
+          <text x="282" y="246" class="d-sub">for each institution that vouches</text>
+          <path d="M488 225 H630 V122" class="d-flow" marker-end="url(#h9)"/>
 
           <rect x="700" y="190" width="284" height="70" class="d-box"/>
           <text x="714" y="214" class="d-t">Token and venue gates</text>
-          <text x="714" y="232" class="d-sub">per instrument, each with its own required rights</text>
-          <text x="714" y="246" class="d-sub">Note, digital monies, DvP, conversion pool</text>
+          <text x="714" y="232" class="d-sub">the note, the deposit, settlement</text>
+          <text x="714" y="246" class="d-sub">and the conversion pool</text>
           <path d="M842 190 V122" class="d-flow-a" marker-end="url(#h8)"/>
         </svg>
       </div>
       <figcaption>
-        The expensive work happens once, at the left. The check that runs on every transfer is the
-        single storage read at the right. Revocation propagates because a grant expires on its own
-        and can be withdrawn immediately, so the cached answer cannot drift indefinitely from the
-        credential behind it.
+        The judgement happens once, at the institution, against its own file. The check that runs
+        on every transfer is the registry's: that the claims it requires are present, signed by an
+        issuer it trusts, not lapsed and not revoked.
       </figcaption>
     </figure>
 
-    <h3>Granular rights, and per-instrument gates</h3>
+    <h3>Claims by role, and a registry per asset</h3>
     <p>
-      A grant is not a single permission. It records a set of rights as flags, covering hold,
-      receive, transfer, swap and provide liquidity, alongside the attributes carrying regulatory
-      meaning: Regulation S and Rule 144A eligibility, professional and accredited status,
-      qualified institutional buyer status, jurisdiction, and sanctions screening outcome.
-    </p>
-    <p>
-      Each instrument and each venue then carries <strong>its own gate over the same registry</strong>,
-      testing the rights that instrument requires. A Regulation S note requires the Regulation S
-      flag, so a transfer to a counterparty without it reverts before value moves. Reissuing under
-      Rule 144A changes the required mask rather than the contract. The conversion pool tests a
-      different mask again, because swapping into a deposit is not the same permission as holding a
-      security. Selling restrictions are not systematically enforced in the secondary market under
-      current arrangements.
+      Each asset names the claims it requires and the issuers it trusts for them. Every note requires
+      the same note claim from the onboarding agent, so a client approved once may hold any note of
+      the programme, and a transfer to an account without it reverts before value moves. A series may
+      require up to four further claims of its own, each from an issuer it names, fixed at issuance.
+      Trusting another issuer for a note is a Tier 2 act on that note's registry rather than a change
+      of contract.
+      The deposit requires the bank's claim alone: the bank alone decides who may hold its cash. The
+      pool requires the bank's pool-access claim, because converting into a deposit is not the same
+      permission as holding a security. Selling restrictions are not systematically enforced in the
+      secondary market under current arrangements.
     </p>
 
     <h3>Time-boxed eligibility</h3>
     <p>
-      A grant carries an expiry and lapses without any further action. This is a deliberate
+      A claim carries its lapse and stops counting without any further action. This is a deliberate
       departure from a standing whitelist, and it answers a control weakness that a static list
       cannot: <strong>eligibility is re-established periodically rather than assumed indefinitely</strong>.
       A participant whose corporate status, sanctions position or investor classification has
-      changed does not remain eligible because nobody revisited the entry. Renewal is a fresh
-      presentation against the current credential.
+      changed does not remain eligible because nobody revisited the entry. Renewal is a fresh claim,
+      against the institution's current record.
     </p>
     <p>
-      Revocation is immediate and does not wait for expiry. The Agent withdraws a grant directly,
-      and a credential revoked at the registry fails the next presentation. The combination means
-      the on-chain answer can be wrong only within a bounded window, and the window is a parameter
-      rather than an accident.
+      Revocation is immediate and does not wait for the lapse: the institution that gave a claim
+      revokes it, and the next transfer that relies on it is refused. No refresh, no cached answer,
+      and no window between revocation and effect.
     </p>
 
-    <h3>Credential platform, and why it is not yet fixed</h3>
-    <p>
-      The identity layer is described above by <strong>capability rather than by product</strong>.
-      The design depends on what the layer does, not on who supplies it, and the selection remains
-      open pending further discussion. Three routes are under consideration and the architecture
-      accommodates each without rework to the instrument, the settlement path or the controls.
-    </p>
+    <h3>Onboarding routes, and custody</h3>
     <div class="scroller">
       <table>
-        <thead><tr><th>Route</th><th>Strength</th><th>Cost</th></tr></thead>
+        <thead><tr><th>Route</th><th>Who holds the wallet's key</th><th>Who manages the identity</th></tr></thead>
         <tbody>
-          <tr>
-            <td class="key">Deployed credential platform</td>
-            <td>Operated by the Agent, so the presentation flow, the schemas and the attribute model can be adapted as the exercise teaches us things. Holder-held credentials, selective disclosure and the strongest alignment with the European wallet model</td>
-            <td>Newer, with a correspondingly thinner audit history. Sits in the audit scope rather than outside it</td>
-          </tr>
-          <tr>
-            <td class="key">Commercial compliance engine</td>
-            <td>Institutional credibility and a policy engine built for regulated assets. Less code to audit, and cross-chain portability of the compliance decision</td>
-            <td>A vendor in the settlement path, less operational control, and a weaker fit with holder-presented credentials and the European wallet model</td>
-          </tr>
-          <tr>
-            <td class="key">Established securities identity standard</td>
-            <td>The largest existing network effect: custodians and platforms that already integrate it, and familiarity for an institutional reviewer</td>
-            <td>Identity claims recorded on-chain, a contract per investor, and no holder presentation or selective disclosure</td>
-          </tr>
+          <tr><td class="key">Bank custody</td><td>The bank's custody platform, for a segregated account it opens as soon as the bank confirms the client's KYB</td><td>The custody platform</td></tr>
+          <tr><td class="key">Third-party custodian</td><td>A custodian the client names, which opens the account the bank confirmed</td><td>That custodian</td></tr>
+          <tr><td class="key">Self-custody</td><td>The client: it proves its wallet by one signature, the bank sets the identity up, then hands its management to the wallet</td><td>The client</td></tr>
+          <tr><td class="key">Existing identity</td><td>The client, bringing an identity it already holds, with claims from issuers the note trusts</td><td>The client</td></tr>
         </tbody>
       </table>
     </div>
     <p>
-      The requirements the layer must satisfy are the same in every case: entity and officer
-      credentials rather than only natural-person identity, attributes the Agent determines from its
-      own file, proof of address control including for contract accounts, delegated issuance scoped
-      per registrar, revocation with bounded propagation, personal data held off-chain, and a check
-      cheap enough to sit on a transfer path. <strong>The decision is deferred deliberately</strong>,
-      and it is scoped as a workstream after the exercise, where distribution rather than technology
-      is expected to be the deciding input.
-    </p>
-
-    <h3>Delegation to a custodian</h3>
-    <p>
-      A custody account is a contract and cannot hold a credential or answer a challenge. Two paths
-      cover it, and both are supported by the attestation model rather than requiring an exception
-      to it.
-    </p>
-    <ul class="plain">
-      <li><strong>The account attests for itself.</strong> A custody account implementing the contract signature standard validates an attestation against its own logic, so the account proves control of itself under the custodian's operating key. The wallet control credential already distinguishes an externally owned address from a contract for this reason.</li>
-      <li><strong>The custodian presents for a delegated client.</strong> The custodian's officer presents the client's eligibility credential together with evidence of the delegation, and the grant is written against the client's account. The Agent sees that the custodian acted and for which account, without receiving the client's underlying file.</li>
-    </ul>
-    <p>
-      In both cases the account, not the custodian, is the holder of record, which is what preserves
-      the segregation the custody model exists to provide. Freezing or correcting one client account
-      does not touch another under the same custodian.
+      Key custody follows custody: whoever holds the wallet's key manages its identity. A custody
+      account, not the custodian, is the holder of record, which is what preserves the segregation
+      the custody model exists to provide. Freezing or correcting one client account does not touch
+      another under the same custodian.
     </p>
 
     <h3>On-chain and off-chain data</h3>
@@ -1154,18 +1167,17 @@ a:hover { text-decoration-color: var(--fg); }
       <div class="pane on">
         <span class="cap">Recorded on-chain</span>
         <ul>
-          <li>Wallet address, and whether it is an account or a contract</li>
-          <li>Identifier of the onboarding registrar</li>
-          <li>Credential reference</li>
-          <li>Rights and attribute flags</li>
-          <li>Jurisdiction code</li>
-          <li>Salted commitment to the off-chain record</li>
-          <li>Grant and expiry timestamps</li>
+          <li>Wallet address, and the identity contract it is registered against</li>
+          <li>The identity's keys: who manages it, and who may vouch</li>
+          <li>Each claim's topic, issuer, issue and lapse</li>
+          <li>A salted hash of each institution's record</li>
+          <li>Country code, as the identity storage records it</li>
+          <li>A custody account's reference: <code>SEG-</code> and part of a hash, meaningless without the site's records</li>
         </ul>
         <p class="foot">Sufficient to determine a transfer. Insufficient to identify a person.</p>
       </div>
       <div class="pane off">
-        <span class="cap">Retained in core banking</span>
+        <span class="cap">Retained by each institution</span>
         <ul>
           <li>Legal name and legal form</li>
           <li>Registration, entity and tax identifiers</li>
@@ -1178,41 +1190,35 @@ a:hover { text-decoration-color: var(--fg); }
       </div>
     </div>
     <p>
-      A party already holding the underlying record can verify that it matches the on-chain
-      commitment. A party without the record derives nothing from the commitment. Jurisdiction is
-      the one attribute held in the clear, as the contract requires it for the selling restriction
-      test. The contract needs only to establish whether a participant falls within a permitted set
-      rather than the specific jurisdiction, and a zero-knowledge set membership proof would replace
-      the plain value in a production implementation.
+      A party already holding the record and its salt can check it against the hash a claim carries.
+      A party without them derives nothing from the hash, and a fresh salt at each screening makes
+      two screenings of one client unlinkable. Country is the one attribute held in the clear, as the
+      pool requires it for the jurisdictions it serves. A production implementation could replace the
+      plain value with a proof of membership of a permitted set.
     </p>
 
     <h3>Delegated authority</h3>
     <p>
-      Registrar authority is scoped by construction. A registrar may bind and revoke only the
-      participants it onboarded, and an attempt to act on another registrar's participants fails.
-      The constraint is enforced twice by two independently authored systems, so the attempt fails
-      in the registry contract and fails again in the credential layer beneath it.
+      Authority is scoped by construction. A claim can be revoked only by the issuer that made it, and
+      each asset names the issuers it trusts and for what. The onboarding agent vouches for its own
+      clients for the note; it cannot vouch for the deposit, which trusts the bank alone, and the
+      bank cannot vouch for the note.
     </p>
     <p>
-      This permits the Agent to delegate onboarding authority to a further institution without
-      transferring its Register and without assuming central securities depository functions. A
-      second registrar admits and revokes its own participants and co-signs intervention. The Agent
-      observes that a participant was onboarded and by which registrar, and does not observe the
-      participant's identity.
+      This permits the Agent to rely on further institutions without transferring its Register and
+      without assuming central securities depository functions. The Agent sees each participant as
+      a wallet, an identity and the issuers that vouched for it, and does not see the participant's
+      facts, which stay in the bank's records.
     </p>
     <div class="notice key">
       <span class="lbl">Where verification actually happens</span>
-      Cryptographic verification of a presented credential is performed <strong>off-chain</strong>,
-      by the Agent's verifying service. The signature schemes used for verifiable credentials are
-      prohibitively expensive to verify on-chain, and the composite on-chain check across issuer
-      registration,
-      revocation and root freshness is itself too costly to sit on a transfer path. Verification
-      therefore runs <strong>at presentation</strong>, the result is written as a grant carrying
-      rights and an expiry, and each subsequent transfer check is a single storage read. Claiming
-      that a credential is cryptographically verified on-chain at every transfer would be
-      inaccurate, and is the sort of claim a reviewer will test. The defensible claim is narrower
-      and still strong: <strong>eligibility is established cryptographically, recorded on-chain,
-      bounded in time, and revocable immediately</strong>.
+      The judgement of a client, its KYB and its screening, is made <strong>off-chain</strong>, by
+      the institution responsible, against its own file. What the chain checks, <strong>at every
+      transfer</strong>, is the institution's claim: that it is present, signed by a key of an issuer
+      the asset trusts, not lapsed and not revoked. That check is an ordinary signature recovery and
+      a few storage reads, cheap enough to sit on a transfer path. The defensible claim is precise:
+      <strong>eligibility is vouched for by the institution responsible, checked on-chain at every
+      transfer, bounded in time, and revocable immediately</strong>.
     </div>
   </section>
 
@@ -1232,14 +1238,37 @@ a:hover { text-decoration-color: var(--fg); }
         <tbody>
           <tr><td class="key">Denomination</td><td><b>1 unit = &euro;1,000, indivisible.</b> The token carries <code>decimals = 0</code>, so a balance is a count of units. Defaulting to eighteen decimals is a known source of notional error in this instrument class and is therefore set explicitly and asserted under test.</td></tr>
           <tr><td class="key">Underlying</td><td>Basket of reference assets. Performance measured against Initial Levels, with the worst performer determining the payoff</td></tr>
-          <tr><td class="key">Initial Levels</td><td>Strike Date Closing Levels recorded on-chain as <b>immutable Initial Levels</b>, together with the full observation calendar. A worst-of basket requires the calendar fixed in advance rather than supplied with each determination</td></tr>
-          <tr><td class="key">Coupon</td><td>Conditional, determined by the Calculation Agent, paid to whitelisted holders of record at the record date</td></tr>
+          <tr><td class="key">Initial Levels</td><td>Strike Date Closing Levels recorded on-chain as <b>immutable Initial Levels</b>, together with the full observation calendar, both derived from the term sheet. A worst-of basket requires the calendar fixed in advance rather than supplied with each determination</td></tr>
+          <tr><td class="key">Coupon</td><td>Conditional, determined by the Calculation Agent, paid to the holders of record at the Record Time</td></tr>
           <tr><td class="key">MER</td><td>Mandatory Early Redemption tested against the worst performer. On trigger, par plus accrued is paid, tokens are burned and the Register is closed</td></tr>
           <tr><td class="key">Redemption</td><td><b>(A) No breach</b> pays &euro;1,000 per unit, with Twin Win if applicable. <b>(B) Breach</b> pays CA &times; (100% + worst-performer Final Performance)</td></tr>
-          <tr><td class="key">Documentation</td><td>Term sheet anchored via contract by hash; transaction details anchored in token metadata. The Deed of Guarantee is referenced and remains an off-chain document</td></tr>
+          <tr><td class="key">Documentation</td><td>The term sheet as data, its hash on the note's identity, below. The Deed of Guarantee is referenced and remains an off-chain document</td></tr>
         </tbody>
       </table>
     </div>
+    <h3>The term sheet as data</h3>
+    <p>
+      The term sheet is a typed record, not a document beside the note. Every field carries a value
+      or an explicit "not applicable", with its reason, and a field that may not be "not applicable"
+      must carry a value. The fields are a catalogue, each with an identifier, a type, a priority and
+      an example, ready to take the bank's own field list by editing the catalogue alone.
+    </p>
+    <p>
+      The record is <strong>the input to issuance</strong>: the terms the Determination Agent fixes
+      on the chain are derived from it, and nowhere else. Its hash, keccak256 of its canonical JSON
+      (RFC 8785), is carried by the note's own identity with the address the site publishes it at,
+      behind sign-in. The reconciliation statement checks, at any block, that the record and the
+      terms on the chain agree field by field.
+    </p>
+    <p>
+      Staff issue a note by uploading or pasting its record. Before anything is sent the site checks
+      it: the schema, every field present or marked not applicable, the network, the ISIN's check
+      digit, an issue size of 1 to 1,000,000 units, a first Record Time still in the future, and a
+      symbol and ISIN not already used. For a demonstration, staff may instead issue a note built
+      from one of the payoff model's scenarios, choosing an offer period before the first
+      observation and the spacing between dates; its Levels are then suggested for each date and its
+      outcomes checked against the model.
+    </p>
     <h3>Live and pending inventory</h3>
     <p>
       Notes held in an investor wallet are <strong>live</strong>. Notes returned to the Issuer are
@@ -1254,25 +1283,52 @@ a:hover { text-decoration-color: var(--fg); }
     <p class="sec-label">Lifecycle</p>
     <h2>Transaction lifecycle</h2>
     <ol class="steps">
-      <li><span class="n">01</span><div><div class="t">Governance Setup</div><div class="d">Agent appointed. Calculation &amp; Determination Agent designated. Guarantee documented off-chain. Smart contracts deployed on Base Sepolia. Transaction details anchored in token metadata. Source code verified on the block explorer.</div></div></li>
-      <li><span class="n">02</span><div><div class="t">KYB / KYC and whitelist</div><div class="d">The Agent completes KYB on the investing entity and KYC on its officers, then issues the corresponding credentials. The participant presents the claims required, proves control of the address, and receives a time-boxed grant carrying its rights. Sanctions screening is part of the check. No subsequent step can proceed for a party without a live grant.</div></div></li>
-      <li><span class="n">03</span><div><div class="t">Issuance / Minting</div><div class="d">The Issuer instructs the Agent to authorise issuance. The Agent instructs the platform to create the contract. Strike Date Closing Levels are recorded on-chain as immutable Initial Levels. Notional mints to pending inventory, then settles to investors by DvP against digital monies.</div></div></li>
-      <li><span class="n">04</span><div><div class="t">Secondary Transfer</div><div class="d">Identity Registry whitelist check, then atomic DvP against digital monies, then the Agent updates the on-chain and off-chain Register.</div></div></li>
-      <li><span class="n">05</span><div><div class="t">Coupon Payment</div><div class="d">The Calculation Agent determines the coupon payable based on underlying reference assets. The contract is updated by determination, debits the Agent and credits whitelisted holders with digital monies. The Register is reconciled against on-chain balances.</div></div></li>
-      <li><span class="n">06</span><div><div class="t">Issuer Buy Back</div><div class="d">The Issuer purchases the Note from an investor through a contract-triggered settlement. Notional returns to pending inventory.</div></div></li>
-      <li><span class="n">07</span><div><div class="t">Autocall / MER Monitoring</div><div class="d">The Calculation Agent checks MER triggers. If triggered, the contract is updated by determination, debits the Agent and credits whitelisted holders with digital monies. Tokens are burned and the Register is closed.</div></div></li>
-      <li><span class="n">08</span><div><div class="t">Redemption</div><div class="d">The Issuer determines the final scenario. Distribution is executed, tokens are burned, the Register is closed, and <b>full reconciliation confirms zero positions</b>.</div></div></li>
+      <li><span class="n">01</span><div><div class="t">Governance setup</div><div class="d">Agent appointed. Calculation &amp; Determination Agent designated. Guarantee documented off-chain. The shared scaffolding deployed on Ethereum Sepolia, after a rehearsal on a local fork: identities, the ERC-3643 implementations behind a fixed authority, the claim issuers, the deposit and the fixed implementations each note's lifecycle contracts are cloned from. Then the programme: the four multi-signature wallets, the sanctions module, the governance controller and the note factory. At the ceremony the deployer hands the pool and its venue to the controller and renounces the deposit's and the gateway's administration, ending with no power. Every contract verified on Etherscan.</div></div></li>
+      <li><span class="n">02</span><div><div class="t">KYB / KYC and claims</div><div class="d">The bank confirms the client's KYB from its own record, creates its identity and vouches for its deposit. The client asks for the note; the onboarding agent verifies it under the selling restrictions and vouches for it. No subsequent step can proceed for a party without the claims the asset requires.</div></div></li>
+      <li><span class="n">03</span><div><div class="t">Issuance / Minting</div><div class="d">Two of the Issuer's wallet signers issue the note through the note factory, in one transaction, from its term sheet: its series number and any ISIN, terms and calendar, the token and its registries, the Paying Agent and settlement, every agent restricted, the notional minted to the Issuer's inventory, the lifecycle contracts allowlisted on the deposit, and the note handed to the governance controller. The bank credits the Agent's deposit account for the note's distributions. Units are placed with investors by delivery versus payment against the deposit.</div></div></li>
+      <li><span class="n">04</span><div><div class="t">Secondary transfer</div><div class="d">By locked offer: both parties' eligibility checked, then the note and the deposit settle together, each side locked until it does. The on-chain register is the position; the Agent's Register is reconciled against it.</div></div></li>
+      <li><span class="n">05</span><div><div class="t">Coupon payment</div><div class="d">One person with the Calculation Agent duty proposes the date's Levels with their source, a second approves, and the determination is signed and recomputed on-chain. At the Payment Date one person with the payments duty proposes the payment and a second approves. The Agent approves the note's Paying Agent for exactly the amount due, and the servicing wallet opens the distribution, drawing that amount, and pays the holders of record at the Record Time in batches, as a background job.</div></div></li>
+      <li><span class="n">06</span><div><div class="t">Issuer buy back</div><div class="d">The Issuer buys units back by locked offer. Notional returns to its inventory, which is not paid coupons and is never cancelled beyond what it holds.</div></div></li>
+      <li><span class="n">07</span><div><div class="t">Autocall / MER</div><div class="d">A date that could redeem the note stops transfers from its Record Time until it is determined. If it redeems, the note terminates and the dates after it fall away; the redemption pauses the note, burns each holder's units as it pays, and burns the inventory at the close.</div></div></li>
+      <li><span class="n">08</span><div><div class="t">Redemption and closure</div><div class="d">The final date determines the scenario. Distribution is executed, tokens are burned, and the reconciliation statement reads <b>Closed: every position is at zero</b>.</div></div></li>
     </ol>
+
+    <h3>The order of events</h3>
+    <p>
+      The order is the contracts' own, and a test walks one note through it in that order, trying
+      each step too early or out of turn first and showing the refusal. The full sequence, step by
+      step with who acts and what is refused, is kept with the code
+      (<code>docs/lifecycle-sequence.md</code>), ready to be fitted to the bank's own order of
+      events. Each observation date has three instants, fixed at issuance in the term sheet:
+    </p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>When</th><th>What happens</th><th>Refused</th></tr></thead>
+        <tbody>
+          <tr><td class="key">From the observation date</td><td>The Calculation Agent signs the Levels; anyone submits them; the contract recomputes the outcome and accepts it only if it agrees</td><td>Before the date; any date but the next; a disagreeing outcome; another signer; after the note has terminated</td></tr>
+          <tr><td class="key">At the Record Time</td><td>The holders of record are fixed, every transaction in a block stamped at or before it included. If the date could redeem and is not yet determined, transfers stop until it is, forced transfers included</td><td>Transfers during the stop</td></tr>
+          <tr><td class="key">From the Payment Date</td><td>The distribution opens, drawing the whole amount from the Agent at once, under an approval of exactly that amount; the holders of record are paid in batches; a holder the deposit cannot credit is held for, and claims later</td><td>Before the Payment Date; nothing due; the inventory; an account that held nothing at the Record Time; a second payment</td></tr>
+          <tr><td class="key">When all are paid</td><td>The distribution closes by itself; at a redemption, the inventory is burned</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The order within a date is no more rigid than the contracts make it: a date may be determined
+      before its Record Time, and transfers then never stop for it unless it redeems.
+    </p>
+
     <h3>Delivery versus payment</h3>
     <p>
-      Placement, secondary transfer and buy back all settle through the same primitive. Both legs are
-      tested against the Identity Registry before either moves, so an ineligible counterparty causes
-      the whole settlement to fail rather than leaving one leg delivered against an unsettled other.
+      Placement, secondary transfer and buy back all settle through the same primitive, an offer
+      locked until it settles or ends. The seller's units are frozen in its own wallet, never
+      moved into the contract; both legs are tested before either moves, so an ineligible
+      counterparty causes the whole settlement to fail rather than leaving one leg delivered against
+      an unsettled other.
     </p>
     <figure>
       <div class="scroller">
         <svg viewBox="0 0 880 404" width="880" height="404" role="img"
-             aria-label="DvP settlement. Seller and buyer instruct the DvP Settlement contract, which tests the Structured Note transfer rules and the digital monies transfer rules, both of which consult the Identity Registry, before either leg moves.">
+             aria-label="Delivery versus payment. Seller and buyer settle through the locked settlement contract, which tests the note's identity registry and compliance and the deposit's eligibility, both of which read the same identities, before either leg moves.">
           <defs>
             <marker id="h6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" class="d-head"/>
@@ -1284,33 +1340,33 @@ a:hover { text-decoration-color: var(--fg); }
 
           <rect x="16"  y="24" width="250" height="58" class="d-box"/>
           <text x="30"  y="48" class="d-t">Seller</text>
-          <text x="30"  y="66" class="d-sub">delivers Structured Note units</text>
+          <text x="30"  y="66" class="d-sub">offers units, locked in its wallet</text>
 
           <rect x="614" y="24" width="250" height="58" class="d-box"/>
           <text x="628" y="48" class="d-t">Buyer</text>
-          <text x="628" y="66" class="d-sub">delivers digital monies</text>
+          <text x="628" y="66" class="d-sub">accepts, paying in the deposit</text>
 
           <rect x="260" y="124" width="360" height="62" class="d-box-a"/>
-          <text x="274" y="148" class="d-t">DvP Settlement contract</text>
+          <text x="274" y="148" class="d-t">Locked settlement contract</text>
           <text x="274" y="166" class="d-sub">one transaction, both legs or neither</text>
 
           <path d="M141 82 V104 H340 V124" class="d-flow" marker-end="url(#h6)"/>
           <path d="M739 82 V104 H540 V124" class="d-flow" marker-end="url(#h6)"/>
 
           <rect x="100" y="224" width="250" height="58" class="d-box"/>
-          <text x="114" y="248" class="d-t">Note transfer rules</text>
-          <text x="114" y="266" class="d-sub">may the buyer receive the Note</text>
+          <text x="114" y="248" class="d-t">The note's registry and compliance</text>
+          <text x="114" y="266" class="d-sub">may the buyer receive the note</text>
 
           <rect x="530" y="224" width="250" height="58" class="d-box"/>
-          <text x="544" y="248" class="d-t">Digital monies rules</text>
+          <text x="544" y="248" class="d-t">The deposit's eligibility</text>
           <text x="544" y="266" class="d-sub">may the seller receive the cash</text>
 
           <path d="M380 186 V206 H225 V224" class="d-flow" marker-end="url(#h6)"/>
           <path d="M500 186 V206 H655 V224" class="d-flow" marker-end="url(#h6)"/>
 
           <rect x="315" y="322" width="250" height="62" class="d-box-k"/>
-          <text x="329" y="346" class="d-t">Identity Registry</text>
-          <text x="329" y="364" class="d-sub">whitelist, selling restrictions</text>
+          <text x="329" y="346" class="d-t">Identities and claims</text>
+          <text x="329" y="364" class="d-sub">one identity, each asset's claims</text>
           <text x="329" y="377" class="d-sub">one answer to both questions</text>
 
           <path d="M225 282 V302 H390 V322" class="d-flow-a" marker-end="url(#h7)"/>
@@ -1318,17 +1374,18 @@ a:hover { text-decoration-color: var(--fg); }
         </svg>
       </div>
       <figcaption>
-        Both legs consult the same whitelist, so the two sides of a settlement cannot be assessed
+        Both legs read the same identities, so the two sides of a settlement cannot be assessed
         against divergent lists. If either check fails, the transaction reverts and no value moves on
         either side.
       </figcaption>
     </figure>
-    <h3>Record date determination</h3>
+    <h3>Record dates</h3>
     <p>
-      A secondary transfer settling between the record date and the payment date must not alter
-      entitlement. This requires a balance at a past instant, which is why the token carries snapshot
-      semantics rather than a current balance read. The same mechanism supports correction, since
-      reversing a distribution requires a record of exactly which parties were paid.
+      A secondary transfer settling between the Record Time and the Payment Date must not alter
+      entitlement. The note's compliance therefore carries a record-date module, which records every
+      balance at every past instant; the Paying Agent pays each holder its balance at the Record Time,
+      never a figure supplied with the call. The same record supports correction, since reversing a
+      distribution requires a record of exactly which parties were paid.
     </p>
   </section>
 
@@ -1339,26 +1396,29 @@ a:hover { text-decoration-color: var(--fg); }
       Immutability is the principal question for a risk committee. Records cannot be altered without
       trace, which is the benefit, and records cannot be altered, which is the constraint. A single
       privileged key capable of arbitrary action is not an acceptable response and would be raised
-      as an audit finding. Privileged capability is therefore separated by purpose.
+      as an audit finding. Every privileged power over every note of the programme is therefore held
+      by one governance controller, separated by purpose into two tiers, and each agent of a note is
+      limited by the token itself to the powers it needs. Every act names the note it concerns, and
+      the controller checks it against the notes it governs.
     </p>
     <div class="tiers">
       <div class="tier">
         <span class="cap">Tier 1 / Operational</span>
         <h4>Register correction</h4>
-        <p>The Register is authoritative and on-chain state is evidence of it. Where the two diverge, through a lost key or a mis-directed transfer, on-chain state is corrected to match the Register.</p>
+        <p>The Register is authoritative and on-chain state is evidence of it. Where the two diverge, through a lost key or a mis-directed transfer, on-chain state is corrected to match the Register: a correction by forced transfer on the note named; a lost wallet's units and identity recovered to a new wallet across every note it holds; the supervisory freeze, on one note or on every note; and a sanctions designation that stops the account on every note at once, including notes issued later, whichever institution vouched for the account.</p>
         <dl>
-          <dt>Authority</dt><dd>Agent multi-signature</dd>
+          <dt>Authority</dt><dd>The Agent's governance wallet</dd>
           <dt>Delay</dt><dd>None</dd>
-          <dt>Requires</dt><dd>Written reason, logged</dd>
+          <dt>Requires</dt><dd>Written reason, emitted in full</dd>
         </dl>
       </div>
       <div class="tier two">
         <span class="cap">Tier 2 / Intervention</span>
         <h4>Break glass</h4>
-        <p>Amendment to the Register itself or to the economics of the instrument. Reversal and restatement of a distribution, amendment of notional, or contract upgrade.</p>
+        <p>Amendment to the Register itself or to the economics of a note: reversal and restatement of a distribution, correction of a determination, amendment of notional, and whose claims a note trusts. Replacement of a programme role (the servicing wallet, the Calculation Agent or the funder) for every note in one act, or of an institution's wallet; the deposit's roles; retiring a redeemed note from the identity storage; and handing the T-REX factory to a successor. There is no upgrade: the note's implementation is fixed by an authority no one owns.</p>
         <dl>
-          <dt>Authority</dt><dd>Quorum across <b>two institutions</b></dd>
-          <dt>Delay</dt><dd>Timelock, with on-chain notice</dd>
+          <dt>Authority</dt><dd>Two of <b>three institutions</b>, at least four signatures</dd>
+          <dt>Delay</dt><dd>Timelock, with on-chain notice, then a window to execute: 72 hours and 7 days as targets, compressed to 1 hour and 1 day on the test network</dd>
           <dt>Requires</dt><dd>Written reason, emitted in full</dd>
         </dl>
       </div>
@@ -1368,15 +1428,23 @@ a:hover { text-decoration-color: var(--fg); }
       distinct institutions. Four signatures from a single firm is a materially weaker control than
       two from each of two institutions, and a single threshold cannot express that distinction. The
       reason is stored as text rather than a hash, since a notice requiring an off-chain lookup does
-      not constitute notice.
+      not constitute notice. A queued proposal left unexecuted past its window expires.
+    </p>
+    <p>
+      Routine servicing sits apart. The programme keeps one register of roles, which every note's
+      lifecycle contracts read at each act: the Agent's servicing wallet opens and pays
+      distributions, the Calculation Agent's key signs determinations, and the Agent's deposit
+      account funds every distribution. A rotation is one Tier 2 act for the whole book. The
+      servicing wallet is never an institution, so routine payments are never signed by a wallet
+      that holds intervention powers.
     </p>
     <div class="notice control">
       <span class="lbl">Scope of privileged functions</span>
-      The controller may call only a fixed, named set of functions. No general-purpose call path
-      exists within it. An arbitrary-call function would constitute unrestricted capability
-      irrespective of the surrounding process, and the fixed selector set is the distinction. The
-      deploying key renounces its administrative rights as its final action, and that renunciation
-      is verified under test.
+      The controller may perform only a fixed, named set of typed acts, and builds every call itself
+      from their arguments. No general-purpose call path exists within it, and no act changes the
+      thresholds, the delays or the set of acts. The note factory hands each note to the controller
+      in the transaction that issues it, so no note is ever held by a single key; the deploying key
+      renounces its rights at the ceremony, and that renunciation is verified under test.
     </div>
     <h3>Worked example: incorrect record date</h3>
     <p>
@@ -1393,23 +1461,54 @@ a:hover { text-decoration-color: var(--fg); }
       ledger permanently, marked reversed, with the amount visible. History is restated rather than
       erased, and the amendment forms part of the record.
     </p>
+    <h3>Worked example: incorrect determination</h3>
+    <p>
+      The Calculation Agent finds that the Levels behind the latest determination were wrong. It
+      signs the corrected Levels and outcome, and a Tier 2 proposal carries them with the reason in
+      writing. Once the delay has run, one act replaces the determination, recomputed on-chain and
+      accepted only if the outcome agrees. Where that date's coupon was already paid, the same act
+      reverses it holder by holder and, if the corrected outcome still pays a coupon, restates it at
+      the corrected amount to the same holders of record. A correction is refused while that date's
+      coupon is still being paid, and once its redemption has opened.
+    </p>
   </section>
 
 <section id="cash-leg">
     <p class="sec-label">Cash leg</p>
     <h2>Digital monies</h2>
     <p>
-      On-chain cash leg settlement is effected in a simulated tokenized deposit, modelled as a
-      liability of the institution holding it, created on credit to an account and extinguished on
-      debit. Mint authority sits behind a gateway interface standing in for a deposit service. The
-      material output is that interface, which constitutes a specification of what such a service
-      would be required to expose in order to settle on public infrastructure.
+      The cash leg is the bank's tokenized deposit, simulated: a liability of the bank, created on
+      credit to a client's account and extinguished on debit, each against a booking reference the
+      bank's core systems would carry. It is shaped like the one bank deposit token whose source is
+      public: an allowlist ERC-20 with two decimals, checking sender, receiver and spender alike. Its
+      eligibility comes from the bank's own identity registry, so a client onboarded once may hold
+      both the deposit and the note, while the bank alone decides who may hold its cash. Each note's
+      Paying Agent and settlement contract are on the explicit allowlist, put there by the note
+      factory as it issues the note. The deposit's roles are granted and revoked only by the
+      governance controller, by Tier 2 act.
+    </p>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>The bank's act</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td class="key">Credit and debit</td><td>Through the deposit gateway, each against a single-use booking reference. A correction is a debit and a credit, each booked</td></tr>
+          <tr><td class="key">Hold</td><td>Part of a client's balance cannot move or be debited until released (ERC-7943)</td></tr>
+          <tr><td class="key">Fund a distribution</td><td>The Agent's deposit account stays pooled, but a note's Paying Agent may draw only what is due: the Agent approves exactly the distribution's amount when it opens, so every draw names one note and one event. There is no standing allowance</td></tr>
+          <tr><td class="key">Pause</td><td>Every transfer, credit and debit stops at once, and with them the pool and settlement. A distribution meanwhile is held for each holder, to be claimed</td></tr>
+          <tr><td class="key">Move by order</td><td>A court's or a regulator's order, the bank's alone, its written reason emitted in full</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The gateway stands in for a deposit service, and is a material output in itself: a
+      specification of what such a service would be required to expose in order to settle on public
+      infrastructure.
     </p>
     <p>
-      A permissioned conversion venue operates between a euro-denominated payment token and the
-      deposit token, quoted in a narrow band around par. This provides a two-way price with a
-      spread, consistent with a conversion facility, and does not represent independent price
-      formation.
+      A permissioned conversion venue, deployed by default, operates between a euro-denominated
+      payment token and the deposit, quoted in a narrow band around par. This provides a two-way
+      price with a spread, consistent with a conversion facility, and does not represent independent
+      price formation.
     </p>
     <div class="notice key">
       <span class="lbl">Euro payment token</span>
@@ -1421,8 +1520,10 @@ a:hover { text-decoration-color: var(--fg); }
     </div>
     <div class="notice">
       <span class="lbl">Perimeter of the conversion facility</span>
-      The whitelist check applies to <b>the party swapping</b>, prior to the pool. It does not apply
-      to the asset. A wallet not onboarded cannot acquire the deposit token. This does not constitute
+      The check applies to <b>the party swapping</b>, prior to the pool. It does not apply to the
+      asset. A wallet converts only if the deposit accepts it and the bank has admitted it to the
+      pool with its pool-access claim, its country is one the pool serves, and supervision has not
+      withdrawn it. This does not constitute
       open access to a bank deposit; it permits an onboarded investor to convert an external euro
       balance into a regulated deposit without a wire instruction. Characterising the facility as
       permissionless would be inaccurate.
@@ -1431,15 +1532,16 @@ a:hover { text-decoration-color: var(--fg); }
     <p>
       The venue is a Uniswap v4 permissioned pool pairing the euro payment token against the
       tokenized deposit. A restricted token cannot be placed into the shared Pool Manager directly,
-      because a claim against it could then be transferred outside the whitelist. The Permissions
-      Adapter is instead the sole authorised holder of the deposit token and mints a virtual
-      representation into the pool, while a hook attached at pool creation tests the swapping party
-      against the Identity Registry on every swap.
+      because a claim against it could then be transferred outside the perimeter. The Permissions
+      Adapter is instead the sole authorised holder of the deposit and mints a virtual representation
+      into the pool, while a hook attached at pool creation tests the swapping party on every swap:
+      against the deposit's own eligibility, and against the pool's gate, which reads the pool's own
+      ERC-3643 identity registry.
     </p>
     <figure>
       <div class="scroller">
         <svg viewBox="0 0 980 380" width="980" height="380" role="img"
-             aria-label="Permissioned pool mechanics. A whitelisted wallet routes through the Universal Router to the Permissions Adapter, which holds the deposit token and mints a virtual representation into the Pool Manager. A permissioned hook consults the Identity Registry on every swap. The Permissioned Position Manager issues non-transferable liquidity positions.">
+             aria-label="Permissioned pool mechanics. An admitted wallet routes through the router to the Permissions Adapter, which holds the deposit and mints a virtual representation into the Pool Manager. A permissioned hook consults the pool gate on every swap. The Position Manager issues non-transferable liquidity positions.">
           <defs>
             <marker id="h4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" class="d-head"/>
@@ -1452,14 +1554,14 @@ a:hover { text-decoration-color: var(--fg); }
           <text x="16" y="24" class="d-lanelbl">SWAP PATH</text>
 
           <rect x="16" y="40" width="186" height="66" class="d-box"/>
-          <text x="30" y="64" class="d-t">Whitelisted wallet</text>
+          <text x="30" y="64" class="d-t">Admitted wallet</text>
           <text x="30" y="81" class="d-sub">holds euro payment</text>
           <text x="30" y="94" class="d-sub">token on testnet</text>
 
           <rect x="248" y="40" width="186" height="66" class="d-box"/>
-          <text x="262" y="64" class="d-t">Universal Router</text>
+          <text x="262" y="64" class="d-t">Swap router</text>
           <text x="262" y="81" class="d-sub">routes the swap</text>
-          <text x="262" y="94" class="d-sub">used as shipped</text>
+          <text x="262" y="94" class="d-sub">for the wallet itself</text>
 
           <rect x="480" y="40" width="216" height="66" class="d-box"/>
           <text x="494" y="64" class="d-t">Permissions Adapter</text>
@@ -1478,9 +1580,9 @@ a:hover { text-decoration-color: var(--fg); }
           <text x="16" y="166" class="d-lanelbl">GATING</text>
 
           <rect x="16" y="182" width="186" height="66" class="d-box-k"/>
-          <text x="30" y="206" class="d-t">Identity Registry</text>
-          <text x="30" y="223" class="d-sub">whitelist of record</text>
-          <text x="30" y="236" class="d-sub">written for this</text>
+          <text x="30" y="206" class="d-t">Pool gate</text>
+          <text x="30" y="223" class="d-sub">the bank's pool-access claim</text>
+          <text x="30" y="236" class="d-sub">countries served, withdrawal</text>
 
           <rect x="480" y="182" width="216" height="66" class="d-box-a"/>
           <text x="494" y="206" class="d-t">Permissioned hook</text>
@@ -1499,27 +1601,28 @@ a:hover { text-decoration-color: var(--fg); }
 
           <rect x="742" y="300" width="222" height="62" class="d-box"/>
           <text x="756" y="324" class="d-t">Sole liquidity provider</text>
-          <text x="756" y="341" class="d-sub">narrow band around par</text>
-          <text x="756" y="354" class="d-sub">inventory capped</text>
+          <text x="756" y="341" class="d-sub">the bank, around par</text>
+          <text x="756" y="354" class="d-sub">admitted like any participant</text>
 
           <path d="M696 331 H742" class="d-flow" marker-end="url(#h4)"/>
           <path d="M588 300 V270 H853 V106" class="d-flow" marker-end="url(#h4)"/>
         </svg>
       </div>
       <figcaption>
-        The deposit token itself never enters the shared Pool Manager. The Permissions Adapter holds
-        it and issues a virtual representation, and the hook tests the swapping party against the
-        Identity Registry before any swap settles. Liquidity positions are non-transferable so that
-        a position cannot be used to pass exposure to a party outside the whitelist.
+        The deposit itself never enters the shared Pool Manager. The Permissions Adapter holds it and
+        issues a virtual representation, and the hook tests the swapping party before any swap
+        settles. Liquidity positions are non-transferable so that a position cannot be used to pass
+        exposure to a party outside the perimeter.
       </figcaption>
     </figure>
     <h3>Basis between the two credits</h3>
     <p>
       A pool between a third-party payment token and an institution's own deposit liability
       constitutes a basis position between two credits, which hold near par only while both redeem
-      at par. With the institution as sole liquidity provider it stands ready to absorb one and issue
-      the other. Mitigations are inventory caps on the adapter, a callable pause on swaps, and an
-      amendable whitelist.
+      at par. With the bank as sole liquidity provider it stands ready to absorb one and issue the
+      other. Mitigations are the bank's own inventory in the pool, a switch on swaps held by the
+      Agent's servicing wallet, the supervisory withdrawal of any participant, and the bank's
+      revocation of its pool-access claims.
     </p>
   </section>
 
@@ -1527,20 +1630,25 @@ a:hover { text-decoration-color: var(--fg); }
     <p class="sec-label">Provenance</p>
     <h2>Provenance of the code</h2>
     <p>
-      Audit scope is determined by what is newly written. Four layers, each sourced deliberately:
+      Audit scope is determined by what is newly written. Each layer is sourced deliberately:
     </p>
     <div class="scroller">
       <table>
         <thead><tr><th>Layer</th><th>Source</th><th>Basis</th></tr></thead>
         <tbody>
-          <tr><td><b>Instrument mechanics</b></td><td>Established open standard for tokenized debt securities</td><td>Snapshots, document anchoring, holder enumeration, enforcement and upgradeability are inherited as audited code rather than written</td></tr>
-          <tr><td><b>Compliance interface</b></td><td>Finalised interoperability standard for regulated real-world assets</td><td>A minimal, non-reverting surface readable by custodians and venues without bespoke integration</td></tr>
-          <tr><td><b>Identity and credentials</b></td><td>An independently authored credential platform, deployed for this exercise and operated by the Agent</td><td>Issuer key management with rotation, revocation with root freshness, and the presentation and attestation flow arrive as built and deployed code. Only the registry schema and the instrument gates are written here</td></tr>
-          <tr><td><b>Settlement venue</b></td><td>Established permissioned pool contracts, used as shipped</td><td>Only the whitelist checker is written for this transaction, which bounds new audit surface</td></tr>
-          <tr><td><b>Payoff and determination</b></td><td><b>Written for this transaction</b></td><td>No standard covers a worst-of autocallable. Audit scope concentrates here, supported by a second independent implementation used to cross-check the first</td></tr>
+          <tr><td><b>Token and registries</b></td><td>T-REX 5.0.0-beta2, the reference implementation of ERC-3643, pinned exactly</td><td>Transfer restriction by identity, compliance modules, agent roles with per-agent restrictions, recovery and freezing arrive as built code. Behind an implementation authority of our own that no one can change, so no version can be swapped under a deployed note</td></tr>
+          <tr><td><b>Identities</b></td><td>ONCHAINID 2.2, the identity standard ERC-3643 is built on</td><td>Identity contracts, keys, claims and the identity factory are used as shipped. Only the claim issuers, which add expiry, are written here</td></tr>
+          <tr><td><b>Tokenized deposit</b></td><td>OpenZeppelin Contracts 5, with the ERC-7943 interface</td><td>The allowlist and its link to the bank's identity registry, holds, and the bank's order are written here; the token base is audited library code</td></tr>
+          <tr><td><b>Settlement venue</b></td><td>Uniswap v4 permissioned pool contracts, used as shipped</td><td>Only the hook, the checker, the router and the pool gate are written for this transaction, which bounds new audit surface</td></tr>
+          <tr><td><b>Payoff, servicing and issuance</b></td><td><b>Written for this transaction</b></td><td>No standard covers a worst-of autocallable. Audit scope concentrates here: the Determination Agent, the record dates, the Paying Agent, settlement, the sanctions module, the note factory and the governance controller with its two act libraries, supported by a second independent implementation of the payoff used to cross-check the first. Each note's lifecycle contracts are minimal clones of one set of implementations, so a review covers the implementations once rather than each note</td></tr>
         </tbody>
       </table>
     </div>
+    <p>
+      T-REX and ONCHAINID are licensed GPL-3.0. Only the contracts that compile them in, and the
+      scripts that deploy them, carry that licence; the rest of the code reaches them through
+      interfaces and stays under its own.
+    </p>
   </section>
 
 <section id="standards">
@@ -1549,42 +1657,34 @@ a:hover { text-decoration-color: var(--fg); }
     <p>
       Established open standards are used at every seam rather than bespoke formats, so that a
       custodian, an explorer, a venue or a counterparty's wallet can read the instruments and the
-      credentials without integration work specific to this transaction. Where a standard is not yet
+      identities without integration work specific to this transaction. Where a standard is not yet
       final, or where a bridge is specified but not built, that is stated, since it forms part of
       the dependency provenance an auditor will ask for.
     </p>
 
     <h3>Cryptographic requirements</h3>
-    <p>
-      The credential platform is <strong>specified by requirement rather than by product</strong>,
-      because the selection is open. What follows is what the layer has to satisfy. The primitives
-      that meet it are a property of the platform chosen, and are confirmed at selection rather than
-      assumed here.
-    </p>
     <div class="scroller">
       <table>
-        <thead><tr><th>Concern</th><th>Requirement</th></tr></thead>
+        <thead><tr><th>Concern</th><th>Treatment</th></tr></thead>
         <tbody>
-          <tr><td class="key">Signature scheme</td><td>An approved scheme under a recognised standards body, with a documented path to post-quantum primitives as they are mandated. A note issued today may still be outstanding when that transition lands, and re-issuing credentials across an investor base part-way through a programme is materially harder than planning for it</td></tr>
-          <tr><td class="key">Key storage</td><td>Hardware-backed for holder keys. Hardware security module or equivalent for issuing and operator keys, with the issuing key never held in an application process</td></tr>
-          <tr><td class="key">Encryption at rest</td><td>An approved symmetric scheme and key derivation function for any personal data held off-chain by the platform</td></tr>
-          <tr><td class="key">Selective disclosure</td><td>A holder can disclose a subset of claims and withhold the rest, proving each against a commitment the issuer signed, without revealing the undisclosed claims</td></tr>
-          <tr><td class="key">On-chain verification cost</td><td>The check performed on a transfer path must be bounded and inexpensive. Full cryptographic verification is expected to be off-chain, with the result recorded on-chain</td></tr>
-          <tr><td class="key">Commitment scheme</td><td>Salted and canonicalised, so an on-chain commitment cannot be reversed by enumeration over a small field space</td></tr>
+          <tr><td class="key">Claim signatures</td><td>ECDSA over secp256k1, the chain's own, so a claim's signature is recovered on-chain at every transfer. A production deployment plans for post-quantum primitives as they are mandated: a note issued today may still be outstanding when that transition lands</td></tr>
+          <tr><td class="key">Typed signing</td><td>EIP-712, bound to a domain naming the contract and the network, for determinations and for proof of wallet control, so a signature cannot be replayed against another deployment or chain</td></tr>
+          <tr><td class="key">Key storage</td><td>Each capacity signs with its own key. Hardware-backed for holder keys, and a hardware security module or equivalent for institutions' keys in production</td></tr>
+          <tr><td class="key">Record hashes</td><td>Salted and canonicalised, so the hash a claim carries cannot be reversed by enumeration over a small field space, and two screenings of one client cannot be linked</td></tr>
+          <tr><td class="key">Term sheet hash</td><td>keccak256 of the record's canonical JSON (RFC 8785), so any implementation of the scheme reproduces it from the record</td></tr>
+          <tr><td class="key">Sign-in</td><td>A six-digit code sent by email, valid ten minutes and spent after five wrong tries, stored only as a salted hash</td></tr>
         </tbody>
       </table>
     </div>
 
-    <h3>Identity and credentials</h3>
+    <h3>Identity</h3>
     <div class="scroller">
       <table>
-        <thead><tr><th>Standard</th><th>Body</th><th>Applied to</th></tr></thead>
+        <thead><tr><th>Standard</th><th>Status</th><th>Applied to</th></tr></thead>
         <tbody>
-          <tr><td class="key">Verifiable Credentials data model</td><td><b>W3C</b></td><td>The credential format. Issuer, subject, claims, proof, and a holder who presents rather than a registry that asserts</td></tr>
-          <tr><td class="key">Decentralised Identifiers</td><td><b>W3C</b></td><td>Identifiers for issuers and subjects. Resolvable without a central directory, and pseudonymous by construction, since an identifier is a key fingerprint rather than a name</td></tr>
-          <tr><td class="key">Selective disclosure</td><td>Merkle inclusion proofs</td><td>A holder discloses the claims a relying party needs and withholds the rest, proving each against a root the issuer signed</td></tr>
-          <tr><td class="key">JSON Schema 2020-12</td><td>IETF</td><td>Credential schemas, interoperable with an established public schema builder, so a schema authored here opens in third-party tooling unmodified</td></tr>
-          <tr><td class="key">CAIP-2</td><td>Chain Agnostic Standards Alliance</td><td>Chain references. An address is never ambiguous across networks, which matters because two deployments on different chains can share one</td></tr>
+          <tr><td class="key">ERC-3643</td><td>Final</td><td>The note, and each asset's identity registry: transfers only between identities carrying the claims the asset requires, from the issuers it trusts. The standard of the bank's parallel proof of concept</td></tr>
+          <tr><td class="key">ONCHAINID (ERC-734, ERC-735)</td><td>Implemented, proposals not final</td><td>Identities, their keys and their claims. A client's consent is a claim key it gives an institution</td></tr>
+          <tr><td class="key">ISO 3166-1 numeric</td><td>ISO</td><td>The country the identity storage records, which the pool tests for the jurisdictions it serves</td></tr>
         </tbody>
       </table>
     </div>
@@ -1593,44 +1693,25 @@ a:hover { text-decoration-color: var(--fg); }
     <p>
       <strong>No European digital identity integration is built in this proof of concept, and none
       is simulated.</strong> This subsection records a design consideration: what the architecture
-      already aligns with, what would have to be built, and why the timing makes it a near-term
-      question rather than a distant one. It is included because the design was made not to
-      foreclose it, and because a reader will ask.
+      already allows, what would have to be built, and why the timing makes it a near-term
+      question.
     </p>
     <p>
       eIDAS 2.0 requires every member state to offer an <strong>EU Digital Identity Wallet</strong>,
-      with member state rollout due in November 2026. The regulation provides for
-      <strong>Qualified Electronic Attestations of Attributes</strong> issued by regulated entities,
-      banks among them. An investor eligibility credential of the kind used here is structurally
-      exactly that.
+      with member state rollout due in November 2026, and provides for <strong>Qualified Electronic
+      Attestations of Attributes</strong> issued by regulated entities, banks among them. An
+      attestation of corporate status or investor classification is the kind of input an institution
+      relies on before it vouches.
     </p>
-    <div class="scroller">
-      <table>
-        <thead><tr><th>Requirement</th><th>Position, none of it implemented here</th></tr></thead>
-        <tbody>
-          <tr><td class="key">Credential data model</td><td><b>Aligned by design.</b> W3C Verifiable Credentials, the same model the European reference architecture builds on</td></tr>
-          <tr><td class="key">Selective disclosure</td><td><b>Aligned by design.</b> The holder chooses which claims to disclose per request, proven against an issuer-signed root</td></tr>
-          <tr><td class="key">Holder-held credentials</td><td><b>Aligned by design.</b> The participant custodies the credential and presents it, rather than a registry asserting on their behalf</td></tr>
-          <tr><td class="key">Pseudonymity</td><td><b>Aligned by design.</b> Identifiers are key fingerprints, not real-world identifiers</td></tr>
-          <tr><td class="key">Assurance level</td><td><b>Aligned by design.</b> Hardware-backed key storage. The European framework is expected to transition to post-quantum primitives before 2030, which is a selection criterion for the credential platform rather than a property of this design</td></tr>
-          <tr><td class="key">Attestation of attributes</td><td><b>Structurally aligned.</b> A regulated issuer attesting investor classification is the Qualified Electronic Attestation of Attributes pattern</td></tr>
-          <tr><td class="key">Presentation protocol</td><td><b>Bridge specified, not built.</b> European wallets exchange credentials over OpenID for Verifiable Presentations and Issuance. The wire format here is native, and the bridge is an integration rather than a redesign</td></tr>
-          <tr><td class="key">Trust list recognition</td><td><b>Bridge specified, not built.</b> European interoperability relies on signed trust lists per an ETSI specification; the trust root here is an on-chain registry. Cross-recognition requires a bridge in both directions</td></tr>
-        </tbody>
-      </table>
-    </div>
     <div class="notice key">
       <span class="lbl">Why this matters on this timeline</span>
       The note is euro-denominated and distributed across EMEA. Within months, an EU investor may
-      hold a member-state-issued attestation of corporate status or investor classification in a
-      wallet the state provides. Accepting that as an onboarding input is a plausible near-term
-      path, and the work to get there is a protocol bridge rather than a change to the credential
-      model or the instrument. The position is that the bridges are specified and not implemented,
-      that the European reference architecture is still iterating, and that building against a
-      moving target would be premature for a proof of concept.
-      <strong>Nothing in this area is claimed as delivered.</strong> The design does not foreclose
-      it, and the work to reach it is scoped as a workstream after the exercise rather than inside
-      it.
+      hold a member-state-issued attestation in a wallet the state provides. In this design that
+      attestation is an input to an institution's judgement, off-chain, before it signs its claim,
+      so accepting it is an integration at the institution's portal rather than a change to the
+      identities, the claims or the instrument. <strong>Nothing in this area is claimed as
+      delivered.</strong> The design does not foreclose it, and the work is scoped as a workstream
+      after the exercise.
     </div>
 
     <h3>Token and compliance interfaces</h3>
@@ -1638,12 +1719,10 @@ a:hover { text-decoration-color: var(--fg); }
       <table>
         <thead><tr><th>Standard</th><th>Status</th><th>Applied to</th><th>Purpose</th></tr></thead>
         <tbody>
-          <tr><td class="key">ERC-20</td><td>Final</td><td>Structured Note, digital monies</td><td>Base fungible interface. Chosen for custodian, wallet and block explorer compatibility rather than an exotic base</td></tr>
-          <tr><td class="key">ERC-7943</td><td>Final</td><td>Both tokens</td><td>The compliance interface. Send, receive and transfer checks as views that must not revert, plus forced transfer and frozen balance accounting. This is the surface a venue integrates against</td></tr>
-          <tr><td class="key">ERC-7551</td><td>Confirm at pinning</td><td>Both tokens, through the debt standard</td><td>Enforcement for securities tokens: active balance, forced transfer, and partial freeze, each taking a data payload. <b>That payload carries the written reason for an intervention</b>, so the justification travels in the enforcement call itself</td></tr>
-          <tr><td class="key">ERC-1404</td><td>Confirm at pinning</td><td>Available through the debt standard</td><td>Machine-readable transfer restriction detection and a reason string. Lets a venue explain why a transfer would fail without attempting it</td></tr>
-          <tr><td class="key">ERC-2612</td><td>Final</td><td>Both tokens</td><td>Approval by signature, so a settlement does not require a separate approval transaction from the counterparty</td></tr>
-          <tr><td class="key">ERC-165</td><td>Final</td><td>Gates and checkers</td><td>Interface detection, required by the venue's allowlist checker interface</td></tr>
+          <tr><td class="key">ERC-20</td><td>Final</td><td>The note and the deposit</td><td>Base fungible interface. Chosen for custodian, wallet and block explorer compatibility rather than an exotic base</td></tr>
+          <tr><td class="key">ERC-3643</td><td>Final</td><td>The note</td><td>Permissioned security token: identity registry, compliance with modules, agents, freezing, forced transfer and recovery. The record dates are a compliance module</td></tr>
+          <tr><td class="key">ERC-7943</td><td>Final</td><td>The deposit</td><td>The compliance interface: send, receive and transfer checks as views that must not revert, forced transfer and frozen balances. This is the surface the venue integrates against</td></tr>
+          <tr><td class="key">ERC-165</td><td>Final</td><td>The deposit, gates and checkers</td><td>Interface detection, required by the venue's allowlist checker interface</td></tr>
         </tbody>
       </table>
     </div>
@@ -1653,14 +1732,14 @@ a:hover { text-decoration-color: var(--fg); }
       <table>
         <thead><tr><th>Standard</th><th>Status</th><th>Applied to</th><th>Purpose</th></tr></thead>
         <tbody>
-          <tr><td class="key">ERC-1967</td><td>Final</td><td>Tokens, registries</td><td>Standard proxy storage slots, so an explorer resolves the implementation behind a proxy without special handling</td></tr>
-          <tr><td class="key">ERC-1822</td><td>Final</td><td>Tokens, registries</td><td>Upgrade authorisation held in the implementation. Upgrade is a Tier 2 intervention requiring quorum across two institutions and a timelock</td></tr>
-          <tr><td class="key">ERC-7201</td><td>Final</td><td>Registries and composed modules</td><td>Namespaced storage, so modules composed into a token cannot collide on storage slots. This is what makes the upgrade path safe to exercise</td></tr>
-          <tr><td class="key">EIP-712</td><td>Final</td><td>Determinations, wallet control, quotes</td><td>Typed structured signing bound to a domain naming the contract and the network, so a signature cannot be replayed against another deployment or chain</td></tr>
+          <tr><td class="key">Fixed implementations</td><td>By design</td><td>The note and its registries</td><td>T-REX proxies read their implementation from an authority. Ours is fixed at deployment and owned by no one, so there is no upgrade path to govern: a change is a new note</td></tr>
+          <tr><td class="key">EIP-1167</td><td>Final</td><td>Each note's lifecycle contracts</td><td>Minimal clones: each note's determinations, record dates, Paying Agent and settlement delegate to fixed implementations, initialised once as the note is issued. The implementations themselves can never be initialised. On Etherscan, each clone is reported as a clone of its verified implementation</td></tr>
+          <tr><td class="key">ERC-7201</td><td>Final</td><td>The registries and composed modules</td><td>Namespaced storage, so modules composed into a token cannot collide on storage slots</td></tr>
+          <tr><td class="key">EIP-712</td><td>Final</td><td>Determinations, wallet control</td><td>Typed structured signing bound to a domain naming the contract and the network, so a signature cannot be replayed against another deployment or chain</td></tr>
           <tr><td class="key">ERC-1271</td><td>Final</td><td>Custody accounts</td><td>Signature validation by a contract. How a custody account attests control of itself without a natural person holding its key</td></tr>
-          <tr><td class="key">ERC-4337</td><td>Deployed</td><td>Accounted for in gate design</td><td>Account abstraction. Gates identify the settling party rather than the transaction originator, so a bundled flow does not deny a properly credentialed holder</td></tr>
+          <tr><td class="key">ERC-4337</td><td>Deployed</td><td>Accounted for in gate design</td><td>Account abstraction. Gates identify the settling party rather than the transaction originator, so a bundled flow does not deny a properly onboarded holder</td></tr>
           <tr><td class="key">EIP-7702</td><td>Live on target networks</td><td>Accounted for in gate design</td><td>Delegation from an externally owned account. Same reason: a control reading the transaction originator both denies legitimate holders and can be satisfied by an unverified party riding along in a verified holder's transaction</td></tr>
-          <tr><td class="key">ERC-6909</td><td>Final</td><td>Pool Manager</td><td>Minimal multi-token claims inside the shared pool manager. <b>This is precisely why a restricted token cannot be placed there directly</b>: a claim against it could be transferred outside the whitelist</td></tr>
+          <tr><td class="key">ERC-6909</td><td>Final</td><td>Pool Manager</td><td>Minimal multi-token claims inside the shared pool manager. <b>This is precisely why a restricted token cannot be placed there directly</b>: a claim against it could be transferred outside the perimeter</td></tr>
         </tbody>
       </table>
     </div>
@@ -1670,7 +1749,8 @@ a:hover { text-decoration-color: var(--fg); }
       <table>
         <thead><tr><th>Standard</th><th>Reason</th></tr></thead>
         <tbody>
-          <tr><td class="key">ERC-3643</td><td>Expects a per-investor identity contract carrying on-chain claims from registered issuers. This design keeps the identity file off-chain with the Agent and supplies verification through a credential layer, so the machinery that justifies the standard would be deployed without being used. It remains the closest comparable for anyone asking what was considered</td></tr>
+          <tr><td class="key">W3C Verifiable Credentials</td><td>The first release verified holder-presented credentials off-chain through an external credential platform and wrote grants to a registry of our own. ERC-3643's identities and claims replace it, as the standard of the bank's parallel proof of concept, and the credential platform is removed</td></tr>
+          <tr><td class="key">ERC-7551 and ERC-1404</td><td>Reached through the debt standard the first release was built on, which ERC-3643 replaces</td></tr>
           <tr><td class="key">ERC-1400</td><td>Partitioned security tokens, attractive for a multi-series programme, but the standard never reached final and is effectively stagnant</td></tr>
           <tr><td class="key">ERC-7092</td><td>Financial bonds. Standardises a fixed coupon rate and maturity, neither of which can express a barrier-contingent coupon on a worst-of basket</td></tr>
         </tbody>
@@ -1691,14 +1771,17 @@ a:hover { text-decoration-color: var(--fg); }
       <table>
         <thead><tr><th>Element</th><th>Status</th><th>Note</th></tr></thead>
         <tbody>
-          <tr><td><b>Network</b></td><td><span class="tag testnet">Testnet</span></td><td>Base Sepolia, a public test network of an Ethereum layer 2, with source code verified on the block explorer. Test networks carry no monetary value by design</td></tr>
-          <tr><td><b>Euro payment token</b></td><td><span class="tag testnet">Testnet</span></td><td>Third-party fiat-referenced token, so one leg of the conversion pair is not issued by the transaction parties. Not a cryptocurrency. The testnet issuance has no value and is distributed without charge</td></tr>
+          <tr><td><b>Network</b></td><td><span class="tag testnet">Testnet</span></td><td>Ethereum Sepolia, Ethereum's public test network (chain 11155111), with every contract verified on Etherscan. Every test runs on a local chain; each live deployment is first rehearsed on a local fork. Test networks carry no monetary value by design. The site runs on Vercel at structurednote-project.ethereumtesting.com; the same site is also packaged as a container the bank can run on its own machine, calling out to the network.</td></tr>
+          <tr><td><b>Euro payment token</b></td><td><span class="tag testnet">Testnet</span></td><td>EURC, a third-party fiat-referenced token, so one leg of the conversion pair is not issued by the transaction parties. Not a cryptocurrency. The testnet issuance has no value and is distributed without charge</td></tr>
           <tr><td><b>Network fees</b></td><td><span class="tag testnet">Testnet</span></td><td>Transaction fees are paid in valueless test network units obtained from a public faucet, which cannot be purchased, sold or exchanged</td></tr>
           <tr><td>Structured Note</td><td><span class="tag simulated">Simulated</span></td><td>Zero notional. Not an offer, a solicitation or a security</td></tr>
-          <tr><td>Digital monies</td><td><span class="tag simulated">Simulated</span></td><td>Stands in for a deposit service; carries no institutional branding on-chain</td></tr>
+          <tr><td>Tokenized deposit</td><td><span class="tag simulated">Simulated</span></td><td>Stands in for the bank's deposit service; carries no institutional branding on-chain</td></tr>
           <tr><td>Parties</td><td><span class="tag simulated">Simulated</span></td><td>Invented institutions. No client or counterparty is named on-chain</td></tr>
-          <tr><td>Determinations</td><td><span class="tag simulated">Simulated</span></td><td>Signed by a test key standing in for the Calculation Agent</td></tr>
-          <tr><td>Credentials</td><td><span class="tag simulated">Simulated</span></td><td>Issued by the Agent's own issuing service against simulated KYB and KYC files for invented entities. Post-quantum signature scheme, exercised end to end</td></tr>
+          <tr><td>Determinations</td><td><span class="tag simulated">Simulated</span></td><td>Signed by a test key standing in for the Calculation Agent, from illustrative Levels</td></tr>
+          <tr><td>Institutions' signers</td><td><span class="tag simulated">Simulated</span></td><td>The site holds two owners' keys of each institution's two-of-three wallet, so that one person can demonstrate every institution. In production each owner signs from its own device</td></tr>
+          <tr><td>Second approver</td><td><span class="tag simulated">Simulated</span></td><td>For the demonstration, the deployment's automatic second approver approves determinations and payments at once. Each such approval is recorded as automatic, on the page and in the audit log. A desk's deployment requires a second person</td></tr>
+          <tr><td>Identities and claims</td><td><span class="tag simulated">Simulated</span></td><td>Created and signed by test keys standing in for the bank and the onboarding agent, against simulated KYB files for invented entities</td></tr>
+          <tr><td>Term sheet</td><td><span class="tag simulated">Simulated</span></td><td>Illustrative figures until the bank's term sheet gives them; fields the exercise does not have marked "not applicable" with the reason. The deployment's own note carries no ISIN; staff may enter one when they issue a note</td></tr>
           <tr><td>Deed of Guarantee</td><td>Off-chain</td><td>Referenced by the contract and not implemented by it</td></tr>
           <tr><td>European digital identity</td><td><span class="tag notbuilt">Not built</span></td><td>No integration with EU Digital Identity Wallets, and none simulated. Recorded under open standards as a design consideration, and scoped as a workstream after the exercise</td></tr>
           <tr><td><b>Cryptocurrency</b></td><td><b>None</b></td><td>No bitcoin, no ether held as an asset, and no token carrying independent price exposure, at any point in any flow</td></tr>
@@ -1711,24 +1794,23 @@ a:hover { text-decoration-color: var(--fg); }
     <p class="sec-label">Success</p>
     <h2>Success criteria</h2>
     <p>
-      The proof of concept succeeds if it produces a defensible answer to the production question,
-      not if the software runs. Criteria are stated so that each is demonstrably met or not met at
-      the close of execution.
+      The criteria are the bank's nine, each stated so that it is demonstrably met or not met at the
+      close of execution, with the evidence that shows it. Each is also exercised under test before
+      execution, on a local chain, by the same contracts and the same site.
     </p>
     <div class="scroller">
       <table>
-        <thead><tr><th>Criterion</th><th>Measure</th><th>Threshold</th></tr></thead>
+        <thead><tr><th>Criterion</th><th>Demonstrated by</th><th>Evidence</th></tr></thead>
         <tbody>
-          <tr><td class="key">Lifecycle</td><td>The full lifecycle executes on the test network from governance setup to closure</td><td>All eight stages complete, with <b>full reconciliation confirming zero positions</b></td></tr>
-          <tr><td class="key">Controls</td><td>Every negative scenario is rejected by the contracts rather than by process</td><td><b>Zero</b> negative scenarios settle. Each rejection is attributable to a named check</td></tr>
-          <tr><td class="key">Entitlement</td><td>Coupon and redemption populations determined against record date snapshots</td><td>Distribution population matches the independently computed holder set in <b>every</b> case</td></tr>
-          <tr><td class="key">Payoff</td><td>Contract output compared against an independent implementation built from the term sheet</td><td>Agreement across the full scenario grid, <b>including boundary cases</b></td></tr>
-          <tr><td class="key">Register integrity</td><td>Off-chain Register reconciled against on-chain balances at each servicing event</td><td>Reconciliation closes at every coupon, at MER and at redemption, with <b>no unexplained difference</b></td></tr>
-          <tr><td class="key">Evidence</td><td>The complete transaction history reconstructible from chain events alone</td><td>An auditor with no access to internal systems can reproduce the lifecycle and every intervention</td></tr>
-          <tr><td class="key">Operability</td><td>Servicing actions performed by an operations user against a runbook</td><td>No developer intervention required for any routine action</td></tr>
-          <tr><td class="key">Assurance</td><td>Internal assurance review completed before execution, with the independent audit scheduled as a mainnet gate</td><td><b>No unresolved high or critical findings</b> from the internal review. Source verified on the block explorer</td></tr>
-          <tr><td class="key">Data protection</td><td>Personal data located and evidenced at the close of the exercise</td><td><b>No personal data on-chain in any form</b>, confirmed by inspection of every deployed contract and event</td></tr>
-          <tr><td class="key">Decision</td><td>Findings sufficient to answer the production questions</td><td>Legal finality, depository perimeter, data protection, custody and venue each answered or explicitly scoped out</td></tr>
+          <tr><td class="key">1. Full deal lifecycle execution</td><td>One note from issuance through its dates to redemption and closure, in the order the contracts enforce</td><td>The lifecycle reconstructed from chain events alone (S-35), and the reconciliation statement reading <b>Closed: every position is at zero</b> (S-33)</td></tr>
+          <tr><td class="key">2. The issuance cycle</td><td>The note issued whole, in one transaction, through the note factory by the Issuer's multi-signature wallet, from its term sheet, and handed to governance in that transaction; the notional to the Issuer's inventory; placement by delivery versus payment</td><td>The factory's record of the note, and the term sheet's hash on the note's identity matching the terms on the chain (S-06 to S-09)</td></tr>
+          <tr><td class="key">3. A coupon</td><td>A date determined by the Calculation Agent, and the coupon paid to the holders of record at the Record Time, the inventory excluded</td><td>Every holder paid its balance at the Record Time; the distribution closed when reconciled (S-15, S-16, S-18)</td></tr>
+          <tr><td class="key">4. A secondary transfer</td><td>Units sold between two eligible clients by locked offer, both legs together</td><td>The settlement on chain; the transfer refused to an ineligible buyer (S-11, S-12)</td></tr>
+          <tr><td class="key">5. KYC whitelist enforcement</td><td>Every transfer checked against the claims the asset requires; a claim revoked or lapsed refuses the next transfer at once</td><td>Each negative scenario rejected by a named contract check, never by process (S-03, S-05, S-09, S-12, S-28)</td></tr>
+          <tr><td class="key">6. Registry reconciliation</td><td>The identities on chain against the site's onboarding records, and every holder of every note against the claims it must carry</td><td>The register reconciliation, staff only, and the statement's check that every holder is eligible</td></tr>
+          <tr><td class="key">7. Day-to-day reconciliation</td><td>A statement for any note as at the close of any day, now or a block: positions, cash, distributions, open offers and the term sheet</td><td>The day's statement, downloaded as JSON and CSV, reproducible by anyone with the chain from the block it names</td></tr>
+          <tr><td class="key">8. Issuer buy-back mechanics</td><td>The Issuer buys units back by locked offer into its inventory, which is not paid coupons; the tranche reduced by no more than the inventory holds</td><td>The inventory's balance, and the refusal to reduce beyond it (S-13, S-14)</td></tr>
+          <tr><td class="key">9. Logic validation</td><td>The payoff recomputed on chain at every determination, and checked against an independent implementation across 25 scenarios to the cent</td><td>The scenario grid (S-34), and each determination on the site checked against the model</td></tr>
         </tbody>
       </table>
     </div>
@@ -1757,9 +1839,9 @@ a:hover { text-decoration-color: var(--fg); }
         <thead><tr><th>Phase</th><th>Activity</th><th>Exit criteria</th></tr></thead>
         <tbody>
           <tr><td class="key">1 Mobilisation</td><td>Scope confirmed, MoU executed, parties identified and onboarded, second line review initiated, assurance approach agreed</td><td>MoU signed. Assurance approach recorded</td></tr>
-          <tr><td class="key">2 Specification</td><td>Term sheet, payoff specification including boundary semantics and rounding, whitelist policy, RACI, golden source hierarchy drafted for legal review</td><td>Specification signed off by Issuer and Calculation Agent. Second line comments received</td></tr>
-          <tr><td class="key">3 Build</td><td>Contracts, integration layer, operations console, independent payoff model</td><td>Feature complete against specification. Internal test suite passing</td></tr>
-          <tr><td class="key">4 Internal test</td><td>Full scenario suite executed on a local network, then on the test network. Payoff cross-check against the independent model</td><td>All scenarios pass. Cross-check agrees across the scenario grid</td></tr>
+          <tr><td class="key">2 Specification</td><td>Term sheet, payoff specification including boundary semantics and rounding, eligibility policy, RACI, golden source hierarchy drafted for legal review</td><td>Specification signed off by Issuer and Calculation Agent. Second line comments received</td></tr>
+          <tr><td class="key">3 Build</td><td>Contracts, the portals, independent payoff model</td><td>Feature complete against specification. Internal test suite passing</td></tr>
+          <tr><td class="key">4 Internal test</td><td>Full scenario suite executed on a local network, and the deployment rehearsed on a local fork of the test network. Payoff cross-check against the independent model</td><td>All scenarios pass. Cross-check agrees across the scenario grid</td></tr>
           <tr><td class="key">5 Assurance</td><td>Contract surface frozen and tagged. Internal security review, static analysis, threat model over key custody and the intervention surface. Remediation and re-review</td><td><b>No unresolved high or critical findings.</b> Source verified on the explorer</td></tr>
           <tr><td class="key">6 Dry run</td><td>Full lifecycle rehearsed with all parties in their own capacities, using their own keys, against the runbook</td><td>Lifecycle completes without developer intervention. Runbook corrected</td></tr>
           <tr><td class="key">7 Execution</td><td>The recorded proof of concept transaction, from governance setup to closure</td><td>Zero positions confirmed. Evidence pack captured</td></tr>
@@ -1789,26 +1871,26 @@ a:hover { text-decoration-color: var(--fg); }
         <tbody>
           <tr class="grp"><td colspan="3">Setup and onboarding</td></tr>
           <tr><td class="ref">S-01</td><td>Contracts deployed, roles assigned, deploying key renounces administrative rights</td><td>Renunciation verifiable on-chain. No party holds unilateral upgrade capability</td></tr>
-          <tr><td class="ref">S-02</td><td>Agent onboards an investor with full rights</td><td>Whitelist flags written. Investor may hold, receive and transfer</td></tr>
+          <tr><td class="ref">S-02</td><td>The bank onboards an investor; the onboarding agent vouches for it for the note</td><td>An identity with both claims. The investor may hold the deposit and the note</td></tr>
           <tr><td class="ref">S-03</td><td>Control case investor deliberately not onboarded</td><td>Every subsequent attempt by that party fails at the registry</td></tr>
-          <tr><td class="ref">S-04</td><td>Second registrar onboards its own participant</td><td>Succeeds. Agent observes the binding and the registrar, not the identity</td></tr>
-          <tr><td class="ref">S-05</td><td>Agent attempts to revoke the second registrar's participant</td><td><b>Reverts.</b> Scoping enforced in the registry and again in the credential layer</td></tr>
+          <tr><td class="ref">S-04</td><td>A second institution vouches for its own client</td><td>Succeeds. The Agent observes the identity and the issuers that vouched, not the client's facts</td></tr>
+          <tr><td class="ref">S-05</td><td>An institution attempts to revoke, or replace, a claim another made</td><td><b>Reverts.</b> A claim is revoked only by the issuer that made it</td></tr>
 
           <tr class="grp"><td colspan="3">Issuance and placement</td></tr>
-          <tr><td class="ref">S-06</td><td>Strike Date Closing Levels and observation calendar recorded</td><td>Written once. A second write is rejected</td></tr>
+          <tr><td class="ref">S-06</td><td>Strike Date Closing Levels and observation calendar recorded from the term sheet</td><td>Written once, with no write path after. The term sheet's hash on the note matches them</td></tr>
           <tr><td class="ref">S-07</td><td>Notional minted to pending inventory</td><td>Pending equals full notional. Live equals zero</td></tr>
-          <tr><td class="ref">S-08</td><td>Placement to a whitelisted investor by DvP</td><td>Note and digital monies move in a single transaction</td></tr>
-          <tr><td class="ref">S-09</td><td>Placement attempted to a party without the required selling restriction flag</td><td><b>Reverts. Neither leg moves</b></td></tr>
+          <tr><td class="ref">S-08</td><td>Placement to an eligible investor by locked offer</td><td>Note and deposit move in a single transaction</td></tr>
+          <tr><td class="ref">S-09</td><td>Placement attempted to a party without the note claim</td><td><b>Reverts. Neither leg moves</b></td></tr>
           <tr><td class="ref">S-10</td><td>Transfer of an amount that would leave a holding below denomination</td><td><b>Reverts</b></td></tr>
 
           <tr class="grp"><td colspan="3">Secondary market</td></tr>
-          <tr><td class="ref">S-11</td><td>Transfer between two whitelisted investors</td><td>Succeeds. Register updated on-chain and off-chain</td></tr>
-          <tr><td class="ref">S-12</td><td>Transfer to a party whose credential has been revoked, after a permissionless refresh</td><td><b>Reverts.</b> Registry reflects revocation without Agent action</td></tr>
+          <tr><td class="ref">S-11</td><td>Transfer between two eligible investors</td><td>Succeeds. Register updated on-chain and off-chain</td></tr>
+          <tr><td class="ref">S-12</td><td>Transfer to a party whose claim has been revoked by its issuer</td><td><b>Reverts</b> at once, with no further action by the Agent</td></tr>
           <tr><td class="ref">S-13</td><td>Issuer buy back from an investor</td><td>Notional returns to pending. <b>Not cancelled.</b> Total supply unchanged</td></tr>
           <tr><td class="ref">S-14</td><td>Attempt to reduce the tranche by more than pending inventory</td><td><b>Reverts.</b> Reduction cannot reach notes outstanding in the market</td></tr>
 
           <tr class="grp"><td colspan="3">Servicing</td></tr>
-          <tr><td class="ref">S-15</td><td>Coupon determined, snapshot taken at record date, distribution executed</td><td>Holders of record paid in digital monies. Register reconciles</td></tr>
+          <tr><td class="ref">S-15</td><td>Coupon determined, holders fixed at the Record Time, distribution executed</td><td>Holders of record paid in the deposit. The statement reconciles</td></tr>
           <tr><td class="ref">S-16</td><td>Transfer executed between the record date and the payment date</td><td><b>Entitlement unchanged.</b> The holder at the record date is paid</td></tr>
           <tr><td class="ref">S-17</td><td>Custody account is holder of record at a coupon</td><td>Paid to the nominee suspense account under a distinct event, never conflated with a direct credit</td></tr>
           <tr><td class="ref">S-18</td><td>Issuer pending inventory held at a record date</td><td><b>Excluded.</b> The Issuer does not receive a coupon on its own inventory</td></tr>
@@ -1820,19 +1902,19 @@ a:hover { text-decoration-color: var(--fg); }
           <tr><td class="ref">S-22</td><td>Tier 2 intervention attempted with signatures from a single institution</td><td><b>Reverts.</b> Distinct institution threshold not met</td></tr>
           <tr><td class="ref">S-23</td><td>Tier 2 intervention executed before the timelock expires</td><td><b>Reverts</b></td></tr>
           <tr><td class="ref">S-24</td><td>Tier 2 proposal left unexecuted past its window</td><td>Expires. Cannot subsequently be executed</td></tr>
-          <tr><td class="ref">S-25</td><td>Tier 1 register correction following a reported lost key</td><td>Succeeds with a logged written reason. No timelock</td></tr>
+          <tr><td class="ref">S-25</td><td>Tier 1 register correction following a reported lost key</td><td>Succeeds with a logged written reason, across every note the lost wallet holds. No timelock</td></tr>
           <tr><td class="ref">S-26</td><td>Forced transfer attempted by the Agent outside the control framework</td><td><b>Reverts.</b> The capability exists only through the controller</td></tr>
 
           <tr class="grp"><td colspan="3">Conversion facility</td></tr>
-          <tr><td class="ref">S-27</td><td>Whitelisted wallet swaps the euro payment token for the tokenized deposit</td><td>Succeeds. Hook consults the registry at the swap</td></tr>
-          <tr><td class="ref">S-28</td><td>Wallet not on the whitelist attempts the same swap</td><td><b>Reverts at the hook.</b> Perimeter sits at the wallet, not the asset</td></tr>
+          <tr><td class="ref">S-27</td><td>A wallet the bank has admitted swaps the euro payment token for the tokenized deposit</td><td>Succeeds. The hook consults the pool gate at the swap</td></tr>
+          <tr><td class="ref">S-28</td><td>A wallet the deposit accepts but the bank has not admitted attempts the same swap</td><td><b>Reverts at the hook.</b> The perimeter sits at the wallet, not the asset</td></tr>
           <tr><td class="ref">S-29</td><td>Liquidity position transfer attempted</td><td><b>Reverts.</b> Positions are non-transferable</td></tr>
 
           <tr class="grp"><td colspan="3">Closure and assurance</td></tr>
           <tr><td class="ref">S-30</td><td>MER trigger determined and processed</td><td>Par plus accrued distributed, tokens burned, Register closed</td></tr>
           <tr><td class="ref">S-31</td><td>Final redemption, scenario A with no breach</td><td>&euro;1,000 per unit, with Twin Win where applicable</td></tr>
           <tr><td class="ref">S-32</td><td>Final redemption, scenario B following a breach</td><td>CA &times; (100% + worst-performer Final Performance)</td></tr>
-          <tr><td class="ref">S-33</td><td>Closure</td><td>Supply zero, holder list empty, suspense accounts drained, <b>full reconciliation confirms zero positions</b></td></tr>
+          <tr><td class="ref">S-33</td><td>Closure</td><td>Supply zero, holder list empty, nothing held, <b>the statement reads closed: every position at zero</b></td></tr>
           <tr><td class="ref">S-34</td><td>Payoff output compared against the independent implementation across the scenario grid</td><td>Agreement in all cases, including ties between underlyings and exact boundary levels</td></tr>
           <tr><td class="ref">S-35</td><td>Lifecycle reconstructed from chain events alone, without internal systems</td><td>Complete and unambiguous, including every intervention and its stated reason</td></tr>
           <tr><td class="ref">S-36</td><td>Inspection of every deployed contract and event for personal data</td><td><b>None found in any form</b></td></tr>
@@ -1868,8 +1950,8 @@ a:hover { text-decoration-color: var(--fg); }
         <tbody>
           <tr><td>Scope definition and MoU</td><td class="v c">C</td><td class="v c">C</td><td class="v a">A</td><td class="v i">I</td><td class="v r">R</td><td class="v i">I</td><td class="v c">C</td><td class="v r">R</td></tr>
           <tr><td>Term sheet and payoff specification</td><td class="v a">A</td><td class="v r">R</td><td class="v c">C</td><td class="v i">I</td><td class="v c">C</td><td class="v i">I</td><td class="v i">I</td><td class="v c">C</td></tr>
-          <tr><td>Whitelist policy and selling restrictions</td><td class="v c">C</td><td class="v i">I</td><td class="v a">A</td><td class="v i">I</td><td class="v c">C</td><td class="v i">I</td><td class="v r">R</td><td class="v c">C</td></tr>
-          <tr><td>Investor onboarding and KYC</td><td class="v i">I</td><td class="v i">I</td><td class="v a">A</td><td class="v i">I</td><td class="v i">I</td><td class="v i">I</td><td class="v c">C</td><td class="v i">I</td></tr>
+          <tr><td>Eligibility policy and selling restrictions</td><td class="v c">C</td><td class="v i">I</td><td class="v a">A</td><td class="v i">I</td><td class="v c">C</td><td class="v i">I</td><td class="v r">R</td><td class="v c">C</td></tr>
+          <tr><td>Investor onboarding, KYB and claims</td><td class="v i">I</td><td class="v i">I</td><td class="v a">A</td><td class="v i">I</td><td class="v i">I</td><td class="v i">I</td><td class="v c">C</td><td class="v i">I</td></tr>
           <tr><td>Smart contract development</td><td class="v i">I</td><td class="v c">C</td><td class="v a">A</td><td class="v c">C</td><td class="v r">R</td><td class="v i">I</td><td class="v i">I</td><td class="v i">I</td></tr>
           <tr><td>Platform integration and deployment</td><td class="v i">I</td><td class="v i">I</td><td class="v a">A</td><td class="v r">R</td><td class="v c">C</td><td class="v i">I</td><td class="v i">I</td><td class="v i">I</td></tr>
           <tr><td>Independent security audit</td><td class="v i">I</td><td class="v i">I</td><td class="v a">A</td><td class="v c">C</td><td class="v c">C</td><td class="v r">R</td><td class="v c">C</td><td class="v i">I</td></tr>
@@ -1892,10 +1974,10 @@ a:hover { text-decoration-color: var(--fg); }
     <p>
       Three parties sit outside the matrix and are engaged at defined points. The <strong>Guarantor</strong>
       provides the Deed of Guarantee and is informed throughout, since the guarantee is documented
-      off-chain and not implemented in contract. The <strong>second registrar</strong> is responsible
-      for its own onboarding and revocation and is a required co-signatory to Tier 2 intervention.
-      The <strong>custodian</strong> is responsible for operating its client accounts and is
-      consulted on the nominee treatment of distributions.
+      off-chain and not implemented in contract. The <strong>onboarding agent</strong> is responsible
+      for verifying clients for the note and for its own claims and their revocation. The
+      <strong>custodians</strong> are responsible for operating their client accounts and managing
+      their identities, and are consulted on the nominee treatment of distributions.
     </p>
   </section>
 
@@ -1954,9 +2036,9 @@ a:hover { text-decoration-color: var(--fg); }
         <thead><tr><th>Function</th><th>Reviews</th><th>Approval required</th></tr></thead>
         <tbody>
           <tr><td class="key">Compliance</td><td>Selling restriction model, no-offer and no-solicitation status of all materials, token naming, external communications</td><td><b>Yes</b>, before deployment</td></tr>
-          <tr><td class="key">Financial Crime</td><td>KYC and sanctions screening approach, whitelist governance, the delegated registrar model, screening refresh on revocation</td><td><b>Yes</b>, before onboarding</td></tr>
+          <tr><td class="key">Financial Crime</td><td>KYC and sanctions screening approach, claim governance, reliance by the onboarding agent on the bank's KYB, the lapse and revocation of claims</td><td><b>Yes</b>, before onboarding</td></tr>
           <tr><td class="key">Legal</td><td>Golden source hierarchy, settlement finality wording, MoU, guarantee documentation, term sheet anchoring, depository perimeter</td><td><b>Yes</b>, before execution</td></tr>
-          <tr><td class="key">Data Protection</td><td>Personal data boundary, commitment scheme, lawful basis, retention, cross-border transfer, subject rights against an immutable ledger</td><td><b>Yes</b>, before onboarding</td></tr>
+          <tr><td class="key">Data Protection</td><td>Personal data boundary, the salted record hashes claims carry, lawful basis, retention, cross-border transfer, subject rights against an immutable ledger</td><td><b>Yes</b>, before onboarding</td></tr>
           <tr><td class="key">Technology Risk</td><td>Key management and custody of signing keys, assurance review findings, scope of the mainnet audit, dependency provenance including any release candidate</td><td><b>Yes</b>, before execution</td></tr>
           <tr><td class="key">Operational Risk</td><td>Incident runbook, intervention procedures, segregation of duties across the two control tiers, recovery posture</td><td>Yes, before dry run</td></tr>
           <tr><td class="key">Model Risk</td><td>Payoff implementation and the independent cross-check used to validate it</td><td>Yes, before execution</td></tr>
@@ -1969,7 +2051,7 @@ a:hover { text-decoration-color: var(--fg); }
       <span class="lbl">The question Data Protection will ask first</span>
       How a deletion request is satisfied against an immutable ledger. The answer in this design is
       that no personal data is written on-chain at any point, so the erasure obligation attaches only
-      to the off-chain record, which is deletable in the ordinary way. The on-chain commitment
+      to the off-chain record, which is deletable in the ordinary way. The hash a claim carries
       becomes an unlinkable value once the salt and the record are destroyed. This should be
       documented rather than argued at the point of review.
     </div>
@@ -2001,7 +2083,6 @@ a:hover { text-decoration-color: var(--fg); }
       <li><strong>Golden source hierarchy recorded in the operating documentation</strong>, drafted for review and amendment by counsel. The mechanism is provided; the wording is not.</li>
       <li><strong>Settlement finality stated explicitly.</strong> Atomic settlement in a contract is not legal finality, which is conferred by the Register update. The two are not to be conflated in any external document.</li>
       <li><strong>Second line approvals obtained</strong> from Compliance, Financial Crime, Legal, Data Protection and Technology Risk.</li>
-      <li><strong>Network upgrade scheduling.</strong> A gas repricing upgrade in early October affects tooling assuming fixed gas limits. Any rehearsal or execution window near that date is moved, or dry-run on an alternative test network.</li>
     </ul>
   </section>
 
@@ -2027,27 +2108,28 @@ a:hover { text-decoration-color: var(--fg); }
           <tr><td class="key">Cash leg</td><td>Whether the production deposit service can hold mint authority against real balances, or whether an alternative settlement asset is required</td><td>Deposit service roadmap and the interface specification</td></tr>
           <tr><td class="key">Legal finality</td><td>Whether the register model is sufficient, or whether a depository or a change in law is required for the instrument to be recognised</td><td>External counsel opinion</td></tr>
           <tr><td class="key">Venue and listing</td><td>Whether an instrument not issued through a CSD can be listed, and what the Agent's obligations become in the absence of one</td><td>Legal analysis and regulatory engagement</td></tr>
-          <tr><td class="key">Identity layer</td><td>Whether the credential platform used here is the right production choice, or whether an established securities-identity standard, a commercial compliance engine, or direct acceptance of state-issued attestations is a better fit</td><td>Distribution. How investors arrive determines which network effect matters</td></tr>
+          <tr><td class="key">Identity layer</td><td>Which institutions' claims a production note trusts, whether existing ERC-3643 identities held by investors and their custodians can be relied on, and whether state-issued attestations are accepted as an onboarding input</td><td>Distribution. How investors arrive determines which issuers matter</td></tr>
           <tr><td class="key">Network</td><td>Whether to remain on a public network, deploy to a private EVM network, or operate both. The contracts are portable between them</td><td>Technology Risk and regulatory position</td></tr>
           <tr><td class="key">Distribution</td><td>Whether investors and their custodians will onboard, which is the binding constraint on any production issuance</td><td>Client engagement, not technical</td></tr>
           <tr><td class="key">Second instrument</td><td>Whether the design generalises. A vanilla debt issuance is the natural test, since it removes the payoff engine and leaves the servicing model exposed</td><td>Decision to continue</td></tr>
           <tr><td class="key">Independent audit</td><td>Whether the design withstands external security review, and what remediation a production implementation requires</td><td>Scope informed by the proof of concept findings. A gate before mainnet, not before testnet</td></tr>
-          <tr><td class="key">Scale</td><td>Multi-series issuance under one programme, multi-currency settlement, and the operational model at volume</td><td>All of the above</td></tr>
+          <tr><td class="key">Scale</td><td>Multi-currency settlement, and the operational model at volume. Many series under one programme, one governance framework and one desk is built in this release; its operation at a real desk's volume is not yet shown</td><td>All of the above</td></tr>
         </tbody>
       </table>
     </div>
     <div class="notice key">
       <span class="lbl">The output that outlasts the exercise</span>
       Whatever the production decision, the exercise produces a tested specification of the control
-      model: a whitelist of record with delegated authority, a two-tier intervention framework, and
-      a register hierarchy that keeps an agency and trust operating model intact on a shared ledger.
+      model: identities with claims by role and delegated authority, a two-tier intervention
+      framework, and a register hierarchy that keeps an agency and trust operating model intact on a
+      shared ledger.
       That model is instrument-agnostic and applies to the next issuance regardless of the payoff.
     </div>
   </section>
 
 <footer>
   <span>Solution overview, draft for review. Non-production proof of concept involving no cryptocurrency. No instrument, party or balance in this document is real.</span>
-  <span class="mono">v0.4</span>
+  <span class="mono">v0.6, release 0.3.0</span>
 </footer>
 </main>
 </div>

@@ -5,7 +5,7 @@ import { ConsoleNav } from "../ConsoleNav";
 
 export const dynamic = "force-dynamic";
 
-/** The client's pages: its account, converting, and the notes offered to it, beside a navigation column (ADR 0076). */
+/** The client's pages: its account, converting, and the notes offered to it, beside a navigation column. */
 export default async function OnboardLayout({ children }: { children: React.ReactNode }) {
   const who = await currentRegistrant();
   if (!who) redirect("/");

@@ -8,7 +8,7 @@ import { confirmed, ensureWalletFees, onChain, walletError } from "../../wallet"
 type Plan = { txs?: Array<{ to: string; data: string; label: string }>; error?: string };
 
 /**
- * Sends, from the client's own wallet, the transactions the site prepared for one act (ADR 0081):
+ * Sends, from the client's own wallet, the transactions the site prepared for one act:
  * accepting or taking an offer, making one, or withdrawing it. The wallet is switched to the
  * pool's chain and checked for its fees first; each transaction waits for its receipt.
  */

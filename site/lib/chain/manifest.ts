@@ -18,7 +18,8 @@ export type Manifest = {
   chainId: number;
   parties: Record<string, Address>;
   assets: Record<string, Token>;
-  venue: {
+  /** The conversion pool: deployed by default; absent where POOL=0 left it out. */
+  venue?: {
     poolManager: Address;
     permit2: Address;
     adapterFactory: Address;
@@ -30,7 +31,7 @@ export type Manifest = {
     permissionsAdapter: Address;
     weth: Address;
   };
-  pool: {
+  pool?: {
     currency0: Address;
     currency1: Address;
     fee: number;
@@ -41,20 +42,44 @@ export type Manifest = {
   };
   lens?: { stateView: Address };
   network?: { local: boolean; poolManager: Address; weth: Address };
-  /** The credential protocol's on-chain registries (ADR 0028), and the configured issuer. */
-  credentialProtocol?: {
-    issuers: Address;
-    revocations: Address;
-    issuerDid: string;
-    corporateIdentitySchema: string;
-    passportSchema: string;
-    screeningSchema: string;
+  /** The shared scaffolding: identities, T-REX, the claim issuers, the deposit's eligibility. */
+  identity?: {
+    idFactory: Address;
+    trexFactory: Address;
+    /** Issues each note in one transaction; the Issuer's wallet owns it, and the controller governs every note it issues. */
+    noteFactory?: Address;
+    trexAuthority: Address;
+    identityStorage: Address;
+    bankIssuer: Address;
+    onboardingIssuer: Address;
+    depositRegistry: Address;
+    depositTopics: Address;
+    depositIssuers: Address;
+    depositEligibleTopic: number | string;
+    noteEligibleTopic: number | string;
+    termSheetTopic: number | string;
+    /** The pool's identity registry, read-only, and its topics and trusted issuers. */
+    poolRegistry?: Address;
+    poolTopics?: Address;
+    poolIssuers?: Address;
+    poolAccessTopic?: number | string;
   };
-  custody?: { custodian: Address; factory: Address; accounts: Record<string, Address> };
+  /** The deployment's term sheet, the record its note was issued from. */
+  termSheet?: unknown;
+  /** The main note's T-REX suite. */
+  noteSuite?: { identityRegistry: Address; compliance: Address; trustedIssuers: Address; claimTopics: Address; identity?: Address; series?: number };
+  /** What every note shares: the implementations its lifecycle contracts are cloned from, and the sanctions module. */
+  programme?: {
+    implementations: { determinations: Address; recordDates: Address; payingAgent: Address; settlement: Address };
+    sanctions: Address;
+  };
+  custody?: {
+    custodian: Address;
+    factory: Address;
+    accounts: Record<string, Address>;
+    thirdParty?: { custodian: Address; factory: Address } & Record<string, Address>;
+  };
   instruments?: {
-    registry: Address;
-    noteGate: Address;
-    depositGate: Address;
     note: Address;
     deposit: Address;
     gateway: Address;
@@ -74,7 +99,6 @@ export type Manifest = {
     servicingWallet: Address;
     tier2Delay: number;
     recoveryDelay: number;
-    /** A queued Tier 2 proposal's execution window (ADR 0082); absent for controllers deployed before it. */
     executionWindow?: number;
     targetTier2Delay?: number;
     targetExecutionWindow?: number;
@@ -110,13 +134,16 @@ function needAddress(obj: unknown, path: string): void {
 export function parseManifest(json: string): Manifest {
   const m = JSON.parse(json) as Manifest;
   if (typeof need(m, "chainId") !== "number") throw new ManifestError("manifest chainId is not a number");
-  for (const k of [
-    "poolManager", "permit2", "adapterFactory", "allowlistChecker", "credentialGate",
-    "hook", "router", "positionManager", "permissionsAdapter",
-  ]) {
-    needAddress(m, `venue.${k}`);
+  if (m.venue) {
+    for (const k of [
+      "poolManager", "permit2", "adapterFactory", "allowlistChecker", "credentialGate",
+      "hook", "router", "positionManager", "permissionsAdapter",
+    ]) {
+      needAddress(m, `venue.${k}`);
+    }
+    for (const k of ["currency0", "currency1", "hook"]) needAddress(m, `pool.${k}`);
   }
-  for (const k of ["currency0", "currency1", "hook"]) needAddress(m, `pool.${k}`);
+  if (m.identity) for (const k of ["idFactory", "bankIssuer", "onboardingIssuer", "depositRegistry"]) needAddress(m, `identity.${k}`);
   for (const [key, token] of Object.entries(need(m, "assets") as Record<string, Token>)) {
     needAddress(token, "address");
     if (!Number.isInteger(token.decimals)) throw new ManifestError(`manifest assets.${key}.decimals is not an integer`);
@@ -132,7 +159,7 @@ export function loadManifest(env: NodeJS.ProcessEnv = process.env): Manifest {
 }
 
 /** The pool's key. Takes the pool, not the whole manifest, so a manifest can carry several. */
-export function poolKey(pool: Manifest["pool"]): PoolKey {
+export function poolKey(pool: NonNullable<Manifest["pool"]>): PoolKey {
   return {
     currency0: pool.currency0,
     currency1: pool.currency1,
@@ -159,33 +186,54 @@ export function addressBook(m: Manifest): Map<string, { key: string; label: stri
     if (addr && !book.has(addr.toLowerCase())) book.set(addr.toLowerCase(), { key, label });
   };
   for (const [key, t] of Object.entries(m.assets)) put(t.address, `assets.${key}`, t.symbol);
-  const venue: Record<keyof Manifest["venue"], string> = {
+  const venue: Record<keyof NonNullable<Manifest["venue"]>, string> = {
     poolManager: "Pool manager",
     permit2: "Permit2",
     adapterFactory: "Adapter factory",
     allowlistChecker: "Checker",
-    credentialGate: "Pool credential gate",
+    credentialGate: "Pool gate",
     hook: "Compliance hook",
     router: "Router",
     positionManager: "Position manager",
     permissionsAdapter: "Permissions adapter",
     weth: "Wrapped ether",
   };
-  for (const [key, label] of Object.entries(venue)) put(m.venue[key as keyof Manifest["venue"]], `venue.${key}`, label);
+  if (m.venue) for (const [key, label] of Object.entries(venue)) put(m.venue[key as keyof typeof venue], `venue.${key}`, label);
   put(m.lens?.stateView, "lens.stateView", "State lens");
-  put(m.credentialProtocol?.issuers, "credentialProtocol.issuers", "Credential issuer registry");
-  put(m.credentialProtocol?.revocations, "credentialProtocol.revocations", "Credential revocation registry");
-  if (m.instruments) {
-    put(m.instruments.registry, "instruments.registry", "Identity Registry");
-    put(m.instruments.noteGate, "instruments.noteGate", "Note gate");
-    put(m.instruments.depositGate, "instruments.depositGate", "Deposit gate");
-    put(m.instruments.gateway, "instruments.gateway", "Deposit gateway");
+  if (m.identity) {
+    put(m.identity.idFactory, "identity.idFactory", "Identity factory");
+    put(m.identity.trexFactory, "identity.trexFactory", "T-REX factory");
+    put(m.identity.noteFactory, "identity.noteFactory", "Note factory");
+    put(m.identity.trexAuthority, "identity.trexAuthority", "T-REX implementations (fixed)");
+    put(m.identity.identityStorage, "identity.identityStorage", "Identity storage");
+    put(m.identity.bankIssuer, "identity.bankIssuer", "The bank's claim issuer");
+    put(m.identity.onboardingIssuer, "identity.onboardingIssuer", "The onboarding agent's claim issuer");
+    put(m.identity.depositRegistry, "identity.depositRegistry", "Deposit identity registry");
+    put(m.identity.depositTopics, "identity.depositTopics", "Deposit claim topics");
+    put(m.identity.depositIssuers, "identity.depositIssuers", "Deposit trusted issuers");
+    put(m.identity.poolRegistry, "identity.poolRegistry", "Pool identity registry");
+    put(m.identity.poolTopics, "identity.poolTopics", "Pool claim topics");
+    put(m.identity.poolIssuers, "identity.poolIssuers", "Pool trusted issuers");
   }
+  if (m.noteSuite) {
+    put(m.noteSuite.identityRegistry, "noteSuite.identityRegistry", "Note identity registry");
+    put(m.noteSuite.compliance, "noteSuite.compliance", "Note compliance");
+    put(m.noteSuite.trustedIssuers, "noteSuite.trustedIssuers", "Note trusted issuers");
+    put(m.noteSuite.claimTopics, "noteSuite.claimTopics", "Note claim topics");
+  }
+  if (m.programme) {
+    put(m.programme.sanctions, "programme.sanctions", "Programme sanctions module");
+    put(m.programme.implementations.determinations, "programme.implementations.determinations", "Determination Agent (implementation)");
+    put(m.programme.implementations.recordDates, "programme.implementations.recordDates", "Record-date module (implementation)");
+    put(m.programme.implementations.payingAgent, "programme.implementations.payingAgent", "Paying Agent (implementation)");
+    put(m.programme.implementations.settlement, "programme.implementations.settlement", "Locked settlement (implementation)");
+  }
+  if (m.instruments) put(m.instruments.gateway, "instruments.gateway", "Deposit gateway");
   if (m.lifecycle) {
     put(m.lifecycle.determinations, "lifecycle.determinations", "Determination Agent");
-    put(m.lifecycle.recordDates, "lifecycle.recordDates", "Record-date engine");
+    put(m.lifecycle.recordDates, "lifecycle.recordDates", "Record-date module");
     put(m.lifecycle.payingAgent, "lifecycle.payingAgent", "Paying Agent");
-    put(m.lifecycle.settlement, "lifecycle.settlement", "DvP settlement");
+    put(m.lifecycle.settlement, "lifecycle.settlement", "Locked settlement");
   }
   if (m.governance) {
     put(m.governance.controller, "governance.controller", "Governance controller");
@@ -196,15 +244,29 @@ export function addressBook(m: Manifest): Map<string, { key: string; label: stri
     put(m.governance.servicingWallet, "governance.servicingWallet", "Agent servicing wallet");
   }
   if (m.custody) {
-    put(m.custody.factory, "custody.factory", "Custody factory");
+    put(m.custody.factory, "custody.factory", "Bank custody factory");
     for (const [ref, addr] of Object.entries(m.custody.accounts)) put(addr, `custody.accounts.${ref}`, ref);
+    if (m.custody.thirdParty) {
+      put(m.custody.thirdParty.factory, "custody.thirdParty.factory", "Third-party custody factory");
+      for (const [ref, addr] of Object.entries(m.custody.thirdParty)) if (!["factory", "custodian"].includes(ref)) put(addr, `custody.thirdParty.${ref}`, ref);
+    }
   }
   for (const [key, addr] of Object.entries(m.parties)) put(addr, `parties.${key}`, partyLabel(key));
   return book;
 }
 
-/** A manifest key read as a capacity: "investorA" is "Investor A", "accessIssuer" is "Access Issuer". */
+/** Capacities whose manifest key does not read as their name. */
+const PARTY_NAMES: Record<string, string> = {
+  accessIssuer: "Onboarding agent",
+  onboardingAgent: "Onboarding agent",
+  depositAgent: "The bank (Deposit Agent)",
+  custodian: "Bank custody platform",
+  thirdPartyCustodian: "Third-party custodian",
+};
+
+/** A manifest key read as a capacity: "investorA" is "Investor A", "onboardingAgent" is "Onboarding agent". */
 export function partyLabel(key: string): string {
+  if (PARTY_NAMES[key]) return PARTY_NAMES[key];
   const words = key.replace(/([A-Z])/g, " $1").trim();
   return words[0].toUpperCase() + words.slice(1);
 }

@@ -1,6 +1,6 @@
 /**
  * What every browser test shares: signing in as one of the seeded people, a browser wallet backed
- * by a local key, the holder wallet, and two guards that fail a test on any page error or any
+ * by a local key, and two guards that fail a test on any page error or any
  * server error Next reports as unhandled (the "Application error" page).
  */
 import { readFileSync, statSync } from "node:fs";
@@ -8,8 +8,7 @@ import { test as base, expect, type Browser, type Locator, type Page } from "@pl
 import { createPublicClient, createWalletClient, http, keccak256, parseAbi, toBytes } from "viem";
 import { join } from "node:path";
 import { privateKeyToAccount } from "viem/accounts";
-import { presentation, SCHEMAS, CORP } from "../standins.ts";
-import { COOKIE, PEOPLE, SERVER_LOG, SITE, STANDINS_PORT, type Person } from "./people.ts";
+import { COOKIE, PEOPLE, SERVER_LOG, type Person } from "./people.ts";
 
 export { expect };
 
@@ -159,19 +158,6 @@ export async function warpTo(t: number) {
 export async function chooseClient(select: Locator, legalName: string) {
   const value = await select.locator("option", { hasText: legalName }).first().getAttribute("value");
   await select.selectOption(value!);
-}
-
-/** The holder wallet: answers the request the site last lodged with the verifier, as a scan would. */
-export async function holderPresents(step: "officer" | "wallet", wallet?: string) {
-  const request = await (await fetch(`http://127.0.0.1:${STANDINS_PORT}/test/last-lodged`)).json();
-  const now = Math.floor(Date.now() / 1000);
-  const id = (s: string) => keccak256(toBytes(`${s}/${now}/${request.requestId}`));
-  const body =
-    step === "officer"
-      ? presentation(now, id("root"), request, SCHEMAS.officer, id("officer"), { corporationDid: CORP, role: "CEO" })
-      : presentation(now, id("root"), request, SCHEMAS.walletControl, id("wallet"), { walletAddress: wallet, chain: "eip155:1", addressType: "eoa" });
-  const res = await fetch(`${SITE}/api/admission/callback`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  expect(res.status, await res.clone().text()).toBe(200);
 }
 
 export { PEOPLE };

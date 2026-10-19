@@ -15,7 +15,7 @@ const SAYS: Record<Step, string> = {
 };
 
 /**
- * Binds the wallet open in the browser (ADR 0068): reads its address, switches it to the pool's
+ * Binds the wallet open in the browser: reads its address, switches it to the pool's
  * chain (adding the chain if the wallet does not know it), has the bank prepare its message for
  * that address, proposes the message for signature, and submits the signature. One click.
  */

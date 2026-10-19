@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs the multi-signature wallet's released runtime code at its canonical addresses on the
-# local node (ADR 0024), as setup-permit2.sh does for Permit2.
+# local node, as setup-permit2.sh does for Permit2.
 #
 # Provenance: each file is the runtime code at the canonical address on mainnet, where the same
 # code is deployed on the target test network. The hashes below were recorded when the files were

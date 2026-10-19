@@ -9,31 +9,25 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {PermissionFlags} from "@uniswap/v4-periphery/src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
 import {PermissionedSwapRouter} from "../contracts/PermissionedSwapRouter.sol";
-import {VenueTestBase} from "./VenueTestBase.sol";
+import {IdentityPoolGate} from "../contracts/IdentityPoolGate.sol";
+import {PoolAccess} from "../script/PoolAccess.sol";
+import {VenueTestBase, IClaimIssuer, IClaims, ITrustedIssuers} from "./VenueTestBase.sol";
 
 interface IDepositGateway {
     function credit(address account, uint256 amount, bytes32 bookingRef) external;
 }
 
-interface IProtocolRevocations {
-    function revoke(string calldata did, bytes32 credentialId) external;
-}
-
-interface IProtocolIssuers {
-    function deactivateIssuer(string calldata did) external;
-}
-
 /**
- * The conversion pool's controls, each shown binding (overview S-27 to S-29; ADRs 0030 to 0039).
- * Every test states a control and shows the transaction succeeding or failing for the right
+ * The conversion pool's controls, each shown binding (overview S-27 to S-29;,
+ * 0090). Every test states a control and shows the transaction succeeding or failing for the right
  * reason; every refusal has a positive control.
  *
  *   ./ops/reset.sh && forge test --fork-url http://127.0.0.1:8545 -vv
  */
 contract PermissionedTradingTest is VenueTestBase {
-    address investorA; // entity, credentialed
-    address investorB; // natural person, credentialed
-    address investorC; // onboarded to the deposit, no credential
+    address investorA; // admitted to the pool
+    address investorB; // admitted to the pool
+    address investorC; // onboarded to the deposit, not admitted to the pool
     address investorD; // onboarded nowhere
 
     uint128 constant SWAP_IN = 10_000e6; // EUR 10,000 of the payment token
@@ -60,8 +54,9 @@ contract PermissionedTradingTest is VenueTestBase {
 
     // --- S-27: conversion by an admitted participant ---
 
-    /// A credentialed entity converts the payment token into the deposit, near par.
-    function test_credentialedEntity_convertsIntoTheDeposit() public {
+    /// An admitted investor converts the payment token into the deposit, near par.
+    function test_admittedInvestor_convertsIntoTheDeposit() public {
+        assertTrue(gate.standing(investorA) == IdentityPoolGate.Standing.Allowed, "admitted");
         uint256 before = deposit.balanceOf(investorA);
         _convert(investorA, SWAP_IN, true);
         uint256 gained = deposit.balanceOf(investorA) - before;
@@ -71,20 +66,21 @@ contract PermissionedTradingTest is VenueTestBase {
         assertLt(gained, 10_000_00, "a spread is paid");
     }
 
-    /// A credentialed natural person converts the deposit back into the payment token.
-    function test_credentialedPerson_convertsOutOfTheDeposit() public {
+    /// An admitted investor converts the deposit back into the payment token.
+    function test_admittedInvestor_convertsOutOfTheDeposit() public {
         uint256 before = payment.balanceOf(investorB);
         _convert(investorB, 5_000_00, false);
         assertGt(payment.balanceOf(investorB) - before, 4_990e6, "near par");
     }
 
-    // --- S-28: the perimeter sits at the wallet ---
+    // --- S-28: the perimeter sits at the identity ---
 
-    /// Onboarded to the deposit but holding no credential: the deposit would accept the wallet,
-    /// the pool does not. Admitting it is the only change, and then it converts.
-    function test_noCredential_refusedByThePoolThoughTheDepositAccepts() public {
+    /// Onboarded to the deposit but holding no pool-access claim: the deposit would accept the
+    /// wallet, the pool does not. The bank's pool-access claim is the only change, and then it
+    /// converts.
+    function test_noPoolClaim_refusedByThePoolThoughTheDepositAccepts() public {
         assertTrue(deposit.canReceive(investorC) && deposit.canSend(investorC), "the deposit accepts investor C");
-        assertFalse(gate.isAllowed(investorC), "no credential");
+        assertTrue(gate.standing(investorC) == IdentityPoolGate.Standing.NotVerified, "no pool-access claim");
         assertTrue(checker.checkAllowlist(investorC, address(deposit)) == PermissionFlags.NONE, "no permission");
         _expectConvertReverts(investorC);
 
@@ -97,6 +93,7 @@ contract PermissionedTradingTest is VenueTestBase {
     /// A wallet onboarded nowhere is refused despite holding the payment token and approvals.
     function test_notOnboarded_refused() public {
         assertGt(payment.balanceOf(investorD), 0, "investor D is funded");
+        assertEq(PoolAccess.identityOf(manifest, investorD), address(0), "no identity");
         assertTrue(checker.checkAllowlist(investorD, address(deposit)) == PermissionFlags.NONE);
         _expectConvertReverts(investorD);
     }
@@ -120,7 +117,7 @@ contract PermissionedTradingTest is VenueTestBase {
         return abi.encode(actions, params);
     }
 
-    /// Only the Deposit Agent provides liquidity; the same plan is refused for a credentialed
+    /// Only the Deposit Agent provides liquidity; the same plan is refused for an admitted
     /// investor, so the refusal is the permission's.
     function test_onlyTheDepositAgentProvidesLiquidity() public {
         assertTrue(_may(investorB, PermissionFlags.SWAP_ALLOWED), "investor B may convert");
@@ -150,55 +147,60 @@ contract PermissionedTradingTest is VenueTestBase {
 
     // --- revocable at once ---
 
-    /// The protocol revokes a credential; anyone voids the grant; the wallet stops at once.
-    function test_protocolRevocation_voidedByAnyone_stopsTheWallet() public {
+    /// The bank revokes its pool-access claim; the wallet stops at once, others not.
+    function test_claimRevocation_stopsTheWallet() public {
         _convert(investorB, SWAP_IN, true);
-        string memory did = vm.parseJsonString(manifest, ".credentialProtocol.issuerDid");
-        bytes32 credential = keccak256(abi.encodePacked("CRD-0003", "/primary"));
-        address operator = _issuerOperator(did);
-        _as(operator);
-        IProtocolRevocations(_addr(".credentialProtocol.revocations")).revoke(did, credential);
+        (bytes memory signature,) = _poolClaim(investorB);
+        _as(depositAgent);
+        IClaimIssuer(_addr(".identity.bankIssuer")).revokeClaimBySignature(signature);
 
-        assertTrue(gate.isAllowed(investorB), "not until voided");
-        _as(makeAddr("anyone"));
-        gate.void(investorB);
-        assertFalse(gate.isAllowed(investorB));
+        assertTrue(gate.standing(investorB) == IdentityPoolGate.Standing.NotVerified, "revoked");
         assertTrue(_may(investorA, PermissionFlags.SWAP_ALLOWED), "others unaffected");
         _expectConvertReverts(investorB);
     }
 
-    /// Deactivating the issuer in the protocol suspends the whole pool, by anyone's call.
-    function test_issuerDeactivation_suspendsThePool() public {
-        string memory did = vm.parseJsonString(manifest, ".credentialProtocol.issuerDid");
-        _as(_protocolRegistrar());
-        IProtocolIssuers(_addr(".credentialProtocol.issuers")).deactivateIssuer(did);
-        gate.suspendIssuer();
+    /// Ceasing to trust the bank's issuer for pool access, a Tier 2 act, closes the pool to
+    /// everyone it vouched for, by the controller's call on the pool's registry.
+    function test_issuerNoLongerTrusted_closesThePool() public {
+        _as(address(controller));
+        ITrustedIssuers(_addr(".identity.poolIssuers")).removeTrustedIssuer(_addr(".identity.bankIssuer"));
         _expectConvertReverts(investorA);
         _expectConvertReverts(depositAgent);
     }
 
-    /// Supervisory withdrawal of pool access is Tier 1, by the Agent's governance wallet.
-    function test_tier1WithdrawalOfPoolAccess() public {
+    /// Supervisory withdrawal of pool access is Tier 1, by the Agent's governance wallet, and so is
+    /// restoring it.
+    function test_tier1WithdrawalAndRestorationOfPoolAccess() public {
         _as(agentGovernance);
         controller.withdrawPoolAccess(investorA, "Pool access withdrawn pending review of a screening alert");
-        assertFalse(gate.isAllowed(investorA));
+        assertTrue(gate.standing(investorA) == IdentityPoolGate.Standing.Withdrawn, "withdrawn");
         _expectConvertReverts(investorA);
         _convert(investorB, SWAP_IN, true); // others unaffected
+
+        _as(agentGovernance);
+        controller.restorePoolAccess(investorA, "Review closed with no finding");
+        _convert(investorA, SWAP_IN, true);
     }
 
-    /// Withdrawing the registry grant stops the pool at once, with no venue action (ADR 0004).
-    function test_registryWithdrawal_stopsThePool() public {
-        assertTrue(gate.isAllowed(investorA), "the credential is untouched");
-        _as(agentGovernance);
-        controller.withdrawGrant(investorA, "Sanctions designation");
+    /// The bank revoking its deposit claim stops the pool at once, though the pool-access claim
+    /// stands, with no venue action.
+    function test_depositClaimRevocation_stopsThePool() public {
+        assertTrue(gate.isAllowed(investorA), "the pool-access claim is untouched");
+        address bankIssuer = _addr(".identity.bankIssuer");
+        bytes32 claimId = keccak256(abi.encode(bankIssuer, vm.parseJsonUint(manifest, ".identity.depositEligibleTopic")));
+        (,,, bytes memory signature,,) = IClaims(PoolAccess.identityOf(manifest, investorA)).getClaim(claimId);
+        _as(depositAgent);
+        IClaimIssuer(bankIssuer).revokeClaimBySignature(signature);
+        assertFalse(deposit.canReceive(investorA), "the deposit refuses it");
         assertTrue(checker.checkAllowlist(investorA, address(deposit)) == PermissionFlags.NONE);
         _expectConvertReverts(investorA);
     }
 
-    /// A deposit freeze by the Deposit Agent stops the wallet.
+    /// The bank freezing a wallet's whole deposit balance stops the wallet.
     function test_depositFreeze_stopsTheWallet() public {
+        uint256 whole = deposit.balanceOf(investorA);
         _as(depositAgent);
-        deposit.setAddressFrozen(investorA, true);
+        deposit.setFrozenTokens(investorA, whole);
         assertTrue(checker.checkAllowlist(investorA, address(deposit)) == PermissionFlags.NONE, "frozen");
         _expectConvertReverts(investorA);
         _convert(investorB, SWAP_IN, true);
@@ -222,19 +224,27 @@ contract PermissionedTradingTest is VenueTestBase {
         _convert(investorA, SWAP_IN, true);
     }
 
-    /// A grant lapses without any transaction.
-    function test_grantLapses() public {
-        uint40 expiresAt = gate.grantOf(investorA).expiresAt;
-        vm.warp(expiresAt - 1);
+    /// A pool-access claim lapses without any transaction.
+    function test_poolClaimLapses() public {
+        (, bytes memory data) = _poolClaim(investorA);
+        (, uint48 validUntil,) = abi.decode(data, (uint48, uint48, bytes32));
+        vm.warp(validUntil - 1);
         _convert(investorA, SWAP_IN, true);
-        vm.warp(expiresAt);
+        vm.warp(validUntil);
         _expectConvertReverts(investorA);
+    }
+
+    /// The pool serves the jurisdictions it was built with, and the cast's is among them.
+    function test_jurisdictionsServed() public view {
+        assertEq(gate.jurisdictions().length, 32, "the EEA, Switzerland and the United Kingdom");
+        assertTrue(gate.serves(276), "Germany");
+        assertFalse(gate.serves(840), "not the United States");
     }
 
     // --- fail closed ---
 
-    /// A credential gate that cannot answer denies everyone.
-    function test_unanswerableCredentialGate_deniesEveryone() public {
+    /// A gate that cannot answer denies everyone.
+    function test_unanswerableGate_deniesEveryone() public {
         _as(address(controller));
         checker.setCredentialGate(address(deposit), address(0xDEAD));
         assertTrue(checker.checkAllowlist(investorA, address(deposit)) == PermissionFlags.NONE, "no code denies");
@@ -261,24 +271,11 @@ contract PermissionedTradingTest is VenueTestBase {
     function test_theVenueIsGoverned() public view {
         assertEq(Ownable(address(checker)).owner(), address(controller), "checker");
         assertEq(Ownable(adapter).owner(), address(controller), "adapter");
+        assertEq(Ownable(_addr(".identity.poolIssuers")).owner(), address(controller), "pool trusted issuers");
         assertTrue(gate.hasRole(0x00, address(controller)), "gate admin");
         assertTrue(gate.hasRole(gate.SUPERVISOR_ROLE(), address(controller)), "gate supervisor");
         assertFalse(gate.hasRole(0x00, _addr(".parties.issuer")), "the deployer holds nothing");
         assertEq(controller.credentialGate(), address(gate));
-    }
-
-    // --- helpers ---
-
-    function _issuerOperator(string memory did) internal view returns (address operator) {
-        (bool ok, bytes memory ret) =
-            _addr(".credentialProtocol.issuers").staticcall(abi.encodeWithSignature("getChainOperator(string)", did));
-        require(ok, "no operator");
-        operator = abi.decode(ret, (address));
-    }
-
-    /// The protocol's registrar. Locally the deployer initialised the registry; on a fork, whoever
-    /// holds the role there.
-    function _protocolRegistrar() internal view returns (address) {
-        return vm.envOr("PROTOCOL_REGISTRAR", _addr(".parties.issuer"));
+        assertEq(gate.registry(), _addr(".identity.poolRegistry"), "the gate reads the pool's registry");
     }
 }

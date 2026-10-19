@@ -7,7 +7,7 @@ import { isOperator } from "../operators.ts";
 import { until } from "./until.ts";
 
 /**
- * The keys the site signs with, and their ETH for fees (ADR 0080): every capacity's balance, which
+ * The keys the site signs with, and their ETH for fees: every capacity's balance, which
  * are low, and topping one up from the best-funded key.
  */
 
@@ -79,7 +79,7 @@ export async function lowKeys(): Promise<KeyRow[]> {
 }
 
 /**
- * Staff top up a key from the best-funded one (ADR 0080), which must keep the buffer itself
+ * Staff top up a key from the best-funded one, which must keep the buffer itself
  * afterwards.
  */
 export async function topUp(staff: Registrant, capacity: string): Promise<Hex> {

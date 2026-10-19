@@ -19,24 +19,22 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 
-import {PoolCredentialRegistry} from "../contracts/PoolCredentialRegistry.sol";
 import {Manifest} from "./Manifest.sol";
-import {Admission} from "./Admission.sol";
+import {PoolAccess} from "./PoolAccess.sol";
 
 interface IDepositGateway {
     function credit(address account, uint256 amount, bytes32 bookingRef) external;
 }
 
 /**
- * Verifies and enables the adapter, opens the pool at par, admits the cast to the credential
- * gate, and has the Deposit Agent provide the pool's liquidity (ADR 0038).
+ * Verifies and enables the adapter, opens the pool at par, admits the cast to the pool, and has
+ * the Deposit Agent provide the pool's liquidity.
  *
- * Admission here is the Access Issuer attesting directly, standing in for the verification of a
- * presentation with the credential protocol's verifier that precedes it in operation. The
- * credential identifiers are references, not credentials; the protocol's registries report them
- * as not revoked. Investor A is an entity, investor B a natural person. Investor C is onboarded
- * to the deposit but holds no credential, so the pool refuses it while the deposit does not: the
- * pool's own perimeter (ADR 0031). Investor D is onboarded nowhere.
+ * Admission is the bank's pool-access claim on each participant's ONCHAINID identity
+ * (script/PoolAccess.sol), standing in for the verification that precedes it in operation. The
+ * Deposit Agent, investor A and investor B are admitted. Investor C is onboarded to the deposit
+ * but not admitted, so the pool refuses it while the deposit does not: the pool's own perimeter.
+ * Investor D is onboarded nowhere.
  *
  * The pool quotes currency1 per currency0 in base units, and the currencies are ordered by
  * address, so the opening price is derived from whichever order the deployment produced and
@@ -45,7 +43,7 @@ interface IDepositGateway {
 contract ActivateVenue is Script {
     uint24 constant FEE = 500; // 0.05%
     int24 constant TICK_SPACING = 10;
-    /// @dev About 0.5% either side of par (ADR 0038).
+    /// @dev About 0.5% either side of par.
     int24 constant RANGE_TICKS = 50;
 
     uint256 constant LOCAL_SEED_DEPOSIT = 1_000_000_00; // EUR 1,000,000.00
@@ -59,7 +57,6 @@ contract ActivateVenue is Script {
         address router;
         address posm;
         address permit2;
-        address gate;
         address gateway;
         uint256 depositDecimals;
         uint256 paymentDecimals;
@@ -75,7 +72,6 @@ contract ActivateVenue is Script {
             router: vm.parseJsonAddress(j, ".venue.router"),
             posm: vm.parseJsonAddress(j, ".venue.positionManager"),
             permit2: vm.parseJsonAddress(j, ".venue.permit2"),
-            gate: vm.parseJsonAddress(j, ".venue.credentialGate"),
             gateway: vm.parseJsonAddress(j, ".instruments.gateway"),
             depositDecimals: vm.parseJsonUint(j, ".assets.deposit.decimals"),
             paymentDecimals: vm.parseJsonUint(j, ".assets.paymentToken.decimals")
@@ -97,8 +93,8 @@ contract ActivateVenue is Script {
         vm.stopBroadcast();
         console2.log("pool opened at par. currency0:", Currency.unwrap(key.currency0));
 
-        // ---------------- Access Issuer: admit the cast to the credential gate ---------------- //
-        _admit(j, c.gate);
+        // ---------------- the bank: admit the cast to the pool ---------------- //
+        _admit(j);
 
         // ---------------- approvals, so that a trade is one transaction ---------------- //
         // Investor D is included for the payment token: its refusal must come from the gate.
@@ -115,21 +111,17 @@ contract ActivateVenue is Script {
 
     function _key(Ctx memory c) internal pure returns (PoolKey memory) {
         (Currency c0, Currency c1) = c.adapter < c.paymentToken
-            ? (Currency.wrap(c.adapter), Currency.wrap(c.paymentToken))
-            : (Currency.wrap(c.paymentToken), Currency.wrap(c.adapter));
+            ? (Currency.wrap(c.adapter), Currency.wrap(c.paymentToken)):
+  (Currency.wrap(c.paymentToken), Currency.wrap(c.adapter));
         return PoolKey({currency0: c0, currency1: c1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(c.hook)});
     }
 
-    function _admit(string memory j, address gate) internal {
-        bytes32 entity = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.corporateIdentitySchema")));
-        bytes32 person = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.passportSchema")));
-        bytes32 screening = keccak256(bytes(vm.parseJsonString(j, ".credentialProtocol.screeningSchema")));
-
-        vm.startBroadcast(vm.envUint("ACCESS_ISSUER_PK"));
-        PoolCredentialRegistry g = PoolCredentialRegistry(gate);
-        g.grant(Admission.entity(vm.parseJsonAddress(j, ".parties.depositAgent"), entity, "DE", 2, "CRD-0001"));
-        g.grant(Admission.entity(vm.parseJsonAddress(j, ".parties.investorA"), entity, "LU", 1, "CRD-0002"));
-        g.grant(Admission.person(vm.parseJsonAddress(j, ".parties.investorB"), person, screening, "FR", 1, "CRD-0003"));
+    function _admit(string memory j) internal {
+        uint256 bank = vm.envUint("DEPOSIT_AGENT_PK");
+        vm.startBroadcast(bank);
+        PoolAccess.admit(j, bank, vm.parseJsonAddress(j, ".parties.depositAgent"));
+        PoolAccess.admit(j, bank, vm.parseJsonAddress(j, ".parties.investorA"));
+        PoolAccess.admit(j, bank, vm.parseJsonAddress(j, ".parties.investorB"));
         vm.stopBroadcast();
     }
 

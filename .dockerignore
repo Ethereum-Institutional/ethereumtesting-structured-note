@@ -1,0 +1,13 @@
+# The site's image takes the site and the overview it publishes, nothing else (ops/vm, ADR 0098).
+*
+!site
+!docs/solution-overview.html
+site/node_modules
+site/.next
+site/.data
+site/content
+site/test-results
+site/playwright-report
+site/.env*
+site/.vercel
+site/*.tsbuildinfo

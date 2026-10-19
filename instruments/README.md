@@ -1,42 +1,50 @@
 # Instruments
 
-The compilation unit for the note and the tokenized deposit. Wave 2 builds them here, starting
-from the adapted composition in `spikes/instrument/src/H_Adapted.sol`.
+The compilation unit for the note programme: the notes, their identities and lifecycle, the
+governance controller, the note factory, and the tokenized deposit. Each note is an ERC-3643 token
+through T-REX 5.0.0-beta2, with ONCHAINID 2.2.2-beta3 identities. Both are pinned in
+`soldeer.lock`, and `forge soldeer install` fetches them; T-REX pins solc 0.8.30, so the unit
+compiles with it. The venue (repository root) is a separate unit, on solc 0.8.26; the two meet only
+over ABI.
 
-Separate from the venue's unit by necessity (spike 1): the note fits under EIP-170 only on the
-legacy pipeline at solc 0.8.27 or later, and the venue is pinned to 0.8.26 on the IR pipeline.
-The two meet only over ABI.
+T-REX's token, registries and compliance are used unmodified. Our contracts, with their deployed
+sizes (from `forge build --sizes`):
 
-The debt standard is a submodule at `lib/debt-standard`, pinned at its **release candidate**,
-because snapshots, the holder list and full enforcement exist only there. `ops/build.sh`
-refuses to build at any other pin. Re-pinning to the final release is a gate before anything
-moves past PoC; see HANDOFF.md section 3.
+| Contract | Is | Licence | Size (bytes) |
+|---|---|---|---|
+| `src/claims/ExpiringClaimIssuer.sol` | An institution's claim issuer, whose claims lapse: issue, lapse and record hash in the claim's data; revocable at once | GPL-3.0 | 13,210 |
+| `src/claims/ClaimTopics.sol` | The deployment's claim topics: deposit-eligible, note-eligible, pool access, term sheet, series | MPL-2.0 | library |
+| `src/compliance/RecordDateModule.sol` | A note's compliance module, one clone per note: balances at any past instant (E1), the transfer stop at a possible redemption (E4), refused for forced transfers too | GPL-3.0 | 3,646 |
+| `src/compliance/ProgrammeSanctions.sol` | The programme's compliance module, on every note: a designated account cannot send or receive any note | GPL-3.0 | 1,608 |
+| `src/FixedImplementationAuthority.sol` | The implementations behind every T-REX proxy, fixed for good, in place of T-REX's switchable authority | MPL-2.0 | 406 |
+| `src/DepositToken.sol` | The cash leg, like a bank's allowlisted deposit token: eligible by the bank's own identity registry or the allowlist; sender, receiver and spender checked; ERC-7943 freezing and forced transfer; roles administered by the controller | MPL-2.0 | 6,573 |
+| `src/interfaces/IDepositGateway.sol`, `src/DepositGateway.sol` | What a deposit service must expose to settle on a public network: credit and debit, each against a single-use booking reference | MPL-2.0 | 1,877 |
+| `src/DeterminationAgent.sol` | A note's terms and calendar, fixed at issuance, one clone per note; accepts a signed determination only when its own computation agrees, and a Tier 2 correction of the latest | MPL-2.0 | 12,905 |
+| `src/PayingAgent.sol` | Coupons and redemptions to holders of record, one clone per note, reconciled on-chain; amounts the deposit cannot credit are held and claimable; coupon reversal and restatement for the controller. The note's agent for burning and pausing | MPL-2.0 | 9,642 |
+| `src/LockedSettlement.sol` | Delivery versus payment by locked offer, one clone per note. The note's agent for partial freezing | MPL-2.0 | 6,315 |
+| `src/factory/NoteFactory.sol` | Owned by the Issuer's 2-of-3 wallet. Issues a note whole in one transaction, or several in one call: series number and optional ISIN, clones, the T-REX suite, the deposit allowlisting, and the hand-over to the controller | GPL-3.0 | 13,445 |
+| `src/factory/ProgrammeTREXFactory.sol` | T-REX's factory, with retirement of a redeemed note's registry from the shared storage and release to a successor | GPL-3.0 | 22,951 |
+| `src/factory/AgentPowers.sol` | Each agent's powers on a note: every power off, then only its own on | MPL-2.0 | library |
+| `src/GovernanceController.sol` | One controller for every note. Every privileged power, in two tiers, through typed acts naming the note; the programme's register of roles (`IProgrammeRoles`); owner of every note's suite | MPL-2.0 | 23,602 |
+| `src/VenueActs.sol`, `src/CorrectionActs.sol` | The controller's venue acts and its correction of a determination, as libraries called by delegatecall, to keep it under the size limit | MPL-2.0 | 1,652; 2,704 |
 
-| Contract | Is | Size (bytes) |
-|---|---|---|
-| `src/IdentityRegistry.sol` | The whitelist of record: rights and attribute flags, jurisdiction and expiry per address, written by a registrar's issuing key, one storage read per check | 4,283 |
-| `src/InstrumentGate.sol` | One instrument's test against the registry: required send and receive masks, optional permitted jurisdictions, and a settlement mask for infrastructure spenders (ADR 0013). Immutable. Meets spike 2's G1 and G2 | 1,688 |
-| `src/base/AdaptedToken.sol` | The lean composition with spike 2's six adaptations, shared by both tokens | |
-| `src/StructuredNote.sol` | The note: decimals zero, snapshots, holder list, term sheet anchored by hash | 24,382 (194 spare) |
-| `src/TokenizedDeposit.sol` | The cash leg: decimals two, mint and burn held only by the gateway | 22,135 |
-| `src/interfaces/IDepositGateway.sol`, `src/DepositGateway.sol` | What a deposit service must expose to settle on a public network: credit and debit, each against a single-use booking reference | 1,877 |
-| `src/DeterminationAgent.sol` | The terms and calendar, fixed at issuance; accepts a signed determination only when its own computation agrees (spike 3, D1) | 8,032 |
-| `src/RecordDateEngine.sol` | The note's snapshot engine: balances at any past instant (E1), and the transfer stop at a possible redemption (E4) | 1,832 |
-| `src/PayingAgent.sol` | Coupons and redemptions to holders of record, reconciled on-chain; amounts the deposit cannot credit are held and claimable; coupon reversal and restatement for the controller (ADR 0014) | 10,710 |
-| `src/DvPSettlement.sol` | Delivery versus payment: propose, then accept, both legs or neither | 2,956 |
-| `src/GovernanceController.sol` | Every privileged power, in two tiers, through typed acts only: Tier 1 by the Agent's governance wallet; Tier 2 by two of three institutions and four signatures, after a delay; recovery with veto; the conversion venue's typed acts (ADRs 0019, 0021 to 0025, 0039) | 16,815 |
+The MPL-2.0 contracts reach T-REX only through `src/interfaces/INote.sol`.
 
-`script/Instruments.sol` is the deployment, `script/Lifecycle.sol` the issuance and
-`script/Governance.sol` the ceremony, each used by its script (`DeployInstruments.s.sol`,
-`IssueNote.s.sol`, `Ceremony.s.sol`) and by the tests, so the tests exercise exactly what is
-deployed. After the ceremony the deployer holds nothing. Roles are held by capacities
-until Wave 4 moves them to the controller and the Agent's multi-signature. Upgrade, forced
-transfer and supervisory withdrawal are held by no one until then. Names, symbols and the term
-sheet are deploy parameters (HANDOFF.md, W6), provisional pending sign-off.
+The scripts:
+- `script/Scaffolding.sol` builds the shared scaffolding (`DeployInstruments.s.sol`);
+- `script/Onboarding.sol` onboards a client by role;
+- `script/Programme.sol` deploys the programme: the sanctions module, the controller and the note
+  factory (`DeployProgramme.s.sol`), and holds the ceremony (`Ceremony.s.sol`);
+- `script/Issuance.sol` issues a note through the factory as the Issuer's wallet (`IssueNote.s.sol`),
+  with `script/WalletExec.sol` signing for a multi-signature wallet.
+
+Each is used by its script and by the tests (`test/Stack.sol`), so the tests exercise exactly what
+is deployed. After the ceremony the deployer holds nothing: every note belongs to the controller
+from issuance, and the factory to the Issuer's wallet.
 
 ```bash
 forge build --sizes
-forge test --force  # 115, including all 25 payoff scenarios end to end
+forge test --force  # 104, including all 25 payoff scenarios end to end
 FOUNDRY_PROFILE=fork forge test --fork-url http://127.0.0.1:8545   # governance through the real wallets
 python3 test/vectors/flatten.py   # after regenerating spikes/payoff/vectors.json
 ```
@@ -46,13 +54,6 @@ against stale creation code for a contract it deploys, so a changed contract app
 
 ## Contract surface
 
-The surface under assurance review is defined by `surface/rc1.json`: every source in `src/`, each
-deployable contract's runtime code, the compiler settings and the debt standard's pin, all by
-SHA-256. It is tagged `instruments-surface-rc1` (ADR 0026).
-
-```bash
-python3 ops/surface.py check instruments/surface/rc1.json   # from the repository root
-```
-
-A change to any file in the surface before the final freeze is listed, with its reason, in the
-diff put to review.
+No surface is frozen yet. The final freeze follows the Issuer's and the Calculation Agent's
+confirmation of the payoff positions, and token naming. From then on, a change to any file in the
+surface is listed, with its reason, in the diff put to review.

@@ -1,5 +1,5 @@
 /**
- * What the conversion pool gives for an exact input (ADR 0070), computed from the pool's state as
+ * What the conversion pool gives for an exact input, computed from the pool's state as
  * Uniswap v4 does within a single range: the pool holds one position, so no tick is crossed.
  * Pure, and exact to Uniswap's own rounding within a unit, which the 0.5% minimum-received
  * (enforced on-chain by the swap itself) absorbs.

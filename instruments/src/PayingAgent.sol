@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-pragma solidity 0.8.34;
+pragma solidity 0.8.30;
 
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IDeterminationAgent} from "./interfaces/IDeterminationAgent.sol";
+import {IProgrammeRoles} from "./interfaces/IProgrammeRoles.sol";
 
 interface INoteServicing {
     function balanceOf(address account) external view returns (uint256);
@@ -14,7 +14,7 @@ interface INoteServicing {
 
 interface ICashLeg {
     function balanceOf(address account) external view returns (uint256);
-    function forcedTransfer(address from, address to, uint256 value, bytes calldata data) external returns (bool);
+    function forcedTransfer(address from, address to, uint256 value) external returns (bool);
     function transfer(address to, uint256 value) external returns (bool);
     function transferFrom(address from, address to, uint256 value) external returns (bool);
     function canTransfer(address from, address to, uint256 value) external view returns (bool);
@@ -47,7 +47,7 @@ interface IRecordDates {
  *
  * - **Reversal and restatement** (ADR 0014) belong to the governance controller alone. A coupon is
  *   reversed holder by holder against its original credit, by a forced transfer on the deposit
- *   carrying the written reason, back to the funding account; a shortfall is recorded, never
+ *   back to the funding account, the written reason emitted with it; a shortfall is recorded, never
  *   hidden, and an amount that was held and never paid is cancelled instead. The original
  *   distribution stays on record, marked reversed. It may then be restated against a corrected
  *   Record Time, as a new distribution paid in the ordinary way.
@@ -55,10 +55,16 @@ interface IRecordDates {
  * Amounts per holder are the amount per Calculation Amount times the holder's units (R1), so the
  * total paid equals the amount per CA times the units entitled, with nothing to allocate.
  * Custody accounts are paid as holders of record, as nominee (E3).
+ *
+ * **Roles are the programme's** (ADR 0115). Who opens and pays (the servicing wallet), whose account
+ * funds a distribution (the Agent's), and who reverses and restates (the governance controller) are
+ * read from the programme's roles at each act, so a rotation is one act for the whole book. A
+ * distribution draws only what the funder approved for it when it opened: no standing approval.
+ *
+ * Deployed once as an implementation and cloned for each note, initialised in the transaction that
+ * creates it.
  */
-contract PayingAgent is AccessControl {
-    bytes32 public constant PAYER_ROLE = keccak256("PAYER_ROLE");
-    bytes32 public constant REVERSER_ROLE = keccak256("REVERSER_ROLE");
+contract PayingAgent {
 
     enum Kind {
         Coupon,
@@ -78,14 +84,14 @@ contract PayingAgent is AccessControl {
         uint256 dateIndex;
     }
 
-    INoteServicing public immutable NOTE;
-    ICashLeg public immutable CASH;
-    IDeterminationAgent public immutable DETERMINATIONS;
-    IRecordDates public immutable RECORD_DATES;
+    INoteServicing public NOTE;
+    ICashLeg public CASH;
+    IDeterminationAgent public DETERMINATIONS;
+    IRecordDates public RECORD_DATES;
     /// @notice The Issuer's inventory: excluded from coupons, burned at redemption (E2).
-    address public immutable INVENTORY;
-    /// @notice The deposit account every distribution is debited from.
-    address public immutable FUNDER;
+    address public INVENTORY;
+    /// @notice The programme's roles: the servicing wallet, the funder, the governance controller.
+    IProgrammeRoles public roles;
 
     mapping(bytes32 id => Distribution) public distributions;
     mapping(bytes32 id => mapping(address holder => bool)) public settled;
@@ -119,25 +125,47 @@ contract PayingAgent is AccessControl {
     error NotReversed(bytes32 id);
     error RecordTimeNotPassed(uint48 recordTime);
     error NoReason();
+    error AlreadyInitialized();
+    error NotServicingWallet(address caller);
+    error NotGovernance(address caller);
 
-    constructor(
+    /// @dev The implementation itself is never initialised: only its clones are.
+    constructor() {
+        NOTE = INoteServicing(address(1));
+    }
+
+    /// @notice Points a clone at its note, the deposit, its terms and record dates, the Issuer's
+    ///         inventory and the programme's roles, once.
+    function initialize(
         INoteServicing note,
         ICashLeg cash,
         IDeterminationAgent determinations,
         IRecordDates recordDates,
         address inventory,
-        address funder,
-        address admin,
-        address payer
-    ) {
+        IProgrammeRoles roles_
+    ) external {
+        if (address(NOTE) != address(0)) revert AlreadyInitialized();
         NOTE = note;
         CASH = cash;
         DETERMINATIONS = determinations;
         RECORD_DATES = recordDates;
         INVENTORY = inventory;
-        FUNDER = funder;
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(PAYER_ROLE, payer);
+        roles = roles_;
+    }
+
+    modifier onlyPayer() {
+        if (msg.sender != roles.servicingWallet()) revert NotServicingWallet(msg.sender);
+        _;
+    }
+
+    modifier onlyGovernance() {
+        if (msg.sender != roles.governance()) revert NotGovernance(msg.sender);
+        _;
+    }
+
+    /// @notice The deposit account distributions are drawn from now: the programme's funder.
+    function FUNDER() public view returns (address) {
+        return roles.funder();
     }
 
     function idOf(uint256 dateIndex, Kind kind) public pure returns (bytes32) {
@@ -146,7 +174,7 @@ contract PayingAgent is AccessControl {
 
     // --- servicing ---
 
-    function open(uint256 dateIndex, Kind kind) external onlyRole(PAYER_ROLE) returns (bytes32 id) {
+    function open(uint256 dateIndex, Kind kind) external onlyPayer returns (bytes32 id) {
         id = idOf(dateIndex, kind);
         if (!DETERMINATIONS.determined(dateIndex)) revert NothingDue(dateIndex, kind);
         IDeterminationAgent.Observation memory obs = DETERMINATIONS.observation(dateIndex);
@@ -166,7 +194,7 @@ contract PayingAgent is AccessControl {
         emit Opened(id, dateIndex, kind, perCa, entitled);
 
         if (kind == Kind.Redemption && !NOTE.paused()) NOTE.pause();
-        if (perCa * entitled > 0) CASH.transferFrom(FUNDER, address(this), perCa * entitled);
+        if (perCa * entitled > 0) CASH.transferFrom(FUNDER(), address(this), perCa * entitled);
         if (entitled == 0) _close(id);
     }
 
@@ -178,14 +206,14 @@ contract PayingAgent is AccessControl {
      */
     function reverse(bytes32 id, address[] calldata holders, string calldata reason)
         external
-        onlyRole(REVERSER_ROLE)
+        onlyGovernance
     {
         if (bytes(reason).length == 0) revert NoReason();
         Distribution storage d = distributions[id];
         if (d.kind != Kind.Coupon) revert OnlyCouponsReverse();
         if (!d.closed) revert NotClosed(id);
         for (uint256 k = 0; k < holders.length; ++k) {
-            d.unitsReversed += uint64(_reverseOne(id, d, holders[k], reason));
+            d.unitsReversed += uint64(_reverseOne(id, d, holders[k]));
         }
         if (d.unitsReversed == d.unitsPaid && !d.reversed) {
             d.reversed = true;
@@ -193,7 +221,7 @@ contract PayingAgent is AccessControl {
         }
     }
 
-    function _reverseOne(bytes32 id, Distribution storage d, address h, string calldata reason)
+    function _reverseOne(bytes32 id, Distribution storage d, address h)
         private
         returns (uint256 units)
     {
@@ -205,21 +233,21 @@ contract PayingAgent is AccessControl {
         uint256 cancelled = held[id][h];
         if (cancelled > 0) {
             delete held[id][h];
-            CASH.transfer(FUNDER, cancelled);
+            CASH.transfer(FUNDER(), cancelled);
             emit Reversed(id, h, 0, cancelled, 0);
             return units;
         }
         uint256 due = uint256(d.perCa) * units;
         uint256 balance = CASH.balanceOf(h);
         uint256 recovered = due < balance ? due : balance;
-        if (recovered > 0) CASH.forcedTransfer(h, FUNDER, recovered, bytes(reason));
+        if (recovered > 0) CASH.forcedTransfer(h, FUNDER(), recovered);
         emit Reversed(id, h, recovered, 0, due - recovered);
     }
 
     /// @notice Pays a reversed coupon again against a corrected Record Time, as a new distribution.
     function restate(bytes32 original, uint48 recordTime, string calldata reason)
         external
-        onlyRole(REVERSER_ROLE)
+        onlyGovernance
         returns (bytes32 id)
     {
         if (bytes(reason).length == 0) revert NoReason();
@@ -231,7 +259,7 @@ contract PayingAgent is AccessControl {
         emit Restated(original, id, recordTime, reason);
     }
 
-    function pay(bytes32 id, address[] calldata holders) external onlyRole(PAYER_ROLE) {
+    function pay(bytes32 id, address[] calldata holders) external onlyPayer {
         Distribution storage d = distributions[id];
         if (!d.open || d.closed) revert NotOpen(id);
         uint256 perCa = d.perCa;

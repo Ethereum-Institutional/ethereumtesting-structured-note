@@ -6,7 +6,7 @@ import { signers } from "../chain/signer.ts";
 import { minimumReceived, quoteExactIn, type PoolState } from "./quote.ts";
 
 /**
- * Conversion in the pool (ADR 0070): quotes from the pool's own state, the swap plan the venue
+ * Conversion in the pool: quotes from the pool's own state, the swap plan the venue
  * expects (swap exact-in, settle all, take all, through the permissioned router), the one-time
  * Permit2 approvals a self-custody wallet signs, the custodian's conversion for a custody account,
  * and the bank's credit of the deposit.
@@ -38,8 +38,21 @@ const SWAP_EXACT_IN_SINGLE = 0x06;
 const SETTLE_ALL = 0x0c;
 const TAKE_ALL = 0x0f;
 
+/** Whether this deployment has the conversion pool: by default it does. */
+export function hasPool(m: Manifest = loadManifest()): boolean {
+  return Boolean(m.venue && m.pool);
+}
+
+type PoolManifest = Manifest & { venue: NonNullable<Manifest["venue"]>; pool: NonNullable<Manifest["pool"]> };
+
+/** The manifest, where it has the pool; refused otherwise, in words. */
+function poolManifest(loaded: Manifest = loadManifest()): PoolManifest {
+  if (!loaded.venue || !loaded.pool) throw new Error("This deployment has no conversion pool: it was deployed with POOL=0.");
+  return loaded as PoolManifest;
+}
+
 function context() {
-  const m = loadManifest();
+  const m = poolManifest();
   const rpc = process.env.RPC_URL?.trim();
   if (!rpc) throw new Error("RPC_URL is not set");
   const chain = defineChain({ id: m.chainId, name: `chain ${m.chainId}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
@@ -65,7 +78,7 @@ async function poolState(): Promise<PoolState> {
 }
 
 /** Which way a direction swaps in the pool: the payment token is paid in directly, the deposit through its adapter. */
-function sides(direction: Direction, m: Manifest) {
+function sides(direction: Direction, m: PoolManifest) {
   const t = tokens(m);
   const paidCurrency = direction === "into-deposit" ? t.payment.address : m.venue.permissionsAdapter;
   const zeroForOne = m.pool.currency0.toLowerCase() === paidCurrency.toLowerCase();
@@ -75,7 +88,7 @@ function sides(direction: Direction, m: Manifest) {
 export type Quote = { amountIn: bigint; amountOut: bigint; minimumOut: bigint; paid: string; received: string; paidDecimals: number; receivedDecimals: number };
 
 export async function quote(direction: Direction, amountIn: bigint): Promise<Quote> {
-  const m = loadManifest();
+  const m = poolManifest();
   const s = sides(direction, m);
   const out = quoteExactIn(await poolState(), amountIn, s.zeroForOne);
   if (out <= 0n) throw new Error("that amount is too small to convert");
@@ -83,7 +96,7 @@ export async function quote(direction: Direction, amountIn: bigint): Promise<Quo
 }
 
 /** The router call for one conversion: swap exact-in, settle what is owed, take what is due, at least `minimumOut`. */
-export function swapCall(direction: Direction, amountIn: bigint, minimumOut: bigint, nowSec: number, m: Manifest = loadManifest()): { to: Address; data: Hex } {
+export function swapCall(direction: Direction, amountIn: bigint, minimumOut: bigint, nowSec: number, m: PoolManifest = poolManifest()): { to: Address; data: Hex } {
   const s = sides(direction, m);
   const key = poolKey(m.pool);
   const [inCurrency, outCurrency] = s.zeroForOne ? [key.currency0, key.currency1] : [key.currency1, key.currency0];
@@ -96,6 +109,16 @@ export function swapCall(direction: Direction, amountIn: bigint, minimumOut: big
   const take = encodeAbiParameters(parseAbiParameters("address, uint256"), [outCurrency, minimumOut]);
   const unlockData = encodeAbiParameters(parseAbiParameters("bytes, bytes[]"), [actions, [swap, settle, take]]);
   return { to: m.venue.router, data: encodeFunctionData({ abi: ROUTER, functionName: "execute", args: [unlockData, BigInt(nowSec + DEADLINE_SECONDS)] }) };
+}
+
+/**
+ * Now, by the chain's clock where it runs ahead of this server's, as a local chain moved forward
+ * does: a deadline or an allowance's expiry is checked against the block, not the wall.
+ */
+export async function chainNow(): Promise<number> {
+  const { client } = context();
+  const block = await client.getBlock();
+  return Math.max(Number(block.timestamp), Math.floor(Date.now() / 1000));
 }
 
 export type WalletView = { eth: bigint; payment: bigint; deposit: bigint };
@@ -114,7 +137,7 @@ export async function balances(owner: Address): Promise<WalletView> {
 export type TxRequest = { to: Address; data: Hex; label: string };
 
 /**
- * What a self-custody wallet must send before converting `amountIn` (ADR 0070): the token's
+ * What a self-custody wallet must send before converting `amountIn`: the token's
  * approval to Permit2 if missing, and Permit2's allowance to the router if short or lapsing, for 30
  * days. Once set, each conversion is the swap alone.
  */
@@ -137,12 +160,15 @@ export async function approvalsNeeded(owner: Address, direction: Direction, amou
   return out;
 }
 
-/** A custody account converts: the custodian's key calls the router through the account (approvals were set at admission). */
+/**
+ * A custody account converts: the custodian's key calls the router through the account, in one
+ * batch with whichever Permit2 approvals the account still lacks.
+ */
 export async function convertForCustody(account: Address, direction: Direction, amountIn: bigint): Promise<{ tx: Hex; quote: Quote }> {
   const { chain, rpc } = context();
   const q = await quote(direction, amountIn);
   // Read again for a few seconds before concluding the balance is short: just after a credit, a
-  // load-balanced RPC may still answer from the block before it (ADR 0059's lagging node).
+  // load-balanced RPC may still answer from the block before it ('s lagging node).
   let held = 0n;
   for (let tries = 0; tries < 8; tries++) {
     const have = await balances(account);
@@ -151,18 +177,11 @@ export async function convertForCustody(account: Address, direction: Direction, 
     await new Promise((r) => setTimeout(r, 1500));
   }
   if (held < amountIn) throw new Error(`the custody account holds ${held} and cannot convert ${amountIn}`);
-  const call = swapCall(direction, amountIn, q.minimumOut, Math.floor(Date.now() / 1000));
+  const nowSec = await chainNow();
+  const calls = [...(await approvalsNeeded(account, direction, amountIn, nowSec)), swapCall(direction, amountIn, q.minimumOut, nowSec)];
   const s = signers(chain, rpc);
-  const tx = await s.send("custodian", { address: account, abi: ACCOUNT, functionName: "execute", args: [[{ target: call.to, value: 0n, data: call.data }]] });
+  const tx = await s.send("custodian", { address: account, abi: ACCOUNT, functionName: "execute", args: [calls.map((c) => ({ target: c.to, value: 0n, data: c.data }))] });
   return { tx, quote: q };
 }
 
-/** The bank credits the deposit to an account (ADR 0070): the Deposit Agent through the gateway, against a single-use booking reference. */
-export async function creditDeposit(account: Address, amount: bigint): Promise<{ tx: Hex; bookingRef: string }> {
-  const { m, chain, rpc } = context();
-  if (amount <= 0n) throw new Error("the amount must be more than zero");
-  const bookingRef = `BKG-${new Date().toISOString().slice(2, 10).replaceAll("-", "")}-${randomBytes(4).toString("hex").toUpperCase()}`;
-  const s = signers(chain, rpc);
-  const tx = await s.send("depositAgent", { address: m.instruments!.gateway, abi: GATEWAY, functionName: "credit", args: [account, amount, keccak256(toBytes(bookingRef))] });
-  return { tx, bookingRef };
-}
+/** The bank credits the deposit to an account: the Deposit Agent through the gateway, against a single-use booking reference. */

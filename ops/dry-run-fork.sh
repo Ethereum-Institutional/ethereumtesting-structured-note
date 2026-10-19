@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# The fork dry run (ADR 0041): forks the public test network, deploys the whole stack against
-# its real contracts (pool manager, Permit2, the multi-signature wallet, the euro payment token
-# and the credential protocol's registries), and runs the venue tests against the result.
+# The fork dry run: forks the public test network, deploys the whole stack against
+# its real contracts (pool manager, Permit2, the multi-signature wallet and the euro payment
+# token), and runs the venue tests against the result.
 #
 # Nothing is published: every transaction lands on the local fork. The names, symbols and term
-# sheet values the deploy guard requires (ADR 0027) come from the network file.
+# sheet values the deploy guard requires come from the network file.
 #
 #   NETWORK_FILE=ops/networks/base-sepolia.json ./ops/dry-run-fork.sh
 #
@@ -25,7 +25,7 @@ export RPC="http://127.0.0.1:$PORT"
 export MANIFEST="ops/addresses.$(basename "$NETWORK_FILE" .json)-fork.json"
 export PUBLIC_NETWORK=1
 # The fork is private, so the dry run uses the local node's published keys and mnemonic, which a
-# live deployment never does (ops/deploy-network.sh refuses them, ADR 0051).
+# live deployment never does (ops/deploy-network.sh refuses them).
 export WALLET_MNEMONIC="test test test test test test test test test test test junk"
 LOG="$(mktemp -t fork-anvil)"
 
@@ -37,7 +37,7 @@ for _ in $(seq 1 60); do cast chain-id --rpc-url "$RPC" >/dev/null 2>&1 && break
 printf '\033[1mFork of chain %s at block %s\033[0m\n' "$(cast chain-id --rpc-url "$RPC")" "$(cast block-number --rpc-url "$RPC")"
 
 # The deploy guard's values, set explicitly from the network file.
-for k in NOTE_NAME NOTE_SYMBOL DEPOSIT_NAME DEPOSIT_SYMBOL TERM_SHEET_URI TERM_SHEET_HASH; do
+for k in NOTE_NAME NOTE_SYMBOL DEPOSIT_NAME DEPOSIT_SYMBOL TERM_SHEET_BASE; do
   export "$k=$(net ".names.$k")"
 done
 
@@ -61,5 +61,5 @@ for ref in SEG-0001 SEG-0002 SEG-0003 SEG-0004; do fund "$(jq -er ".custody.acco
 printf '\n\033[1m── venue tests against the fork\033[0m\n'
 # Forge caches forked state by chain id and block number, which a previous dry run shares, so
 # the cache is off here.
-PROTOCOL_REGISTRAR="$(net .credentialProtocol.registrar)" forge test --fork-url "$RPC" --no-storage-caching \
+forge test --fork-url "$RPC" --no-storage-caching \
   --match-path 'test/{PermissionedTrading,CustodyTrading}.t.sol' "${@}"

@@ -1,67 +1,107 @@
 import { test, expect, expectHealthy, chooseClient, installWallet, signedIn, PEOPLE } from "./fixtures.ts";
+import { SELF_CUSTODY_SEED } from "./people.ts";
 
-test("third-party wallet: the client asks, the bank declines, the client asks again, the bank confirms, the client binds with one signature", async ({ browser }) => {
+test("self-custody: the bank declines, the client asks again, the bank confirms, the client signs once and holds its identity", async ({ browser }) => {
+  // The bank's record of the client first.
+  const bank = await signedIn(browser, PEOPLE.banker);
+  await bank.goto("/bank/clients");
+  const form = bank.locator("form").filter({ has: bank.getByLabel("Registration number") });
+  await form.getByLabel("Legal name").fill("Browser Test Institution SA");
+  await form.getByLabel("Legal form").selectOption("PLC");
+  await form.getByLabel("Registration number").fill("B 112 233");
+  await form.getByLabel("Jurisdiction").selectOption("LU");
+  await form.getByLabel("Incorporation date").fill("2010-01-02");
+  await form.getByRole("button", { name: "Add client" }).click();
+  await expect(form.getByRole("status")).toContainText("Added Browser Test Institution SA");
+
   const client = await signedIn(browser, PEOPLE.selfCustody);
-  const wallet = await installWallet(client, `browser self-custody ${Date.now()}`, { declineFirstSignature: true });
-  const staff = await signedIn(browser, PEOPLE.operator);
-
-  // The client asks, entering nothing; binding waits for the bank.
+  const wallet = await installWallet(client, SELF_CUSTODY_SEED, { declineFirstSignature: true });
   await client.goto("/onboard");
-  await expect(client.locator(".progress li.current")).toHaveText(/Complete bank onboarding/);
-  await client.getByRole("button", { name: "Ask my bank to confirm my KYB" }).click();
-  await expect(client.getByText("Step 1 of 2: your bank is confirming your KYB.")).toBeVisible();
-  await expect(client.getByRole("button", { name: "Bind wallet" })).toBeDisabled();
+  const card = () => client.locator("section.panel").filter({ hasText: "Self-custody" }).first();
+  await card().getByRole("button", { name: "Ask my bank to confirm my KYB" }).click();
+  await expect(client.getByText("Your bank is confirming your KYB.")).toBeVisible();
 
   // The bank declines the first request.
-  // The route is shown as Third party (ADR 0074); its old address still works.
-  await staff.goto("/operator/custody/self-custody");
-  await expect(staff).toHaveURL(/\/operator\/custody\/third-party$/);
-  await expect(staff.getByRole("heading", { name: "Third-party requests" })).toBeVisible();
-  let panel = staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email });
-  await panel.getByRole("button", { name: "Decline" }).click();
-  await expect(staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email })).toHaveCount(0);
+  await bank.goto("/bank/onboarding");
+  let panel = bank.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email });
+  await panel.getByText("Decline…").click();
+  await panel.getByLabel("Reason").fill("Wrong entity");
+  await panel.getByRole("button", { name: "Decline", exact: true }).click();
+  await expect(bank.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email })).toHaveCount(0, { timeout: 15_000 });
   await client.reload();
-  await expect(client.getByText("Declined by the bank.")).toBeVisible();
+  await expect(client.getByText(/Earlier: Self-custody declined/)).toBeVisible();
 
-  // Asked again, the bank chooses the client from its list and confirms.
-  await client.getByRole("button", { name: "Ask my bank to confirm my KYB" }).click();
-  await expect(client.getByText("Step 1 of 2")).toBeVisible();
-  await staff.reload();
-  panel = staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email });
-  // Only the client: its facts come from Clients (ADR 0066).
+  // Asked again, the bank chooses the client from its records and confirms.
+  await card().getByRole("button", { name: "Ask my bank to confirm my KYB" }).click();
+  await bank.reload();
+  panel = bank.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email });
   await chooseClient(panel.locator('select[name="kycReference"]'), "Browser Test Institution SA");
   await panel.getByRole("button", { name: "Confirm the client's KYB" }).click();
-  await expect(staff.locator("section.panel").filter({ hasText: PEOPLE.selfCustody.email })).toHaveCount(0);
+  await expect(bank.locator("#in-progress + .table-wrap")).toContainText("the client's wallet signature", { timeout: 15_000 });
 
-  // The client's page updates by itself, shows the bank's reference, and binding opens.
-  await expect(client.getByText("Step 2 of 2: your bank has confirmed your KYB.")).toBeVisible({ timeout: 20_000 });
-  await expect(client.getByText(/Your bank's reference for you: CLI-\d{6}-[A-Z2-9]{4}, Browser Test Institution SA/)).toBeVisible();
-  // One click: the wallet's address is read, the pool's chain added and switched to, and the
-  // bank's message proposed for signature (ADR 0068).
-  await client.getByRole("button", { name: "Connect MetaMask and bind this wallet" }).click();
-  // Declined the first time: the page says so, and the same button tries again.
+  // One click: the wallet's address is read, the chain added and switched to, and the message
+  // proposed for signature. Declined the first time, the same button tries again.
+  await client.reload();
+  await client.getByRole("button", { name: "Connect MetaMask and sign" }).click();
   await expect(client.getByRole("alert").filter({ hasText: "You declined in the wallet" })).toBeVisible();
-  await client.getByRole("button", { name: "Connect MetaMask and bind this wallet" }).click();
-  await expect(client.getByText("Almost there: waiting for your bank to anchor the credential")).toBeVisible({ timeout: 30_000 });
-  // Admitted, the request gives way to the account card (ADR 0076).
-  const card = client.getByRole("region", { name: "Your wallet" });
-  await expect(card).toContainText(wallet, { timeout: 60_000 });
+  await client.getByRole("button", { name: "Connect MetaMask and sign" }).click();
+  const account = client.getByRole("region", { name: "Self-custody" });
+  await expect(account).toContainText(wallet, { timeout: 90_000 });
+  await expect(account).toContainText("managed by your wallet");
+  await expect(account).toContainText("eligible, until");
   const calls: string[] = await client.evaluate(() => (window as any).__walletCalls);
   expect(calls).toEqual(expect.arrayContaining(["eth_requestAccounts", "wallet_switchEthereumChain", "wallet_addEthereumChain", "eth_signTypedData_v4"]));
 
-  // Onboarded: the client binds a new wallet beside the current one rather than starting over (ADR 0069).
+  // The bank revokes its claim at once, then renews it.
+  await bank.goto("/bank/onboarding");
+  const row = bank.locator("#onboarded + .table-wrap tbody tr").filter({ hasText: wallet });
+  await row.getByText("Revoke the bank's claim…").click();
+  await row.getByLabel("Reason").first().fill("Screening hit under review");
+  await row.getByRole("button", { name: "Revoke", exact: true }).click();
+  await expect(row.getByRole("status")).toContainText("can no longer hold or receive the deposit", { timeout: 30_000 });
+  // The client's page reads the chain as it is: reloaded until a lagging RPC shows the revocation.
+  await expect(async () => {
+    await client.reload();
+    await expect(account).toContainText("not eligible (revoked)", { timeout: 1_000 });
+  }).toPass({ timeout: 30_000 });
+  await bank.reload();
+  const renewed = bank.locator("#onboarded + .table-wrap tbody tr").filter({ hasText: wallet });
+  await renewed.getByText("Renew the bank's claim…").click();
+  await renewed.getByRole("button", { name: "Renew", exact: true }).click();
+  await expect(renewed.getByRole("status")).toContainText("Renewed", { timeout: 30_000 });
+  await expect(async () => {
+    await client.reload();
+    await expect(account).toContainText("eligible, until", { timeout: 1_000 });
+  }).toPass({ timeout: 30_000 });
+
+  // The client asks to close its account: holding nothing yet, the request stands; the bank
+  // sees it with its reason; withdrawn, it is gone, and the account stays for the specs after this one.
   await client.reload();
-  await expect(card).toContainText("Third-party wallet");
-  await expect(client.locator(".progress")).toHaveCount(0);
-  await expect(client.getByRole("button", { name: "Ask my bank to confirm my KYB" })).toHaveCount(0);
-  await expect(card).toContainText("once a new wallet or a custody account is onboarded, this wallet is unbound");
-  await expect(card.getByRole("button", { name: "Ask my bank to hold it in custody" })).toBeVisible();
-  await card.getByRole("button", { name: "Bind a new wallet" }).click();
-  // Straight to the signing stage: the bank's confirmation still stands.
-  await expect(client.locator(".progress li.current")).toHaveText(/Sign message from wallet/);
-  await expect(client.getByRole("button", { name: "Connect MetaMask and bind this wallet" })).toBeVisible();
-  await client.getByRole("button", { name: "Cancel this request" }).click();
-  await expect(card.getByRole("button", { name: "Bind a new wallet" })).toBeVisible();
+  await account.getByText("Close this account…").click();
+  await account.getByLabel("Reason").fill("Consolidating accounts");
+  await account.getByRole("button", { name: "Ask to close" }).click();
+  await expect(account).toContainText("You asked to close this account", { timeout: 30_000 });
+  await bank.goto("/bank/onboarding");
+  const asked = bank.locator("#onboarded + .table-wrap tbody tr").filter({ hasText: wallet });
+  await expect(asked).toContainText("asked to close");
+  await expect(asked).toContainText("Consolidating accounts");
+  await expect(asked.getByRole("button", { name: "Close the account as asked" })).toBeVisible();
+  await account.getByRole("button", { name: "Withdraw the request" }).click();
+  await expect(account.getByText("Close this account…")).toBeVisible();
+  await bank.reload();
+  await expect(bank.locator("#onboarded + .table-wrap tbody tr").filter({ hasText: wallet })).not.toContainText("asked to close");
+
+  // With an identity on the chain, the client's registration cannot be deleted, not even by an admin:
+  // the wallet is offboarded first.
+  const admin = await signedIn(browser, PEOPLE.operator);
+  await admin.goto("/bank");
+  const signUp = admin.getByRole("row").filter({ hasText: PEOPLE.selfCustody.email });
+  await signUp.getByText("Delete…").click();
+  await signUp.getByRole("button", { name: "Delete permanently" }).click();
+  await expect(signUp.getByRole("alert")).toContainText("has an identity on the chain");
+  await admin.reload();
+  await expect(admin.getByRole("row").filter({ hasText: PEOPLE.selfCustody.email })).toHaveCount(1);
   await expectHealthy(client);
-  await expectHealthy(staff);
+  await expectHealthy(bank);
+  await expectHealthy(admin);
 });

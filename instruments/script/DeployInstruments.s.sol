@@ -1,80 +1,116 @@
-// SPDX-License-Identifier: MPL-2.0
-pragma solidity 0.8.34;
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity 0.8.30;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {IdentityRegistry} from "../src/IdentityRegistry.sol";
-import {Instruments} from "./Instruments.sol";
+import {IIdentity} from "@onchain-id/solidity/contracts/interface/IIdentity.sol";
+import {ClaimTopics} from "../src/claims/ClaimTopics.sol";
+import {Scaffolding} from "./Scaffolding.sol";
+import {Onboarding} from "./Onboarding.sol";
 
 /**
- * Deploys the instruments, onboards the cast, and opens their deposit accounts.
+ * Deploys the scaffolding, onboards the cast by role, and opens their deposit accounts.
  *
  * Run from instruments/ after script/00_DeployBase.s.sol, whose manifest it extends, and before
- * the venue, which wraps the deposit. Onboarding here is the Access Issuer writing grants
- * directly, standing in for the presentation and verification that precede a grant in operation.
- * Investor C is onboarded for the cash leg only, without the Regulation S flag, so it can hold
- * the deposit but not the note. Investor D is never onboarded. The Deposit Agent holds the
- * deposit as the pool's liquidity provider. Custody accounts are onboarded when they are opened.
+ * the venue, which wraps the deposit. Onboarding here is each institution acting directly,
+ * standing in for the verification that precedes a claim in operation:
+ * - the bank (the Deposit Agent's key) creates every identity, records each client's consent, and
+ *   vouches that the client may hold its deposit;
+ * - the onboarding agent (the Access Issuer's key) vouches that the client may hold the note.
+ *
+ * Investor C is onboarded for the cash leg only, so it can hold the deposit but not the note.
+ * Investor D is never onboarded. The Agent holds the deposit to fund distributions. The bank holds
+ * the deposit as the pool's liquidity provider, allowlisted as its own account, and has an identity
+ * so that the pool's gate can admit it. Custody accounts are onboarded when they are opened.
  */
 contract DeployInstruments is Script {
-    uint40 constant MAX_VALIDITY = 365 days;
-    uint40 constant GRANT_VALIDITY = 180 days;
+    uint48 constant MAX_CLAIM_VALIDITY = 365 days;
+    uint48 constant CLAIM_VALIDITY = 180 days;
+
+    struct Keys {
+        uint256 deployer;
+        uint256 bank;
+        uint256 onboarding;
+    }
 
     function run() external {
-        uint256 deployerPk = vm.envUint("ISSUER_PK");
-        uint256 accessIssuerPk = vm.envUint("ACCESS_ISSUER_PK");
-        uint256 depositAgentPk = vm.envUint("DEPOSIT_AGENT_PK");
-        address issuer = vm.addr(deployerPk);
-        address agent = vm.addr(vm.envUint("AGENT_PK"));
-        address depositAgent = vm.addr(depositAgentPk);
+        Keys memory k = Keys(vm.envUint("ISSUER_PK"), vm.envUint("DEPOSIT_AGENT_PK"), vm.envUint("ACCESS_ISSUER_PK"));
         string memory j = vm.readFile(_manifest());
 
-        vm.startBroadcast(deployerPk);
-        Instruments.Deployed memory d = Instruments.deploy(
-            Instruments.Config({
-                deployer: issuer,
-                agent: agent,
-                accessIssuer: vm.addr(accessIssuerPk),
-                depositAgent: depositAgent,
-                maxValidity: MAX_VALIDITY,
-                // Local defaults. On any other chain each value must be set explicitly
-                // (ADR 0027), so nothing unreviewed is written to a public network.
-                termSheetHash: _hashParam("TERM_SHEET_HASH", keccak256("term sheet, draft")),
-                termSheetUri: _param("TERM_SHEET_URI", "pending"),
-                noteName: _param("NOTE_NAME", "EUR Worst-of Autocallable Note"),
-                noteSymbol: _param("NOTE_SYMBOL", "EURWAN"),
+        vm.startBroadcast(k.deployer);
+        Scaffolding.Deployed memory d = Scaffolding.deploy(
+            Scaffolding.Config({
+                deployer: vm.addr(k.deployer),
+                bank: vm.addr(k.bank),
+                onboardingAgent: vm.addr(k.onboarding),
+                maxClaimValidity: MAX_CLAIM_VALIDITY,
+                // Local defaults. On any other chain each value must be set explicitly.
                 depositName: _param("DEPOSIT_NAME", "Euro Tokenized Deposit"),
                 depositSymbol: _param("DEPOSIT_SYMBOL", "EURTD")
             })
         );
         vm.stopBroadcast();
 
-        IdentityRegistry r = d.registry;
-        uint32 holder = r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR();
-        uint32 noteHolder = holder | r.REG_S();
-
-        // A participant admitted from a credential presentation is onboarded from the same one: the
-        // grant cites its primary credential and the verification's evidence, as the pool grant
-        // does (ADR 0044). Investor C and the Issuer are onboarded by the registrar's own record.
-        vm.startBroadcast(accessIssuerPk);
-        _grant(r, issuer, noteHolder, "ONB-0001", bytes32(0));
-        _grant(r, vm.parseJsonAddress(j, ".parties.investorA"), noteHolder | r.PROFESSIONAL(), _cred("CRD-0002"), _evid("CRD-0002"));
-        _grant(r, vm.parseJsonAddress(j, ".parties.investorB"), noteHolder, _cred("CRD-0003"), _evid("CRD-0003"));
-        _grant(r, vm.parseJsonAddress(j, ".parties.investorC"), holder, "ONB-0004", bytes32(0));
-        _grant(r, depositAgent, holder, _cred("CRD-0001"), _evid("CRD-0001"));
+        vm.startBroadcast(k.bank);
+        Scaffolding.acceptByBank(d);
+        d.deposit.setAllowlisted(vm.addr(k.bank), true);
         vm.stopBroadcast();
+
+        address investorA = vm.parseJsonAddress(j, ".parties.investorA");
+        address investorB = vm.parseJsonAddress(j, ".parties.investorB");
+        address investorC = vm.parseJsonAddress(j, ".parties.investorC");
+        _onboard(d, k, vm.addr(k.deployer), true);
+        _onboard(d, k, investorA, true);
+        _onboard(d, k, investorB, true);
+        _onboard(d, k, investorC, false);
+        _onboard(d, k, vm.addr(vm.envUint("AGENT_PK")), false);
+        _onboardBank(d, k);
 
         // Opening balances on the cash leg, each against its own booking.
-        vm.startBroadcast(depositAgentPk);
-        d.gateway.credit(vm.parseJsonAddress(j, ".parties.investorA"), 5_000_000_00, "opening/investorA");
-        d.gateway.credit(vm.parseJsonAddress(j, ".parties.investorB"), 1_000_000_00, "opening/investorB");
-        d.gateway.credit(vm.parseJsonAddress(j, ".parties.investorC"), 1_000_000_00, "opening/investorC");
+        vm.startBroadcast(k.bank);
+        d.gateway.credit(investorA, 5_000_000_00, "opening/investorA");
+        d.gateway.credit(investorB, 1_000_000_00, "opening/investorB");
+        d.gateway.credit(investorC, 1_000_000_00, "opening/investorC");
         vm.stopBroadcast();
 
-        console2.log("registry   :", address(d.registry));
-        console2.log("note       :", address(d.note));
-        console2.log("deposit    :", address(d.deposit));
-        console2.log("gateway    :", address(d.gateway));
-        _record(d, vm.addr(accessIssuerPk), depositAgent);
+        console2.log("identity storage :", address(d.identities));
+        console2.log("T-REX factory    :", address(d.trexFactory));
+        console2.log("deposit          :", address(d.deposit));
+        console2.log("gateway          :", address(d.gateway));
+        _record(d, vm.addr(k.onboarding), vm.addr(k.bank));
+    }
+
+    /// The bank creates the identity, records the client's consent and vouches for the deposit; for
+    /// the note, the onboarding agent vouches too. The bank admits clients to the pool where the pool
+    /// is deployed (script/02_ActivateVenue.s.sol).
+    function _onboard(Scaffolding.Deployed memory d, Keys memory k, address wallet, bool forNote) private {
+        address bank = vm.addr(k.bank);
+        uint48 until = uint48(block.timestamp) + CLAIM_VALIDITY;
+        vm.startBroadcast(k.bank);
+        IIdentity id = Onboarding.createIdentity(d, bank, wallet, vm.toString(wallet));
+        Onboarding.consent(id, bank);
+        if (forNote) Onboarding.consent(id, vm.addr(k.onboarding));
+        Onboarding.vouch(d.bankIssuer, k.bank, id, ClaimTopics.DEPOSIT_ELIGIBLE, until, _recordHash(wallet, "bank"));
+        vm.stopBroadcast();
+        if (!forNote) return;
+        vm.startBroadcast(k.onboarding);
+        Onboarding.vouch(d.onboardingIssuer, k.onboarding, id, ClaimTopics.NOTE_ELIGIBLE, until, _recordHash(wallet, "note"));
+        vm.stopBroadcast();
+    }
+
+    /// The bank, as the pool's liquidity provider, has an identity like any participant,
+    /// managed by its own key, so that it can admit itself to the pool. Its deposit is its own
+    /// account, allowlisted, so it needs no deposit claim.
+    function _onboardBank(Scaffolding.Deployed memory d, Keys memory k) private {
+        address bank = vm.addr(k.bank);
+        vm.startBroadcast(k.bank);
+        IIdentity id = IIdentity(d.idFactory.createIdentity(bank, vm.toString(bank)));
+        d.depositRegistry.registerIdentity(bank, id, Scaffolding.COUNTRY);
+        vm.stopBroadcast();
+    }
+
+    /// Stands in for the salted hash of the verified record an institution keeps off-chain.
+    function _recordHash(address wallet, string memory by) private pure returns (bytes32) {
+        return keccak256(abi.encode(wallet, by, "verified record"));
     }
 
     /// @dev The local node's chain id. Anywhere else, including a fork of a public network,
@@ -86,41 +122,43 @@ contract DeployInstruments is Script {
         return vm.envString(key);
     }
 
-    function _hashParam(string memory key, bytes32 localDefault) private view returns (bytes32) {
-        if (block.chainid == LOCAL_CHAIN_ID) return vm.envOr(key, localDefault);
-        return vm.envBytes32(key);
-    }
-
-    function _grant(IdentityRegistry r, address account, uint32 flags, bytes32 ref, bytes32 commitment) private {
-        r.grant(account, flags, 276, uint40(block.timestamp) + GRANT_VALIDITY, ref, commitment);
-    }
-
-    /// The identifiers script/Admission.sol derives for the same presentation.
-    function _cred(string memory ref) private pure returns (bytes32) {
-        return keccak256(abi.encodePacked(ref, "/primary"));
-    }
-
-    function _evid(string memory ref) private pure returns (bytes32) {
-        return keccak256(abi.encodePacked(ref, "/evidence"));
-    }
-
     function _manifest() private view returns (string memory) {
         return string.concat("../", vm.envOr("MANIFEST", string("ops/addresses.json")));
     }
 
-    function _record(Instruments.Deployed memory d, address accessIssuer, address depositAgent) private {
-        string memory o = "instruments";
-        vm.serializeAddress(o, "registry", address(d.registry));
-        vm.serializeAddress(o, "noteGate", address(d.noteGate));
-        vm.serializeAddress(o, "depositGate", address(d.depositGate));
-        vm.serializeAddress(o, "note", address(d.note));
-        vm.serializeAddress(o, "deposit", address(d.deposit));
-        vm.writeJson(vm.serializeAddress(o, "gateway", address(d.gateway)), _manifest(), ".instruments");
+    function _record(Scaffolding.Deployed memory d, address onboardingAgent, address bank) private {
+        string memory o = "identity";
+        vm.serializeAddress(o, "idFactory", address(d.idFactory));
+        vm.serializeAddress(o, "trexFactory", address(d.trexFactory));
+        vm.serializeAddress(o, "trexAuthority", address(d.trexAuthority));
+        vm.serializeAddress(o, "identityStorage", address(d.identities));
+        vm.serializeAddress(o, "bankIssuer", address(d.bankIssuer));
+        vm.serializeAddress(o, "onboardingIssuer", address(d.onboardingIssuer));
+        vm.serializeAddress(o, "depositRegistry", address(d.depositRegistry));
+        vm.serializeAddress(o, "depositTopics", address(d.depositTopics));
+        vm.serializeUint(o, "depositEligibleTopic", ClaimTopics.DEPOSIT_ELIGIBLE);
+        vm.serializeUint(o, "noteEligibleTopic", ClaimTopics.NOTE_ELIGIBLE);
+        vm.serializeUint(o, "termSheetTopic", ClaimTopics.TERM_SHEET);
+        vm.serializeUint(o, "poolAccessTopic", ClaimTopics.POOL_ACCESS);
+        vm.serializeAddress(o, "poolRegistry", address(d.poolRegistry));
+        vm.serializeAddress(o, "poolTopics", address(d.poolTopics));
+        vm.serializeAddress(o, "poolIssuers", address(d.poolIssuers));
+        vm.writeJson(vm.serializeAddress(o, "depositIssuers", address(d.depositIssuers)), _manifest(), ".identity");
 
-        vm.writeJson(_token("note", address(d.note), d.note.symbol(), 0), _manifest(), ".assets.note");
+        string memory im = "implementations";
+        vm.serializeAddress(im, "determinations", d.implementations.determinations);
+        vm.serializeAddress(im, "recordDates", d.implementations.recordDates);
+        vm.serializeAddress(im, "payingAgent", d.implementations.payingAgent);
+        string memory impls = vm.serializeAddress(im, "settlement", d.implementations.settlement);
+        vm.writeJson(vm.serializeString("programme", "implementations", impls), _manifest(), ".programme");
+
+        string memory i = "instruments";
+        vm.serializeAddress(i, "deposit", address(d.deposit));
+        vm.writeJson(vm.serializeAddress(i, "gateway", address(d.gateway)), _manifest(), ".instruments");
+
         vm.writeJson(_token("deposit", address(d.deposit), d.deposit.symbol(), 2), _manifest(), ".assets.deposit");
-        vm.writeJson(vm.toString(accessIssuer), _manifest(), ".parties.accessIssuer");
-        vm.writeJson(vm.toString(depositAgent), _manifest(), ".parties.depositAgent");
+        vm.writeJson(vm.toString(onboardingAgent), _manifest(), ".parties.onboardingAgent");
+        vm.writeJson(vm.toString(bank), _manifest(), ".parties.depositAgent");
     }
 
     function _token(string memory key, address token, string memory symbol, uint256 decimals)

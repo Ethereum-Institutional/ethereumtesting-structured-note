@@ -1,16 +1,16 @@
 /**
  * The site as the browser tests meet it: a production build (`next start`) against the local chain,
- * reached through the lagging RPC proxy, with the stand-in bank and verifier and a fresh file
- * store seeded with the people in people.ts. Started by Playwright (playwright.config.ts); the
+ * reached through the lagging RPC proxy, with a stand-in mailbox and a fresh file store seeded with
+ * the people in people.ts. Started by Playwright (playwright.config.ts); the
  * local chain must already be up (../ops/reset.sh).
  */
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createWriteStream, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createWriteStream, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { startLaggingRpc } from "../lagging-rpc.ts";
-import { startStandIns } from "../standins.ts";
-import { LAGGING_RPC_PORT, PEOPLE, PORT, SERVER_LOG, SITE, STANDINS_PORT, STORE_DIR, WORK } from "./people.ts";
+import { startMailbox } from "../mailbox.ts";
+import { LAGGING_RPC_PORT, PEOPLE, PORT, SERVER_LOG, SITE, MAILBOX_PORT, STORE_DIR, WORK } from "./people.ts";
 
 const SITE_DIR = join(import.meta.dirname, "..", "..");
 const MANIFEST = join(SITE_DIR, "..", "ops", "addresses.json");
@@ -26,22 +26,34 @@ writeFileSync(
   join(STORE_DIR, "store.json"),
   JSON.stringify({
     registrants: Object.values(PEOPLE).map(({ sid: _sid, ...p }) => ({ ...p, createdAt: created, verifiedAt: p.status === "unverified" ? null : created, decidedAt: null, decidedBy: null })),
-    links: [],
+    codes: [],
     sessions: Object.values(PEOPLE).map((p) => ({ hash: sha256(p.sid), registrantId: p.id, expiresAt: expires })),
     audit: [],
     admissions: [],
   }),
 );
 
-const revocations = JSON.parse(readFileSync(MANIFEST, "utf8")).credentialProtocol.revocations;
-// The bank reads the chain directly, and anchors each new credential three seconds after issuing it.
-const standIns = await startStandIns(STANDINS_PORT, CHAIN, { revocations, anchorDelayMs: 3000 });
+const mailbox = await startMailbox(MAILBOX_PORT);
 const lagging = await startLaggingRpc(LAGGING_RPC_PORT, CHAIN); // the site reads it as through a public RPC
 
 const log = createWriteStream(SERVER_LOG);
 const next = spawn("npx", ["next", "start", "-p", String(PORT)], {
   cwd: SITE_DIR,
-  env: { ...process.env, ...standIns.env(lagging.url, MANIFEST, SITE), ALLOW_FILE_STORE: "1", FILE_STORE_DIR: STORE_DIR },
+  env: {
+    ...process.env,
+    ...mailbox.env(),
+    SITE_URL: SITE,
+    MANIFEST_PATH: MANIFEST,
+    RPC_URL: lagging.url,
+    // The operator demonstrates every portal; the banker is the bank's staff alone.
+    OPERATOR_EMAILS: PEOPLE.operator.email,
+    BANK_EMAILS: PEOPLE.banker.email,
+    ONBOARDING_EMAILS: "",
+    AGENT_EMAILS: "",
+    CUSTODIAN_EMAILS: "",
+    ALLOW_FILE_STORE: "1",
+    FILE_STORE_DIR: STORE_DIR,
+  },
   stdio: ["ignore", "pipe", "pipe"],
 });
 next.stdout.pipe(log);
@@ -51,7 +63,7 @@ next.stderr.pipe(process.stderr);
 
 const stop = () => {
   next.kill("SIGTERM");
-  void standIns.close();
+  void mailbox.close();
   void lagging.close();
 };
 process.on("SIGTERM", stop);

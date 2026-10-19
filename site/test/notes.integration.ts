@@ -1,5 +1,5 @@
 /**
- * Notes issued from the site, against the local chain (ADRs 0072, 0073): issued from the site, step by step,
+ * Notes issued from the site, against the local chain: issued from the site, step by step,
  * through the lagging RPC, and checked on-chain.
  *
  *   ../ops/reset.sh && npm run test:admission
@@ -18,7 +18,7 @@ const lagging = await startLaggingRpc(4031, RPC);
 after(() => lagging.close());
 
 process.chdir(mkdtempSync(join(tmpdir(), "notes-"))); // a fresh development store
-Object.assign(process.env, { NODE_ENV: "development", MANIFEST_PATH: join(REPO, "ops", "addresses.json"), RPC_URL: lagging.url, OPERATOR_EMAILS: "operator@example.org" });
+Object.assign(process.env, { NODE_ENV: "development", MANIFEST_PATH: join(REPO, "ops", "addresses.json"), RPC_URL: lagging.url, OPERATOR_EMAILS: "operator@example.org", BANK_EMAILS: "", ONBOARDING_EMAILS: "", AGENT_EMAILS: "", CUSTODIAN_EMAILS: "" });
 const notes = await import("../lib/notes/issue.ts");
 const { getStore } = await import("../lib/store.ts");
 const { loadManifest } = await import("../lib/chain/manifest.ts");
@@ -36,7 +36,7 @@ async function issued(id: string) {
   return (await store.noteById(id))!;
 }
 
-test("a note is issued from the site, step by step, on the live note's implementation", async () => {
+test("a note is issued from the site in two steps, the Issuer's wallet's one transaction through the note factory, then the bank's credit to the Agent", async () => {
   await assert.rejects(notes.startNote({ ...operator, email: "someone@corp.example" } as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 }), /Not permitted/);
   await assert.rejects(notes.startNote(operator as any, { scenario: "nope", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 }), /Choose a scenario/);
   const started = await notes.startNote(operator as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 5, unit: "minutes" as const }, units: 20 });
@@ -45,7 +45,9 @@ test("a note is issued from the site, step by step, on the live note's implement
 
   const n = await issued(started.id);
   assert.equal(n.status, "issued", n.error);
-  assert.equal(Object.keys(n.txs).length, notes.ISSUANCE_STEPS.length, "one transaction per step, each recorded");
+  assert.equal(notes.ISSUANCE_STEPS.length, 2, "the Issuer's wallet's one act, the bank's one");
+  assert.equal(new Set(Object.values(n.txs)).size, 2, "one transaction per step, each recorded");
+  assert.equal((n.data as any).series, 2, "the factory's second series");
 
   const m = loadManifest();
   const note = n.addresses.note as Address;
@@ -54,18 +56,19 @@ test("a note is issued from the site, step by step, on the live note's implement
     "function symbol() view returns (string)",
     "function totalSupply() view returns (uint256)",
     "function balanceOf(address) view returns (uint256)",
-    "function hasRole(bytes32 role, address account) view returns (bool)",
-    "function BURNER_ROLE() view returns (bytes32)",
-    "function SNAPSHOOTER_ROLE() view returns (bytes32)",
+    "function isAgent(address) view returns (bool)",
+    "function paused() view returns (bool)",
+    "function getAgentRestrictions(address) view returns ((bool disableMint, bool disableBurn, bool disablePartialFreeze, bool disableAddressFreeze, bool disableRecovery, bool disableForceTransfer, bool disablePause))",
+    "function getImplementationAuthority() view returns (address)",
   ]);
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "symbol" }), "EURWAN2");
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "totalSupply" }), 20n);
   assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "balanceOf", args: [m.parties.issuer as Address] }), 20n, "the Issuer's inventory");
 
-  // The same implementation as the note under review.
-  const slot = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
-  const impl = async (a: Address) => `0x${(await client.getStorageAt({ address: a, slot }))!.slice(-40)}`.toLowerCase();
-  assert.equal(await impl(note), await impl(m.assets.note!.address as Address));
+  // The same fixed implementations as the note under review, and open for transfers.
+  const authority = (a: Address) => client.readContract({ address: a, abi: NOTE, functionName: "getImplementationAuthority" });
+  assert.equal(await authority(note), await authority(m.assets.note!.address as Address));
+  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "paused" }), false);
 
   // The calendar is the one chosen: four observations five minutes apart, from the terms' block.
   const DET = parseAbi(["function observation(uint256) view returns ((uint48 date, uint48 recordTime, uint48 paymentDate, bool coupon, bool mer, bool barrier, bool isFinal, uint32 merTriggerBps))"]);
@@ -75,11 +78,29 @@ test("a note is issued from the site, step by step, on the live note's implement
   assert.equal(Number(first.recordTime) - Number(first.date), 60);
   assert.deepEqual(n.calendar?.map((c) => c.date), [0, 1, 2, 3].map((k) => Number(first.date) + k * 300));
 
-  // Roles as the issuance script leaves them: the Paying Agent burns; no one keeps the snapshot role.
-  const burner = await client.readContract({ address: note, abi: NOTE, functionName: "BURNER_ROLE" });
-  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "hasRole", args: [burner, n.addresses.payingAgent as Address] }), true);
-  const snap = await client.readContract({ address: note, abi: NOTE, functionName: "SNAPSHOOTER_ROLE" });
-  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "hasRole", args: [snap, m.parties.issuer as Address] }), false);
+  // Agents as the issuance script leaves them, each restricted to its own powers.
+  const restricted = (a: Address) => client.readContract({ address: note, abi: NOTE, functionName: "getAgentRestrictions", args: [a] });
+  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "isAgent", args: [n.addresses.payingAgent as Address] }), true);
+  const pa = await restricted(n.addresses.payingAgent as Address);
+  assert.deepEqual([pa.disableBurn, pa.disablePause, pa.disableMint, pa.disableForceTransfer], [false, false, true, true], "the Paying Agent burns and pauses, nothing else");
+  const st = await restricted(n.addresses.settlement as Address);
+  assert.deepEqual([st.disablePartialFreeze, st.disableBurn, st.disableMint], [false, true, true], "the settlement contract only locks units");
+  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "isAgent", args: [m.parties.agent as Address] }), false, "the Agent's key holds no agent power");
+  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "isAgent", args: [m.parties.issuer as Address] }), false, "nor does the Issuer's");
+
+  // The factory records the note, keeps no agent power, and hands it to the controller, which governs it from the first block.
+  const FACTORY = parseAbi(["function noteOf(address) view returns ((uint256 series, address token, address identity, address identityRegistry, address compliance, address trustedIssuers, address claimTopics, address determinations, address recordDates, address payingAgent, address settlement, address inventory))"]);
+  const factory = m.identity!.noteFactory as Address;
+  const record = await client.readContract({ address: factory, abi: FACTORY, functionName: "noteOf", args: [note] });
+  assert.equal(record.payingAgent, n.addresses.payingAgent);
+  assert.equal(record.series, 2n);
+  assert.equal(await client.readContract({ address: note, abi: NOTE, functionName: "isAgent", args: [factory] }), false);
+  const OWNED = parseAbi(["function owner() view returns (address)"]);
+  assert.equal(await client.readContract({ address: note, abi: OWNED, functionName: "owner" }), m.governance!.controller, "governed by the controller");
+  const ctl = await restricted(m.governance!.controller);
+  assert.deepEqual([ctl.disableForceTransfer, ctl.disableMint, ctl.disablePartialFreeze], [false, false, true], "the controller corrects, mints by Tier 2, and does not lock units");
+  const DEPOSIT = parseAbi(["function allowlisted(address) view returns (bool)"]);
+  assert.equal(await client.readContract({ address: m.assets.deposit!.address as Address, abi: DEPOSIT, functionName: "allowlisted", args: [n.addresses.payingAgent as Address] }), true, "allowlisted on the deposit at issuance");
   assert.ok(lagging.staleReads() > 0, "issued through a lagging RPC");
 });
 
@@ -101,7 +122,49 @@ test("a note with six observations, an hour apart, is issued with that schedule"
   assert.equal(Number(last.recordTime) - Number(last.date), 720, "a fifth of an hour");
 });
 
-// --- selling restrictions and placement (ADR 0075; S-08, S-09) ---
+test("an issuance that lands after the site stopped waiting is picked up when the step runs again, not issued twice", async () => {
+  const started = await notes.startNote(operator as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 1, unit: "hours" }, units: 7 });
+  const landed = await notes.advanceIssuance(started.id);
+  assert.equal(landed!.step, 1, landed!.error);
+  const FACTORY = parseAbi(["function notes() view returns (address[])"]);
+  const factory = loadManifest().identity!.noteFactory as Address;
+  const before = await client.readContract({ address: factory, abi: FACTORY, functionName: "notes" });
+  // As the site found it on Ethereum Sepolia: the issuance on the chain, the step not recorded.
+  await store.updateNote({ ...landed!, step: 0, addresses: {}, calendar: undefined, txs: {} } as any, 1);
+  const again = await notes.advanceIssuance(started.id);
+  assert.equal(again!.step, 1, again!.error);
+  assert.equal(again!.addresses.note, landed!.addresses.note, "the same note, picked up");
+  assert.deepEqual(again!.calendar, landed!.calendar, "its calendar, read back from the chain");
+  assert.equal((again!.data as any).termSheet, (landed!.data as any).termSheet, "its term sheet, read back from its identity");
+  assert.equal((await client.readContract({ address: factory, abi: FACTORY, functionName: "notes" })).length, before.length, "no second note");
+  const n = await issued(started.id);
+  assert.equal(n.status, "issued", n.error);
+});
+
+test("a step in flight is left alone, not marked issued; one claimed longer ago than a page may run is released and run again; a stopped issuance stays stopped", async () => {
+  const started = await notes.startNote(operator as any, { scenario: "mer-at-trigger", observations: 4, interval: { value: 1, unit: "hours" }, units: 4 });
+  const inFlight = { ...started, step: -1, claimedAt: new Date().toISOString() };
+  assert.ok(await store.updateNote(inFlight as any, 0));
+  const polled = await notes.advanceIssuance(started.id);
+  assert.equal(polled!.status, "issuing", "not marked issued while its step is in flight");
+  assert.equal(polled!.step, -1);
+
+  const stale = { ...inFlight, claimedAt: new Date(Date.now() - 7 * 60_000).toISOString() };
+  assert.ok(await store.updateNote(stale as any, -1));
+  const rerun = await notes.advanceIssuance(started.id);
+  assert.equal(rerun!.step, 1, rerun!.error);
+  assert.ok(rerun!.addresses.note, "the released step ran: the note is issued on the chain");
+
+  await notes.stopIssuance(operator as any, started.id);
+  const stopped = (await store.noteById(started.id))!;
+  assert.equal(stopped.status, "failed");
+  assert.match(stopped.error!, /Stopped by operator@example.org at step 2/);
+  assert.equal(await store.updateNote({ ...stopped, status: "issuing", step: 2 } as any, -2), false, "a step still in flight cannot record itself after");
+  assert.equal((await notes.advanceIssuance(started.id))!.status, "failed");
+  await assert.rejects(notes.stopIssuance({ ...operator, email: "someone@corp.example" } as any, started.id), /Not permitted/);
+});
+
+// --- selling restrictions and placement (S-08, S-09) ---
 
 const place = await import("../lib/notes/place.ts");
 const { privateKeyToAccount } = await import("viem/accounts");
@@ -110,13 +173,29 @@ const LOCAL = JSON.parse((await import("node:fs")).readFileSync(join(REPO, "ops"
 const GATEWAY = parseAbi(["function credit(address account, uint256 amount, bytes32 bookingRef)"]);
 const BAL = parseAbi(["function balanceOf(address) view returns (uint256)"]);
 
-/** An admitted account as the site records it, for an account the local deployment onboarded without Reg S. */
-async function admitted(id: string, route: "custodied" | "self-custody", wallet: Address, registrantId: string) {
+const onboarding = await import("../lib/identity/onboarding.ts");
+const identities = await import("../lib/identity/onchain.ts");
+
+/** An account the local deployment onboarded, as the site records it once it is onboarded here. */
+async function admitted(id: string, route: "bank-custody" | "self-custody", wallet: Address, registrantId: string) {
   await store.putAdmission({
-    id, registrantId, route, status: "admitted", createdAt: new Date().toISOString(), officerRequestId: null, walletRequestId: null,
-    data: { assessment: { ok: true, summary: { wallet, corporation: "Test Institution One" } } },
+    id, registrantId, route, status: "onboarded", createdAt: new Date().toISOString(), officerRequestId: null, walletRequestId: null,
+    data: { wallet, identity: await identities.identityOf(wallet), request: { organisation: "Test Institution One", requestedBy: "treasury@corp.example" } },
   });
   return id;
+}
+
+/**
+ * The onboarding agent approves an account the deployment onboarded for cash only: its identity's
+ * manager records the client's consent, the client asks, and the onboarding agent vouches.
+ */
+async function approveForNote(id: string, manager: "depositAgent" | "custodian") {
+  const a = (await store.admissionById(id))!;
+  const identity = onboarding.dataOf(a).identity!;
+  await identities.consent(identity, manager, LOCAL.parties.onboardingAgent);
+  await store.updateAdmission({ ...a, data: { ...a.data, note: { status: "requested", requestedAt: new Date().toISOString(), answers: { notUsPerson: true, investorClass: "institutional" } } } }, a.status);
+  await onboarding.decideNote(operator as any, id, "approve");
+  await new Promise((r) => setTimeout(r, 1600)); // past the lagging RPC's window
 }
 async function credit(account: Address, cents: bigint) {
   const agent = createWalletClient({ account: privateKeyToAccount("0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6"), transport: http(RPC) });
@@ -129,14 +208,15 @@ test("S-09, then S-08: an unapproved wallet is refused; once approved, it accept
   const n = (await store.listNotes()).find((x) => x.observations === 6 && x.status === "issued")!;
   const investorC = LOCAL.parties.investorC as Address;
   const id = await admitted("adm_test_c", "self-custody", investorC, client3p.id);
+  const note = (await store.noteById(n.id))!;
   await credit(investorC, 1_000_000n); // €10,000.00
   const before = await client.readContract({ address: LOCAL.assets.deposit.address, abi: BAL, functionName: "balanceOf", args: [investorC] });
 
-  await assert.rejects(place.placeUnits(operator as any, n.id, id, 2, 100_000n), /lacks the Reg S flag \(S-09\)/);
-  assert.equal(await place.hasRegS(investorC), false);
-  await place.approveForNote(operator as any, id);
-  assert.equal(await place.hasRegS(investorC), true);
-  await assert.rejects(place.approveForNote(operator as any, id), /already approved/);
+  await assert.rejects(place.placeUnits(operator as any, n.id, id, 2, 100_000n), /buyer is not eligible for the note.*\(S-09, S-12\)/);
+  assert.equal(await place.eligibleFor(note, investorC), false);
+  await approveForNote(id, "depositAgent");
+  assert.equal(await place.eligibleFor(note, investorC), true);
+  await assert.rejects(onboarding.decideNote(operator as any, id, "approve"), /no request for the notes waiting/);
 
   const offered = await place.placeUnits(operator as any, n.id, id, 2, 100_000n);
   assert.equal(offered.status, "offered", "a client's own wallet accepts itself");
@@ -160,9 +240,13 @@ test("S-09, then S-08: an unapproved wallet is refused; once approved, it accept
 test("S-08 for a custody account: the custodian accepts in the same action, and both legs settle", async () => {
   const n = (await store.listNotes()).find((x) => x.observations === 6 && x.status === "issued")!;
   const account = LOCAL.custody.accounts["SEG-0003"] as Address;
-  const id = await admitted("adm_test_seg3", "custodied", account, operator.id);
+  const id = await admitted("adm_test_seg3", "bank-custody", account, operator.id);
   await credit(account, 200_000n);
-  await place.approveForNote(operator as any, id);
+  await approveForNote(id, "custodian");
+  // More than the account holds: refused before anything is sent, so no units are locked in an offer.
+  const before = (await place.offersOf((await store.noteById(n.id))!)).length;
+  await assert.rejects(place.placeUnits(operator as any, n.id, id, 1, 10n ** 15n), /The buyer holds .* of the deposit; 1 units cost .* The bank credits its deposit first/);
+  assert.equal((await place.offersOf((await store.noteById(n.id))!)).length, before, "no offer made");
   const p = await place.placeUnits(operator as any, n.id, id, 1, 100_000n);
   assert.equal(p.status, "settled");
   assert.ok(p.settledTx);
@@ -170,9 +254,28 @@ test("S-08 for a custody account: the custodian accepts in the same action, and 
   // The chain is the record: both placements, each settled.
   const offers = (await place.offersOf((await store.noteById(n.id))!)).map((x) => `${x.id}:${x.kind}:${x.status}`);
   assert.deepEqual(offers.sort(), ["1:placement:settled", "2:placement:settled"]);
+  // A custody account holding units cannot be closed: the refusal names the note.
+  const { stillHeld } = await import("../lib/identity/closing.ts");
+  const held = await stillHeld(account);
+  assert.ok(held.some((h) => h.startsWith("1 units of ")), held.join("; "));
 });
 
-// --- transfers, buy-backs and the inventory (ADR 0081; S-11 to S-14, S-16) ---
+test("a placement completes while the index still lags the chain, as on a public network: the new offer is read from the contract", async () => {
+  // The first note issued here, so the notes the trading tests use keep the positions they expect.
+  const n = (await store.listNotes()).find((x) => x.symbol === "EURWAN2" && x.status === "issued")!;
+  await credit(LOCAL.custody.accounts["SEG-0003"], 100_000n);
+  process.env.INDEX_SETTLE_BLOCKS = "100000"; // the index reads nothing newer than it already holds
+  try {
+    const offer = await place.placeUnits(operator as any, n.id, "adm_test_seg3", 1, 100_000n);
+    assert.equal(offer.status, "settled");
+    assert.equal(offer.units, 1);
+    assert.equal(offer.kind, "placement");
+  } finally {
+    delete process.env.INDEX_SETTLE_BLOCKS;
+  }
+});
+
+// --- transfers, buy-backs and the inventory (S-11 to S-14, S-16) ---
 
 const NOTE_VIEWS = parseAbi(["function balanceOf(address) view returns (uint256)", "function getFrozenTokens(address) view returns (uint256)", "function totalSupply() view returns (uint256)"]);
 const clientB = { ...operator, id: "reg_client_b", email: "treasury@second.example" };
@@ -233,16 +336,11 @@ test("S-11: transfers the bank arranges settle with each side acting as itself, 
   assert.equal(await units(n, investorB), 1n);
   assert.equal(await locked(n, investorC), 0n);
 
-  // S-12: a buyer whose grant is revoked is refused before anything is sent.
-  const [g, ref, commitment] = await Promise.all([
-    client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grantOf", args: [seg3] }),
-    client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "credentialRefOf", args: [seg3] }),
-    client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "commitmentOf", args: [seg3] }),
-  ]);
-  await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "revoke", args: [seg3], chain: null }) });
+  // S-12: a buyer whose note claim is revoked is refused before anything is sent.
+  await onboarding.revokeNote(operator as any, "adm_test_seg3", "Investor class under review");
   await new Promise((r) => setTimeout(r, 1600));
-  await assert.rejects(place.arrangeTrade(operator as any, n.id, { seller: "adm_test_c", buyer: "adm_test_seg3", units: 1, pricePerUnitCents: 100_000n }), /buyer's registry grant is revoked or has lapsed.*\(S-12\)/);
-  await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grant", args: [seg3, g.flags, g.jurisdiction, g.expiresAt, ref, commitment], chain: null }) });
+  await assert.rejects(place.arrangeTrade(operator as any, n.id, { seller: "adm_test_c", buyer: "adm_test_seg3", units: 1, pricePerUnitCents: 100_000n }), /buyer is not eligible for the note.*\(S-09, S-12\)/);
+  await approveForNote("adm_test_seg3", "custodian");
 });
 
 test("open offers: a client offers to buy, another takes it; an offer to sell is locked until withdrawn", async () => {
@@ -283,26 +381,22 @@ test("S-13: the Issuer buys units back into its inventory; S-14: no more can be 
 
   // An offer of the inventory locks those units: they cannot be cancelled meanwhile.
   const offered = await place.placeUnits(operator as any, n.id, "adm_test_c", 1, 100_000n);
-  await assert.rejects(place.cancelFromInventory(operator as any, n.id, Number(inventory) + 1), /holds \d+ units not offered; \d+ cannot be cancelled \(S-14\)/);
+  await assert.rejects(place.cancelFromInventory(operator as any, n.id, Number(inventory) + 1), /holds \d+ units not offered; \d+ cannot be cancelled/);
   await place.cancelOffer(operator as any, n.id, offered.id);
   await place.cancelFromInventory(operator as any, n.id, 2);
   await new Promise((r) => setTimeout(r, 1600));
   assert.equal(await client.readContract({ address: n.addresses.note as Address, abi: NOTE_VIEWS, functionName: "totalSupply" }), total - 2n, "the note's total reduced");
 });
 
-// --- determinations, payments and closure (ADR 0078) ---
+// --- determinations, payments and closure ---
 
 const life = await import("../lib/notes/lifecycle.ts");
-const closeout = await import("../lib/notes/closeout.ts");
-const REGISTRY = parseAbi([
-  "function grantOf(address account) view returns ((uint32 flags, uint16 jurisdiction, uint16 registrar, uint40 grantedAt, uint40 expiresAt))",
-  "function credentialRefOf(address) view returns (bytes32)",
-  "function commitmentOf(address) view returns (bytes32)",
-  "function grant(address account, uint32 flags, uint16 jurisdiction, uint40 expiresAt, bytes32 credentialRef, bytes32 commitment)",
-  "function revoke(address account)",
-]);
+const reconcile = await import("../lib/notes/reconcile.ts");
+const registry = await import("../lib/notes/registry.ts");
+/** A note's reconciliation statement, now or as at another moment. */
+const statementOf = async (n: { addresses: Record<string, string> }, asAt?: import("../lib/notes/reconcile.ts").AsAt) =>
+  reconcile.statementOf((await registry.noteOnRecord(n.addresses.note))!, asAt);
 const SUPPLY = parseAbi(["function totalSupply() view returns (uint256)", "function paused() view returns (bool)"]);
-const accessIssuer = createWalletClient({ account: privateKeyToAccount("0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"), transport: http(RPC) });
 
 /** Moves the local chain's clock to just past `t`, and mines a block there. */
 async function warpTo(t: number) {
@@ -315,7 +409,9 @@ const deposit = (a: Address) => client.readContract({ address: LOCAL.assets.depo
 
 /** Issues a four-date note two minutes apart and places units with the custody account and investor C. */
 async function placedNote(scenario: string, custodyUnits: number, walletUnits: number) {
-  const started = await notes.startNote(operator as any, { scenario, observations: 4, interval: { value: 2, unit: "minutes" as const }, units: 10 });
+  // Dates 30 minutes apart: the tests move the chain's clock to each, so no window lapses in real
+  // time on a slow machine before a test reaches it.
+  const started = await notes.startNote(operator as any, { scenario, observations: 4, interval: { value: 30, unit: "minutes" as const }, units: 10 });
   const n = await issued(started.id);
   assert.equal(n.status, "issued", n.error);
   await credit(LOCAL.custody.accounts["SEG-0003"], 100_000n * BigInt(custodyUnits));
@@ -337,9 +433,11 @@ test("a four-date note through its life: each date determined from the scenario'
   const investorC = LOCAL.parties.investorC as Address;
   let view = await life.lifecycleOf(n);
   assert.equal(view.dates.length, 4);
-  const open = await closeout.closeOutOf(n);
+  const open = await statementOf(n);
   assert.equal(open.closed, false, "not closed while units are outstanding");
-  assert.equal(open.checks.find((c) => c.label === "Supply is zero")?.ok, false);
+  assert.equal(open.state, "open");
+  assert.deepEqual(open.checks.filter((c) => !c.ok), [], "mid-life, every check that holds on any day passes");
+  assert.equal(open.checks.find((c) => c.label === "Supply is zero"), undefined, "the close-out's checks wait for the redemption");
   assert.equal(view.dates[0].can.determine, false, "not before its date");
   assert.match(view.dates[0].waiting ?? "", /Determinable from/);
   await assert.rejects(life.determineDate(operator as any, n.id, 0, view.dates[0].suggested.map(BigInt)), /determinable from/);
@@ -360,24 +458,20 @@ test("a four-date note through its life: each date determined from the scenario'
     await warpTo(d.paymentDate);
 
     if (k === 1) {
-      // A holder the deposit cannot credit (its grant revoked) is held for, not skipped (E3).
-      const [g, ref, commitment] = await Promise.all([
-        client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grantOf", args: [investorC] }),
-        client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "credentialRefOf", args: [investorC] }),
-        client.readContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "commitmentOf", args: [investorC] }),
-      ]);
-      await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "revoke", args: [investorC], chain: null }) });
+      // A holder the deposit cannot credit (the bank's claim revoked) is held for, not skipped (E3).
+      await onboarding.revokeDeposit(operator as any, "adm_test_c", "Screening hit under review");
       await life.payEvent(operator as any, n.id, k, "coupon");
       view = await life.lifecycleOf((await store.noteById(n.id))!);
       const held = view.dates[k].events[0].payments.find((p) => p.holder.toLowerCase() === investorC.toLowerCase())!;
       assert.equal(held.held, true);
       assert.equal(view.dates[k].events[0].closed, true, "the event still closes for everyone else");
       await assert.rejects(life.claimHeld(operator as any, n.id, view.dates[k].events[0].id, investorC), /cannot yet receive/);
-      await client.waitForTransactionReceipt({ hash: await accessIssuer.writeContract({ address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "grant", args: [investorC, g.flags, g.jurisdiction, g.expiresAt, ref, commitment], chain: null }) });
+      // The deployment onboarded investor C itself, so the bank vouches again on the chain directly.
+      await identities.vouch(onboarding.dataOf((await store.admissionById("adm_test_c"))!).identity!, "deposit", keccak256(toBytes("investor C, re-screened")));
       await new Promise((r) => setTimeout(r, 1600));
       const before = await deposit(investorC);
       await life.claimHeld(operator as any, n.id, view.dates[k].events[0].id, investorC);
-      assert.equal(await deposit(investorC), before + 2_500n, "claimed once its grant is live again");
+      assert.equal(await deposit(investorC), before + 2_500n, "claimed once the bank's claim stands again");
       continue;
     }
 
@@ -404,8 +498,8 @@ test("a four-date note through its life: each date determined from the scenario'
   assert.equal((await store.noteById(n.id))!.status, "closed");
   view = await life.lifecycleOf((await store.noteById(n.id))!);
   assert.equal(view.closed, true);
-  // S-33: the close-out statement confirms every position at zero, with what each was paid.
-  const statement = await closeout.closeOutOf((await store.noteById(n.id))!);
+  // S-33: the statement, once redeemed, confirms every position at zero, with what each was paid.
+  const statement = await statementOf((await store.noteById(n.id))!);
   assert.deepEqual(statement.checks.filter((c) => !c.ok), [], "every close-out check passes");
   assert.equal(statement.closed, true);
   assert.ok(statement.positions.every((p) => p.balance === "0"));
@@ -417,6 +511,45 @@ test("a four-date note through its life: each date determined from the scenario'
   assert.deepEqual([pos(investorC).unitsIn, pos(investorC).unitsOut, pos(investorC).couponCents], ["1", "1", String(3 * 2_500)]);
   const paid = await life.paymentsTo(custody);
   assert.deepEqual(paid.filter((p) => p.note.id === n.id).map((p) => `${p.kind}:${p.amount}`), ["coupon:5000", "coupon:5000", "coupon:5000", "redemption:180000"]);
+
+  // As at the block of the first statement, before any date, the same note was open, with the same figures.
+  const before = await statementOf((await store.noteById(n.id))!, { kind: "block", block: BigInt(open.block) });
+  assert.equal(before.state, "open");
+  assert.equal(before.block, open.block, "read at the block asked for");
+  assert.equal(before.totals.units, open.totals.units, "the same figures as when it was read then");
+  assert.deepEqual(before.checks.filter((c) => !c.ok), []);
+  // The CSV carries every position, one row each.
+  const csv = reconcile.positionsCsv(statement).trim().split("\n");
+  assert.equal(csv[0], "note,block,as_at,account,name,units_in,units_out,balance,locked_units,eligible,coupons_eur,redemption_eur,held_eur");
+  assert.equal(csv.length, statement.positions.length + 1);
+});
+
+test("every note the factory issued has a statement, the deployment's note under review included; a day before issuance is refused", async () => {
+  const notes = await registry.notesOnRecord();
+  const underReview = notes.find((n) => n.underReview);
+  assert.ok(underReview, "the deployment's own note");
+  assert.ok(notes.length >= 2, "and the notes issued here");
+  const s = await reconcile.statementOf(underReview!);
+  assert.equal(s.note.symbol, "EURWAN");
+  assert.deepEqual(s.checks.filter((c) => !c.ok), [], "the note under review reconciles, its term sheet matching it");
+  // Its term sheet: the record it was issued from, held, and published at the address its identity carries.
+  const { hashOf, validate } = await import("../lib/notes/termsheet.ts");
+  const deployed = loadManifest().termSheet as import("../lib/notes/termsheet.ts").TermSheet;
+  assert.deepEqual(validate(deployed), []);
+  assert.equal(s.termSheet?.hash, hashOf(deployed));
+  assert.equal(s.termSheet?.held, true);
+  assert.match(s.termSheet!.uri, new RegExp(`/term-sheets/${hashOf(deployed)}$`));
+
+  // A note issued here carries a record of its own, built from its scenario and calendar.
+  const series = notes.find((n) => !n.underReview)!;
+  const own = await reconcile.statementOf(series);
+  assert.notEqual(own.termSheet?.hash, s.termSheet?.hash, "each note its own term sheet");
+  assert.ok(own.checks.find((c) => c.label === "The term sheet matches the note")?.ok);
+  assert.ok(s.positions.some((p) => p.balance !== "0" && p.eligible));
+  const today = new Date(Number((await client.getBlock()).timestamp) * 1000).toISOString().slice(0, 10);
+  const asAtToday = await reconcile.statementOf(underReview!, { kind: "day", day: today });
+  assert.match(asAtToday.asAt, /the close of .* \(UTC\), so far/);
+  await assert.rejects(reconcile.statementOf(underReview!, { kind: "day", day: "2001-01-01" }), /issued after 2001-01-01/);
 });
 
 test("an early redemption ends the note: the dates after it fall away", async () => {
@@ -439,7 +572,98 @@ test("an early redemption ends the note: the dates after it fall away", async ()
   assert.equal((await store.noteById(n.id))!.status, "closed");
 });
 
-// --- ETH for fees (ADR 0080) ---
+test("four eyes: with no automatic second approver, a determination and a payment wait for a second person with the same duty, never their proposer", async () => {
+  const jobs = await import("../lib/jobs.ts");
+  const colleague = { ...operator, id: "reg_colleague", email: "colleague@example.org" };
+  const outsider = { ...operator, id: "reg_outsider", email: "outsider@example.org" };
+  // The colleague is at the Agent's desk with both duties; the outsider is at the desk, with neither.
+  Object.assign(process.env, { FOUR_EYES: "strict", AGENT_EMAILS: "colleague@example.org,outsider@example.org", CALCULATION_EMAILS: "operator@example.org,colleague@example.org", PAYMENTS_EMAILS: "operator@example.org,colleague@example.org" });
+  try {
+    const n = await placedNote("coupon-at-barrier", 1, 0);
+    let view = await life.lifecycleOf((await store.noteById(n.id))!);
+    await warpTo(view.dates[0].date);
+    await assert.rejects(life.proposeDetermination(outsider as any, n.id, 0, view.dates[0].suggested.map(BigInt)), /Only Calculation Agent staff/);
+    assert.equal(await life.determineDate(operator as any, n.id, 0, view.dates[0].suggested.map(BigInt), "Exchange closing levels"), null, "proposed, not sent");
+    const proposed = (await jobs.jobsFor(n.id)).find((j) => j.kind === "determination")!;
+    assert.equal(proposed.state, "awaiting approval");
+    assert.equal(proposed.data.source, "Exchange closing levels");
+    await assert.rejects(jobs.approveJob(operator as any, proposed.id), /A second person approves/);
+    await assert.rejects(jobs.approveJob(outsider as any, proposed.id), /Only Calculation Agent staff approve/);
+    await assert.rejects(life.proposeDetermination(colleague as any, n.id, 0, view.dates[0].suggested.map(BigInt)), /already waiting for approval/);
+    view = await life.lifecycleOf((await store.noteById(n.id))!);
+    assert.equal(view.dates[0].determined, false, "nothing sent before approval");
+    const approved = await jobs.approveJob(colleague as any, proposed.id);
+    assert.deepEqual([approved.state, approved.approval?.by, approved.approval?.automatic], ["queued", "colleague@example.org", false]);
+    assert.equal((await jobs.runToEnd(proposed.id)).state, "done");
+    view = await life.lifecycleOf((await store.noteById(n.id))!);
+    assert.equal(view.dates[0].determined, true);
+
+    // The coupon: proposed by the colleague, declined once with a reason, then approved by the operator.
+    await warpTo(view.dates[0].paymentDate);
+    const first = await life.startPayment(colleague as any, n.id, 0, "coupon");
+    assert.equal(first.state, "awaiting approval");
+    await assert.rejects(jobs.rejectJob(operator as any, first.id, " "), /Give a reason/);
+    await jobs.rejectJob(operator as any, first.id, "Wrong date booked");
+    assert.equal((await getStore().jobById(first.id))?.state, "stopped");
+    const second = await life.startPayment(colleague as any, n.id, 0, "coupon");
+    await jobs.approveJob(operator as any, second.id);
+    assert.equal((await jobs.runToEnd(second.id)).state, "done", (await getStore().jobById(second.id))?.error);
+    view = await life.lifecycleOf((await store.noteById(n.id))!);
+    assert.equal(view.dates[0].events.find((e) => e.kind === "coupon")?.closed, true);
+  } finally {
+    Object.assign(process.env, { FOUR_EYES: "", AGENT_EMAILS: "", CALCULATION_EMAILS: "", PAYMENTS_EMAILS: "" });
+  }
+});
+
+test("a note is issued from a term sheet staff upload: checked first, then its record is the note's terms, ISIN and published term sheet", async () => {
+  const { termSheetFrom, hashOf, v } = await import("../lib/notes/termsheet.ts");
+  const now = Number((await client.getBlock()).timestamp);
+  const hour = 3600;
+  const record = termSheetFrom({
+    name: "EUR Worst-of Autocallable Note, from its term sheet",
+    symbol: "EURWANTS",
+    chainId: LOCAL.chainId,
+    issueSizeUnits: 12,
+    strikeTime: now,
+    initialLevels: [451200, 1820300, 25000],
+    calculationAmountCents: 100000,
+    couponBarrierBps: 7000,
+    couponRateBps: 250,
+    memory: false,
+    barrierBps: 6000,
+    twinWin: { applies: false, upBps: 0, downBps: 0, capBps: 0 },
+    schedule: [1, 2].map((k) => ({ date: now + k * hour, recordTime: now + k * hour + 600, paymentDate: now + k * hour + 1200, coupon: true, mer: k === 1, barrier: k === 2, isFinal: k === 2, merTriggerBps: k === 1 ? 10000 : 0 })),
+    depositSymbol: "EURTD",
+  });
+  record.fields.isin = v("XS0000001239");
+  const raw = JSON.stringify(record);
+
+  // Checked before anything is sent.
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, "not json"), /not JSON/);
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, JSON.stringify({ ...record, fields: { ...record.fields, chainId: v(1) } })), /for network 1; this deployment is on/);
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, JSON.stringify({ ...record, fields: { ...record.fields, isin: v("XS0000001238") } })), /check digit/);
+  const { underlyings: _u, ...missing } = record.fields;
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, JSON.stringify({ ...record, fields: missing })), /not complete: underlyings/);
+  const past = JSON.parse(raw);
+  past.fields.calendar.value[0].recordTime.value = now - 10;
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, JSON.stringify(past)), /first Record Time has passed/);
+
+  const started = await notes.startNoteFromTermSheet(operator as any, raw);
+  assert.deepEqual([started.symbol, started.isin, started.units, started.observations], ["EURWANTS", "XS0000001239", 12, 2]);
+  await assert.rejects(notes.startNoteFromTermSheet(operator as any, raw), /symbol EURWANTS is already used/);
+  const n = await issued(started.id);
+  assert.equal(n.status, "issued", n.error);
+  assert.equal((n.data as any).termSheet, hashOf(record), "published as uploaded, at its own hash");
+  assert.deepEqual(n.calendar?.map((x) => x.date), [now + hour, now + 2 * hour], "its own calendar");
+  const NOTE = parseAbi(["function totalSupply() view returns (uint256)", "function symbol() view returns (string)"]);
+  assert.equal(await client.readContract({ address: n.addresses.note as Address, abi: NOTE, functionName: "totalSupply" }), 12n);
+  const rec = await registry.noteOnRecord(n.addresses.note);
+  assert.equal(rec?.isin, "XS0000001239", "the ISIN on the note's series claim");
+  const statement = await reconcile.statementOf(rec!);
+  assert.ok(statement.checks.find((c) => c.label === "The term sheet matches the note")?.ok, "the terms on the chain are the record's");
+});
+
+// --- ETH for fees ---
 
 test("a key that cannot pay its fees is refused before signing, named, warned about, and topped up from the best-funded key", async () => {
   const keys = await import("../lib/chain/keys.ts");
@@ -448,15 +672,17 @@ test("a key that cannot pay its fees is refused before signing, named, warned ab
   const s = signers(defineChain({ id: 31337, name: "local", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [RPC] } } }), RPC);
   const calc = s.address("calculationAgent");
   await client.request({ method: "anvil_setBalance" as any, params: [calc, "0x3e8"] as any }); // 1,000 wei
+  await client.request({ method: "evm_mine" as any, params: [] as any });
+  await new Promise((r) => setTimeout(r, 1_600)); // past the lagging RPC's window
 
   const view = await keys.keyBalances(true);
   assert.equal(view.rows.find((r) => r.capacity === "calculationAgent")?.state, "empty");
   assert.equal(view.rows.find((r) => r.capacity === "servicing1")?.state, "signs-only");
-  assert.ok((await keys.lowKeys()).some((r) => r.capacity === "calculationAgent"), "every Operator page warns of it");
+  assert.ok((await keys.lowKeys()).some((r) => r.capacity === "calculationAgent"), "every staff portal warns of it");
 
   await assert.rejects(
-    s.send("calculationAgent", { address: LOCAL.instruments.registry, abi: REGISTRY, functionName: "revoke", args: [LOCAL.parties.investorD] }),
-    /The Calculation Agent's key 0x[0-9a-fA-F]{40} holds 0\.000000000000001 ETH; this transaction needs about .* Top it up under Operator → Keys\./,
+    s.send("calculationAgent", { address: LOCAL.instruments.gateway, abi: GATEWAY, functionName: "credit", args: [LOCAL.parties.investorD, 1n, keccak256(toBytes("fees"))] }),
+    /The Calculation Agent's key 0x[0-9a-fA-F]{40} holds 0\.000000000000001 ETH; this transaction needs about .* Top it up under Agent → Keys\./,
   );
 
   await assert.rejects(keys.topUp({ ...operator, email: "someone@corp.example" } as any, "calculationAgent"), /Not permitted/);

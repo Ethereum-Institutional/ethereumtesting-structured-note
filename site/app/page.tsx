@@ -46,14 +46,14 @@ function Landing() {
         <section className="panel">
           <h2>Register</h2>
           <p className="muted">
-            Confirm your email address from the link sent to it. Access is granted once your registration has been
-            approved.
+            Confirm your email address with the six-digit code sent to it. Access is granted once your registration has
+            been approved.
           </p>
           <RegisterForm />
         </section>
         <section className="panel">
           <h2>Already registered</h2>
-          <p className="muted">A one-time sign-in link is sent to the address you registered.</p>
+          <p className="muted">A one-time six-digit code is sent to the address you registered.</p>
           <SignInForm />
         </section>
       </div>

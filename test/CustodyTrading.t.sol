@@ -5,14 +5,15 @@ import {console2} from "forge-std/Test.sol";
 import {PermissionFlags} from "@uniswap/v4-periphery/src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
 import {CustodyAccount} from "../contracts/CustodyAccount.sol";
+import {PoolAccess} from "../script/PoolAccess.sol";
 import {VenueTestBase} from "./VenueTestBase.sol";
 
 /**
  * One Custodian operating segregated client accounts in the conversion pool.
  *
  * What is proved is that segregation is real on-chain: each client account is an independent
- * holder with its own grant, so action against one client cannot touch another. An omnibus
- * wallet cannot give that. Forced transfer on the deposit is exercised only through the
+ * holder with its own identity and claims, so action against one client cannot touch another. An
+ * omnibus wallet cannot give that. Forced transfer on the deposit is exercised only through the
  * controller's reversal, in the instruments' tests.
  *
  *   forge test --fork-url http://127.0.0.1:8545 --match-path test/CustodyTrading.t.sol -vv
@@ -69,6 +70,7 @@ contract CustodyTradingTest is VenueTestBase {
     function test_notAdmittedClient_refusedByThePool() public {
         assertTrue(deposit.canReceive(seg3), "the deposit accepts SEG-0003");
         assertFalse(gate.isAllowed(seg3), "not admitted");
+        assertTrue(PoolAccess.identityOf(manifest, seg3) != address(0), "though it has an identity");
         _expectCustodianConvertReverts(seg3);
     }
 
@@ -81,8 +83,9 @@ contract CustodyTradingTest is VenueTestBase {
 
     /// The segregation property: freezing one client leaves its sibling converting.
     function test_freezingOneClientDoesNotAffectOthers() public {
+        uint256 whole = deposit.balanceOf(seg1);
         _as(depositAgent);
-        deposit.setAddressFrozen(seg1, true);
+        deposit.setFrozenTokens(seg1, whole);
 
         assertTrue(checker.checkAllowlist(seg1, address(deposit)) == PermissionFlags.NONE, "frozen client blocked");
         assertTrue(_may(seg2, PermissionFlags.SWAP_ALLOWED), "sibling client unaffected");

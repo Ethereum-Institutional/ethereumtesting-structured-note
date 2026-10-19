@@ -9,7 +9,7 @@ import { Bar } from "../Bar";
 export const dynamic = "force-dynamic";
 
 /**
- * The Ledger (ADR 0071; S-35): the whole lifecycle as the chain records it, decoded from events
+ * The Ledger (S-35): the whole lifecycle as the chain records it, decoded from events
  * and calldata alone, for every approved user. Staff also see the register reconciliation.
  */
 
@@ -102,15 +102,15 @@ export default async function Ledger() {
         <>
           <h2 id="register">Register reconciliation</h2>
           <p className="muted">
-            Staff only. Every account the chain has granted or the site has onboarded: what the chain says, what the site's
-            records say, and where they differ.
+            Staff only. Every wallet the identity storage has held, or the site has onboarded: what the chain says, what the
+            site's records say, and where they differ.
           </p>
           {registerProblem && <p className="notice err">{registerProblem}</p>}
           {register && (
             <div className="table-wrap panel">
               <table>
                 <thead>
-                  <tr><th>Account</th><th>Pool</th><th>Registry</th><th>{m.assets.deposit?.symbol}</th><th>{m.assets.note?.symbol}</th><th>Client</th><th>Route</th><th>Site status</th><th>Finding</th></tr>
+                  <tr><th>Account</th><th>Identity</th><th>Deposit eligible</th><th>Note eligible</th><th>{m.assets.deposit?.symbol}</th><th>Units of the notes</th><th>Client</th><th>Route</th><th>Site status</th><th>Finding</th></tr>
                 </thead>
                 <tbody>
                   {register.map((r) => {
@@ -121,10 +121,11 @@ export default async function Ledger() {
                           {href ? <a href={href} target="_blank" rel="noreferrer"><Arg text={r.account} /></a> : <Arg text={r.account} />}
                           {r.label && <><br /><span className="muted">{r.label}</span></>}
                         </td>
-                        <td>{r.onChain.pool ? "admitted" : "—"}</td>
-                        <td>{r.onChain.registryFlags ? `flags ${r.onChain.registryFlags}` : "—"}</td>
+                        <td>{r.onChain.identity ? <Arg text={r.onChain.identity} /> : "—"}</td>
+                        <td>{r.onChain.depositEligible ? "yes" : "—"}</td>
+                        <td>{r.onChain.noteEligible ? "yes" : "—"}</td>
                         <td>{units(r.onChain.deposit, m.assets.deposit?.decimals ?? 2)}</td>
-                        <td>{String(r.onChain.note)}</td>
+                        <td style={{ whiteSpace: "normal" }}>{r.onChain.holdings.length ? r.onChain.holdings.map((h) => `${h.units} ${h.symbol}`).join(", ") : "—"}</td>
                         <td>{r.site?.client ?? ""}</td>
                         <td>{routeLabel(r.site?.route)}</td>
                         <td>{r.site?.status ?? ""}</td>

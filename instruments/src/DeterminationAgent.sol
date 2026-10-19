@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-pragma solidity 0.8.34;
+pragma solidity 0.8.30;
 
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {IDeterminationAgent} from "./interfaces/IDeterminationAgent.sol";
+import {IProgrammeRoles} from "./interfaces/IProgrammeRoles.sol";
 
 /**
  * @title DeterminationAgent
@@ -23,8 +24,16 @@ import {IDeterminationAgent} from "./interfaces/IDeterminationAgent.sol";
  *   quotient, rounded once per Calculation Amount, half a cent upward (R1, R2).
  * - **In order, once, until termination** (S1 to S3). Within a date: barrier, coupon, MER.
  * - **No disruption logic** (D3). A determination is accepted any time after its date.
+ * - **The Calculation Agent is the programme's** (ADR 0115). Its signing address is read from the
+ *   programme's roles at each determination, so it is rotated once for every note.
+ * - **Correction** (ADR 0115). The governance controller, by a Tier 2 act, replaces the latest
+ *   determination with Levels the Calculation Agent signs again, recomputed from the state before
+ *   that date, so a wrong determination is never final. Any payment already made on it is reversed
+ *   and restated by the same act, through the Paying Agent.
  *
- * Nothing is upgradeable and nothing is settable after construction.
+ * Deployed once as an implementation and cloned for each note (ADR 0115); a clone is initialised
+ * with its terms in the transaction that creates it. Nothing is upgradeable, and the terms are
+ * never settable after initialisation.
  */
 contract DeterminationAgent is IDeterminationAgent, EIP712 {
     uint256 private constant B = 10_000;
@@ -36,22 +45,44 @@ contract DeterminationAgent is IDeterminationAgent, EIP712 {
         "bool redeemed,uint64 redemptionPerCa,uint8 worstIndex)"
     );
 
-    /// @notice The Calculation Agent's signing address; a contract account is supported.
-    address public immutable CALCULATION_AGENT;
+    /// @notice The programme's roles: the Calculation Agent, and the governance controller.
+    IProgrammeRoles public roles;
 
     Terms private _terms;
     mapping(uint256 dateIndex => Outcome) private _outcomes;
     mapping(uint256 dateIndex => uint256[]) private _levels;
+    /// @dev The coupon count and breach before each date was determined, for its correction.
+    mapping(uint256 dateIndex => Before) private _before;
+
+    struct Before {
+        uint256 missedCoupons;
+        bool breached;
+    }
 
     uint256 public nextDate;
     bool public terminated;
     uint256 public missedCoupons;
     bool public breached;
+    bool private _initialized;
 
-    constructor(Terms memory t, address calculationAgent) EIP712("DeterminationAgent", "1") {
+    event Corrected(uint256 indexed dateIndex, uint256[] levels, Outcome outcome);
+
+    error AlreadyInitialized();
+    error NotGovernance(address caller);
+    error NotLatestDate(uint256 dateIndex, uint256 latest);
+
+    /// @dev The implementation itself is never initialised: only its clones are.
+    constructor() EIP712("DeterminationAgent", "1") {
+        _initialized = true;
+    }
+
+    /// @notice Fixes a clone's terms, once, in the transaction that creates it.
+    function initialize(Terms calldata t, IProgrammeRoles roles_) external {
+        if (_initialized) revert AlreadyInitialized();
+        _initialized = true;
         _validate(t);
-        if (calculationAgent == address(0)) revert InvalidTerms("calculation agent");
-        CALCULATION_AGENT = calculationAgent;
+        if (address(roles_) == address(0)) revert InvalidTerms("programme roles");
+        roles = roles_;
         _terms.initialLevels = t.initialLevels;
         _terms.calculationAmountCents = t.calculationAmountCents;
         _terms.couponBarrierBps = t.couponBarrierBps;
@@ -81,10 +112,11 @@ contract DeterminationAgent is IDeterminationAgent, EIP712 {
 
         (Outcome memory computed, uint256 missedAfter) = compute(dateIndex, levels);
         if (keccak256(abi.encode(computed)) != keccak256(abi.encode(claimed))) revert OutcomeDisagrees(computed);
-        if (!SignatureChecker.isValidSignatureNow(CALCULATION_AGENT, digest(dateIndex, levels, claimed), signature)) {
+        if (!SignatureChecker.isValidSignatureNow(calculationAgent(), digest(dateIndex, levels, claimed), signature)) {
             revert BadSignature();
         }
 
+        _before[dateIndex] = Before(missedCoupons, breached);
         _outcomes[dateIndex] = computed;
         _levels[dateIndex] = levels;
         nextDate = dateIndex + 1;
@@ -92,6 +124,36 @@ contract DeterminationAgent is IDeterminationAgent, EIP712 {
         breached = computed.breached;
         if (computed.redeemed) terminated = true;
         emit Determined(dateIndex, levels, computed);
+    }
+
+    /**
+     * @notice Replaces the latest determination with Levels the Calculation Agent signs again,
+     *         recomputed from the coupon count and breach as they stood before that date. The
+     *         governance controller alone, by a Tier 2 act. The note's termination follows the
+     *         corrected outcome.
+     */
+    function correct(uint256 dateIndex, uint256[] calldata levels, Outcome calldata claimed, bytes calldata signature)
+        external
+    {
+        if (msg.sender != roles.governance()) revert NotGovernance(msg.sender);
+        if (nextDate == 0 || dateIndex != nextDate - 1) revert NotLatestDate(dateIndex, nextDate == 0 ? 0 : nextDate - 1);
+        Before memory b = _before[dateIndex];
+        (Outcome memory computed, uint256 missedAfter) = _compute(dateIndex, levels, b.missedCoupons, b.breached);
+        if (keccak256(abi.encode(computed)) != keccak256(abi.encode(claimed))) revert OutcomeDisagrees(computed);
+        if (!SignatureChecker.isValidSignatureNow(calculationAgent(), digest(dateIndex, levels, claimed), signature)) {
+            revert BadSignature();
+        }
+        _outcomes[dateIndex] = computed;
+        _levels[dateIndex] = levels;
+        missedCoupons = missedAfter;
+        breached = computed.breached;
+        terminated = computed.redeemed;
+        emit Corrected(dateIndex, levels, computed);
+    }
+
+    /// @notice The Calculation Agent's signing address now, as the programme's roles record it.
+    function calculationAgent() public view returns (address) {
+        return roles.calculationAgent();
     }
 
     /// @notice The EIP-712 digest the Calculation Agent signs.
@@ -122,6 +184,25 @@ contract DeterminationAgent is IDeterminationAgent, EIP712 {
         view
         returns (Outcome memory out, uint256 missedAfter)
     {
+        return _compute(dateIndex, levels, missedCoupons, breached);
+    }
+
+    /**
+     * @notice The outcome a correction of the latest date to `levels` would record, from the coupon
+     *         count and breach as they stood before that date was determined. Reads state; changes none.
+     */
+    function computeCorrection(uint256 dateIndex, uint256[] calldata levels) external view returns (Outcome memory out) {
+        if (nextDate == 0 || dateIndex != nextDate - 1) revert NotLatestDate(dateIndex, nextDate == 0 ? 0 : nextDate - 1);
+        Before memory b = _before[dateIndex];
+        (out,) = _compute(dateIndex, levels, b.missedCoupons, b.breached);
+    }
+
+    /// @dev The outcome for `dateIndex` from the coupon count and breach given.
+    function _compute(uint256 dateIndex, uint256[] calldata levels, uint256 missedIn, bool breachedIn)
+        private
+        view
+        returns (Outcome memory out, uint256 missedAfter)
+    {
         Terms storage t = _terms;
         uint256 n = t.initialLevels.length;
         if (levels.length != n) revert InvalidLevels();
@@ -139,10 +220,10 @@ contract DeterminationAgent is IDeterminationAgent, EIP712 {
         uint256 i = t.initialLevels[w];
         out.worstIndex = uint8(w);
         uint256 ca = t.calculationAmountCents;
-        missedAfter = missedCoupons;
+        missedAfter = missedIn;
 
         // S2: barrier, then coupon, then MER. B3: a breach is strictly below.
-        out.breached = breached || (o.barrier && f * B < t.barrierBps * i);
+        out.breached = breachedIn || (o.barrier && f * B < t.barrierBps * i);
 
         if (o.coupon) {
             if (f * B >= t.couponBarrierBps * i) {

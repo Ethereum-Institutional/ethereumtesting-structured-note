@@ -1,13 +1,23 @@
 # Structured note PoC
 
-A proof of concept for native issuance of a structured note on a public test network, with the
-Agent acting as issuing and paying agent, registrar and transfer agent.
+A proof of concept for native issuance of structured notes on a public test network, with the
+Agent acting as issuing and paying agent, registrar and transfer agent for a programme of notes.
+Release 0.3.0: each note an ERC-3643 token, issued whole by a note factory the Issuer's 2-of-3
+wallet owns and governed from its first block by one governance controller for every note;
+onboarding by role on ONCHAINID identities; the bank's tokenized deposit; the conversion pool; and
+a desk that runs the book, with background jobs, an index of the programme's events, and four eyes
+on determinations and payments. It is deployed to Ethereum Sepolia, every contract verified on
+Etherscan, and the site at https://structurednote-project.ethereumtesting.com points at it.
 
-- **What is being built and why:** `docs/solution-overview.html`, the signed-off phase 0a
-  deliverable. The gated site in `site/` serves it.
-- **Where things stand, decisions taken, hazards and open items:** `HANDOFF.md`. Read it
-  before changing anything.
-- **Why each design decision went the way it did:** `docs/adr/`.
+- **What is being built and why:** `docs/solution-overview.html`, and its PDF,
+  `docs/solution-overview.pdf`, generated from it. The gated site in `site/` serves the overview.
+- **The order of a note's life,** step by step, as the contracts enforce it:
+  `docs/lifecycle-sequence.md`.
+- **Why each design decision went the way it did:** `docs/adr/`, one current record per topic,
+  indexed in its README.
+- **The release plans:** `docs/plan/0.3.0.md`, and 0.2.0's before it.
+- **Where things stand, hazards and open items:** `HANDOFF.md`.
+- **For the bank's IT team:** `docs/it-handover.md` and `docs/ai-build-brief.md`.
 - **Spikes:** `docs/spikes/`, with their harnesses under `spikes/`.
 
 Parties are referred to by capacity throughout. No client, counterparty or vendor is named in
@@ -16,39 +26,58 @@ this repository.
 ## Layout
 
 The contracts build in two compilation units, because no single compiler configuration fits
-both under EIP-170 (spike 1).
+both: the venue's pool library needs the IR pipeline at high optimizer runs, and T-REX pins its own
+compiler.
 
 | Directory | Unit | Holds |
 |---|---|---|
-| `contracts/`, `script/`, `test/` | solc 0.8.26, IR pipeline | The venue: compliance hook, checker, router, custody accounts, and their deploy scripts and tests |
-| `instruments/` | solc 0.8.34, legacy pipeline | The note and the tokenized deposit, on the debt standard pinned at its release candidate |
-| `site/` | Next.js | The registration-gated site, and the chain library the operations console will use |
-| `ops/` | | Local chain and deploy scripts |
+| `instruments/` | solc 0.8.30, T-REX 5.0.0-beta2 and ONCHAINID 2.2 by Soldeer | The notes (ERC-3643), the record-date and sanctions modules, the claim issuers, the tokenized deposit and its gateway, the Determination Agent, the Paying Agent, locked settlement, the note factory and the governance controller, with their deploy scripts and tests |
+| `contracts/`, `script/`, `test/` | solc 0.8.26, IR pipeline | The venue (hook, checker, router, pool gate) and custody accounts, with their deploy scripts and tests |
+| `site/` | Next.js | The site: five portals behind sign-in by emailed code, the Book, background jobs, the event index, the Ledger, reconciliation, and the chain library |
+| `ops/` | | The local chain, the deploy sequence, snapshots and keys; `ops/sepolia.sh` for the Ethereum Sepolia deployment; `ops/vm/`, the site's container bundle for the bank's virtual machine |
+| `docs/` | | The overview and its PDF, the lifecycle sequence, the IT hand-over guide, the AI build brief, the decision records, the plans and spikes |
 
-The venue is the conversion pool: the euro payment token against the tokenized deposit, gated by
-the deposit's own eligibility and by the pool's credential gate, which admits only holders of a
-credential from the configured issuer whose attributes meet the configured policy (ADRs 0028 to
-0041). Locally the payment token is a stand-in in `test/fixtures/` and the credential protocol's
-released registries are installed at their canonical addresses; on the test network both are the
-real deployments, named in the network file (`ops/networks/`).
+T-REX and ONCHAINID are GPL-3.0; only the files that compile them in carry that licence.
+
+The venue is the conversion pool, deployed by default: the euro payment token against the
+tokenized deposit, gated by the deposit's own eligibility and by the pool's gate on the same
+ONCHAINID identities. The gate reads the pool's own ERC-3643 identity registry, which
+requires the bank's pool-access claim, and admits a wallet whose country is one the pool serves and
+whom supervision has not withdrawn. Locally the payment token is a stand-in in `test/fixtures/`; on
+the test network it is EURC, named in the network file (`ops/networks/`).
 
 ## Running it locally
 
-You need Foundry and Node 20 or later.
+You need Foundry, Node 24 or later (the scripts and tests are TypeScript, run directly), and `jq`.
 
 ```bash
-git submodule update --init --recursive   # nothing compiles without them
-./ops/reset.sh                            # fresh local chain, whole stack deployed
-forge test --fork-url http://127.0.0.1:8545 -vv
-./ops/build.sh                            # both units, with the EIP-170 check
-./ops/dry-run-fork.sh                     # the whole stack against a fork of the test network
+git submodule update --init --recursive   # the venue's dependencies
+(cd instruments && forge soldeer install) # T-REX, ONCHAINID, OpenZeppelin
+(cd site && npm install)
+./ops/reset.sh                            # fresh local chain, whole stack deployed, or a snapshot restored
+cd site && npm run test:local             # unit, integration and browser tests, on the local chain only
 ```
 
-The dry run needs `ops/networks/base-sepolia.json`, which is not committed; copy the template
-beside it and fill it from the private working documents.
+`ops/reset.sh` deploys afresh only when what the deployment is made from has changed, and otherwise
+restores a snapshot in seconds; `FRESH=1` forces a deployment. The deploy sequence is
+`ops/deploy-stack.sh`, and its order cannot change: the base (parties and payment token), the
+scaffolding (`DeployInstruments`), the venue (scripts 01 to 03, unless `POOL=0`), custody (04), the
+programme (`DeployProgramme`), the term sheet, the first note (`IssueNote`), and the ceremony.
 
-The deploy sequence and why it is ordered as it is are in `ops/README.md`. With Claude Code,
-`/demo` does all of the above.
+On Ethereum Sepolia, `./ops/sepolia.sh check` checks every key's balance and sends nothing;
+`deploy` deploys the whole stack and verifies it on Etherscan; `verify` retries verification; and
+`site-env` points the site's Vercel project at the deployment.
+
+| Suite | Command | Runs |
+|---|---|---|
+| Instruments | `cd instruments && forge test` | 104, including the lifecycle walked in order and the 25 payoff scenarios to the cent |
+| Venue | `forge test --fork-url http://127.0.0.1:8545` | 31, against the deployed stack after the ceremony |
+| Site, unit | `cd site && npm test` | 47 |
+| Site, integration | `cd site && npm run test:admission` | 45: onboarding, notes, governance, jobs, the deposit and the deployment, through a proxy that answers a block behind, as a load-balanced public RPC does |
+| Site, browser | `cd site && npm run test:browser` | 21 specs, every portal clicked through in Chromium, the Book and issuing from a term sheet included, and every page at a phone's width |
+
+The full suite runs at release tags; a change runs the tests that cover it. Nothing is tested on a
+public network. The overview's PDF is regenerated from the HTML with `cd site && node scripts/overview-pdf.ts`.
 
 ## What the venue tests show
 
@@ -57,57 +86,42 @@ every refusal has a positive control. They run against the deployed stack, after
 
 | Control | Test |
 |---|---|
-| An admitted entity converts the payment token into the deposit near par (S-27) | `test_credentialedEntity_convertsIntoTheDeposit` |
-| An admitted natural person converts the deposit back | `test_credentialedPerson_convertsOutOfTheDeposit` |
-| A wallet the deposit accepts but with no credential is refused by the pool; admitted, it converts (S-28) | `test_noCredential_refusedByThePoolThoughTheDepositAccepts` |
+| An admitted investor converts the payment token into the deposit near par (S-27) | `test_admittedInvestor_convertsIntoTheDeposit` |
+| An admitted investor converts the deposit back | `test_admittedInvestor_convertsOutOfTheDeposit` |
+| A wallet the deposit accepts but with no pool-access claim is refused by the pool; admitted, it converts (S-28) | `test_noPoolClaim_refusedByThePoolThoughTheDepositAccepts` |
 | A wallet onboarded nowhere is refused despite funds and approvals | `test_notOnboarded_refused` |
 | Only the Deposit Agent provides liquidity; the same plan is refused for an investor | `test_onlyTheDepositAgentProvidesLiquidity` |
 | A liquidity position cannot be transferred (S-29) | `test_liquidityPositionIsNotTransferable` |
-| A credential the protocol revokes is voided by anyone and stops the wallet | `test_protocolRevocation_voidedByAnyone_stopsTheWallet` |
-| Deactivating the issuer in the protocol suspends the pool | `test_issuerDeactivation_suspendsThePool` |
-| Supervisory withdrawal of pool access is Tier 1 | `test_tier1WithdrawalOfPoolAccess` |
-| Withdrawing the registry grant stops the pool at once (ADR 0004) | `test_registryWithdrawal_stopsThePool` |
+| The bank revoking its pool-access claim stops the wallet at once | `test_claimRevocation_stopsTheWallet` |
+| Ceasing to trust the bank's issuer for pool access, a Tier 2 act, closes the pool | `test_issuerNoLongerTrusted_closesThePool` |
+| Supervisory withdrawal and restoration of pool access are Tier 1 | `test_tier1WithdrawalAndRestorationOfPoolAccess` |
+| The bank revoking its deposit claim stops the pool at once | `test_depositClaimRevocation_stopsThePool` |
 | A deposit freeze stops the wallet; a deposit pause halts the pool | `test_depositFreeze_stopsTheWallet`, `test_depositPause_haltsThePool` |
 | The servicing wallet switches swapping off and on through the controller | `test_servicingWalletSwitchesSwapping` |
-| A pool grant lapses without any transaction | `test_grantLapses` |
-| A gate or token that cannot answer denies rather than reverting | `test_unanswerableCredentialGate_deniesEveryone`, `test_checkerFailsClosedOnNonConformingToken` |
+| A pool-access claim lapses without any transaction | `test_poolClaimLapses` |
+| The pool serves the EEA, Switzerland and the United Kingdom | `test_jurisdictionsServed` |
+| A gate or token that cannot answer denies rather than reverting | `test_unanswerableGate_deniesEveryone`, `test_checkerFailsClosedOnNonConformingToken` |
 | The venue answers to the controller alone | `test_theVenueIsGoverned` |
 | The Custodian converts for an admitted client that never holds a key; only the Custodian operates it | `test_custodianConvertsForAdmittedClient`, `test_onlyCustodianCanOperateClientAccount` |
 | A client account not admitted, or not onboarded, is refused | `test_notAdmittedClient_refusedByThePool`, `test_notOnboardedClient_refused` |
 | Freezing or withdrawing one client leaves its sibling converting | `test_freezingOneClientDoesNotAffectOthers`, `test_withdrawingOneClientsAccessDoesNotAffectOthers` |
 
-`test/PoolCredentialRegistry.t.sol` tests the credential gate alone, against a stand-in for the
-protocol, with no chain: each policy parameter refused and then met, bounded expiry, revocation by
-each route, the wallet-control credential required and voidable, a swap-path read of two storage slots that never calls the protocol and never reverts,
-and no attribute value stored. Ten deliberate errors in the gate and one in the checker were
-each caught. The venue tests pass unchanged against a fork of the test network
+`test/IdentityPoolGate.t.sol` tests the gate alone, against a stand-in for the pool's identity
+registry, with no chain: verified and served, not verified, a jurisdiction not served, withdrawal
+and restoration by the supervisor alone with a reason, a registry that cannot answer denying, and
+the configuration checked. The venue tests run against a fork of the test network too
 (`ops/dry-run-fork.sh`).
 
 ## What the instruments tests show
 
-`cd instruments && forge test --force` runs 115. Spike 2's conformance suite runs against both the note
-and the deposit: views that never revert under any gate failure, forced transfer only under its
-own role and never to an ineligible account, the written reason carried whole, and an admin that
-holds no role it was not granted. Against the registry: grants lapse at expiry, revocation is
-immediate, a registrar cannot act on another's participant, and a check is one storage read.
-Against the deployed wiring: decimals zero and two, one registry behind both gates, the note
-refusing an account onboarded for the cash leg only, and a lapsed holder still redeemable.
-
-Against the lifecycle: all 25 scenarios of spike 3's independent payoff model, reproduced to the
-cent from signed determination through distribution and burn, closing at zero positions. Seven
-deliberate errors in the payoff (an inclusive barrier, a strict coupon, a reversed tie-break and
-so on) were each caught by that test. Also: a disagreeing or wrongly signed determination
-refused, the Record Time inclusive, transfers stopped at a possible redemption until it is
-determined, an event that closes only when every unit is paid, a held payment claimed after
-re-onboarding, and DvP refusing an ineligible counterparty with nothing moved.
-
-Against governance: Tier 1 only by the Agent's governance wallet, with its reason; Tier 2 refusing
-one institution, four signatures in one firm, and two institutions with weak wallets; thresholds
-checked again at execution; recovery needing every other institution and the longer delay, and
-vetoed by a wallet that still works; the worked example of the wrong Record Time reversed and
-restated; and the deployer holding nothing after the ceremony. Four deliberate errors in the
-controller, and four in its venue acts, were each caught. `FOUNDRY_PROFILE=fork forge test --fork-url http://127.0.0.1:8545` (from `instruments/`) repeats Tier 1 and Tier 2 through
-the real multi-signature wallets on the local stack.
+`cd instruments && forge test` runs 104:
+- **The lifecycle, in order.** `Sequence.t.sol` walks one note through every step of
+  `docs/lifecycle-sequence.md`, trying each too early or out of turn first.
+- **The payoff.** All 25 scenarios of spike 3's independent payoff model, reproduced to the cent from signed determination through distribution and burn, closing at zero positions.
+- **Identities and claims.** Claims lapse and are revoked at once by their issuer, an institution cannot vouch without consent, an untrusted issuer does not verify, and the note refuses an account onboarded for the cash leg only.
+- **The deposit.** Eligibility by the bank's registry or its allowlist, the spender checked, holds, pause, a forced transfer, and the bank's move by order with its reason.
+- **The note factory.** Only the Issuer's wallet issues; a whole note in one transaction, or several in one call; each note its own clones, series identity and any further claims its series requires; every note recorded, governed from issuance, and none issued around the factory; retirement and release of the identity storage the controller's alone.
+- **Governance.** One controller for every note. Tier 1 only by the Agent's governance wallet, with its reason, a freeze or recovery across notes, and sanctions designation; Tier 2 refusing one institution, or weak wallets, expiring past its window; recovery needing every other institution and the longer delay; each programme role rotated for every note in one act; a determination corrected before and after payment, and refused while its coupon is being paid; the worked example of the wrong Record Time reversed and restated; and the deployer and the Issuer holding nothing after the ceremony.
 
 ## Contract size
 

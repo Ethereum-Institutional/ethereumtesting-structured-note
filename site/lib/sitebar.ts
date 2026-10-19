@@ -1,4 +1,5 @@
 import "server-only";
+import { rolesOf, type Role } from "./operators.ts";
 
 /**
  * The site's navigation bar as a string, for injection into documents served whole, such as the
@@ -12,7 +13,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 const STYLE = `<style>
 :root { --sitebar-h: 4.5rem; }
 body { margin: 0; }
-/* As app/Bar.tsx: a pine band, the title in the serif, the navigation in a cream pill (ADR 0061). */
+/* As app/Bar.tsx: a pine band, the title in the serif, the navigation in a cream pill. */
 .sitebar {
   position: sticky; top: 0; z-index: 40; height: var(--sitebar-h);
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
@@ -39,7 +40,16 @@ section { scroll-margin-top: calc(var(--sitebar-h) + 1.5rem); }
 @media print { .sitebar { display: none !important; } }
 </style>`;
 
-export function siteBar(email: string, operator: boolean): string {
+const PORTALS: Array<[Role, string, string]> = [
+  ["bank", "/bank", "Bank"],
+  ["onboarding", "/onboarding", "Onboarding agent"],
+  ["custodian", "/custodian", "Custodians"],
+  ["agent", "/agent", "Agent"],
+];
+
+export function siteBar(email: string, _operator?: boolean): string {
+  const roles = rolesOf(email);
+  const portals = PORTALS.filter(([r]) => roles.includes(r)).map(([, href, label]) => `<a href="${href}">${label}</a>`).join("\n    ");
   return `${STYLE}
 <header class="sitebar">
   <span class="title">Structured Note Technical PoC</span>
@@ -48,7 +58,7 @@ export function siteBar(email: string, operator: boolean): string {
     <a href="/overview" aria-current="page">Solution overview</a>
     <a href="/onboard">Onboard</a>
     <a href="/ledger">Ledger</a>
-    ${operator ? '<a href="/operator">Operator</a>' : ""}
+    ${portals}
     <span class="who">${esc(email)}</span>
     <form method="post" action="/signout"><button type="submit">Sign out</button></form>
   </nav>

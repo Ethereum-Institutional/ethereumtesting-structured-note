@@ -1,139 +1,167 @@
-// SPDX-License-Identifier: MPL-2.0
-pragma solidity 0.8.34;
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity 0.8.30;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {IdentityRegistry} from "../src/IdentityRegistry.sol";
-import {StructuredNote} from "../src/StructuredNote.sol";
-import {TokenizedDeposit} from "../src/TokenizedDeposit.sol";
-import {DepositGateway} from "../src/DepositGateway.sol";
 import {IDeterminationAgent} from "../src/interfaces/IDeterminationAgent.sol";
-import {Instruments} from "./Instruments.sol";
-import {Lifecycle} from "./Lifecycle.sol";
+import {LockedSettlement} from "../src/LockedSettlement.sol";
+import {NoteFactory} from "../src/factory/NoteFactory.sol";
+import {Scaffolding} from "./Scaffolding.sol";
+import {Issuance} from "./Issuance.sol";
+import {Programme} from "./Programme.sol";
+import {Manifest} from "./Manifest.sol";
+import {WalletExec} from "./WalletExec.sol";
 
 interface IApprove {
     function approve(address spender, uint256 value) external returns (bool);
-    function mint(address account, uint256 value) external;
-}
-
-interface IDeposit {
-    function credit(address account, uint256 amount, bytes32 bookingRef) external;
 }
 
 /**
- * Issues the note on the local stack: fixes the terms, attaches the lifecycle contracts, mints
- * notional to the Issuer's inventory, and places units with investors A and B by DvP.
+ * Issues the deployment's first note through the note factory, in one transaction signed by the
+ * Issuer's multi-signature wallet: its series identity, its terms, its T-REX suite, its
+ * lifecycle contracts allowlisted on the deposit, the notional minted to the Issuer's inventory,
+ * the note opened, and the note handed to the governance controller. The bank then funds the
+ * Agent's account, and units are placed with investors A and B by locked offer. No standing
+ * approval: each distribution is approved for its amount when it opens.
  *
- * The terms are the illustrative ones of spike 3, not the term sheet, with Twin Win applicable at
- * 100% participation each way, capped at 150% (C5, ADR 0015). **Dates are offsets from the
- * chain's own clock at issuance**, so a local chain never carries a calendar that has already
- * passed: four quarterly observations, each with its Record Time two days and Payment Date five
- * days after it.
+ * The note is issued from its term sheet, which site/scripts/term-sheet.ts builds just
+ * before: its name, symbol, size and terms are the record's, and the record's hash and address are
+ * anchored on the note's identity. The figures are the illustrative ones of spike 3, with Twin Win
+ * applicable (C5), dated from the chain's own clock.
  *
- * Run from instruments/ after DeployInstruments. Extends the manifest under `lifecycle`.
+ * Run from instruments/ after DeployInstruments. Extends the manifest under `noteSuite` and `lifecycle`.
  */
 contract IssueNote is Script {
-    uint256 constant QUARTER = 91 days;
-    uint256 constant ISSUED_UNITS = 100;
 
     function run() external {
         uint256 issuerPk = vm.envUint("ISSUER_PK");
-        uint256 agentPk = vm.envUint("AGENT_PK");
         address issuer = vm.addr(issuerPk);
-        address agent = vm.addr(agentPk);
-        address calculationAgent = vm.addr(vm.envUint("CALCULATION_AGENT_PK"));
+        address agent = vm.addr(vm.envUint("AGENT_PK"));
         string memory j = vm.readFile(_manifest());
-        Instruments.Deployed memory d = _deployed(j);
+        Scaffolding.Deployed memory d = Manifest.scaffolding(j);
+        Programme.Deployed memory p = Manifest.programme(j);
+        // The term sheet, built by site/scripts/term-sheet.ts: the input to issuance.
+        string memory ts = vm.readFile(_termSheet());
 
+        NoteFactory.Params memory params = Issuance.params(
+            _terms(ts),
+            Issuance.Config({
+                issuer: issuer,
+                isin: "",
+                name: vm.parseJsonString(ts, ".record.fields.name.value"),
+                symbol: vm.parseJsonString(ts, ".record.fields.symbol.value"),
+                termSheetHash: vm.parseJsonBytes32(ts, ".hash"),
+                termSheetUri: vm.parseJsonString(ts, ".uri"),
+                // The notional to the Issuer's inventory, and the note opened, in the same act.
+                units: vm.parseJsonUint(ts, ".terms.units"),
+                open: true
+            })
+        );
+        // The Issuer's wallet issues: two of its three signers sign, and the deployer submits.
         vm.startBroadcast(issuerPk);
-        Lifecycle.Issued memory l = Lifecycle.issue(
-            d, _terms(), Lifecycle.Config(issuer, calculationAgent, agent, issuer, agent)
+        WalletExec.exec(
+            vm.parseJsonAddress(j, ".governance.issuerGovernance"),
+            address(p.factory),
+            abi.encodeCall(NoteFactory.issue, (params)),
+            _issuerSigners()
         );
         vm.stopBroadcast();
+        Issuance.Issued memory l = Issuance.issued(p.factory.noteOf(p.factory.tokenOfSeries(p.factory.seriesCount())));
 
-        // The Paying Agent holds the cash leg in transit. The settlement contract takes
-        // allowances, which the debt standard grants only to a spender that could send, so it
-        // carries the settlement right and no right to hold (ADR 0013).
-        IdentityRegistry r = d.registry;
-        uint32 contractFlags = r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT();
-        uint40 until = uint40(block.timestamp + 365 days);
-        vm.startBroadcast(vm.envUint("ACCESS_ISSUER_PK"));
-        r.grant(address(l.payingAgent), contractFlags, 276, until, "ONB-0006", 0);
-        r.grant(address(l.settlement), r.SETTLEMENT() | r.SANCTIONS_CLEAR() | r.CONTRACT_ACCOUNT(), 276, until, "ONB-0007", 0);
-        r.grant(agent, r.HOLD() | r.RECEIVE() | r.TRANSFER() | r.SANCTIONS_CLEAR(), 276, until, "ONB-0008", 0);
-        vm.stopBroadcast();
-
+        // The bank funds the Agent's account, which each distribution draws on.
         vm.startBroadcast(vm.envUint("DEPOSIT_AGENT_PK"));
-        IDeposit(address(d.gateway)).credit(agent, 10_000_000_00, "funding/agent");
-        vm.stopBroadcast();
-
-        vm.startBroadcast(agentPk);
-        IApprove(address(d.deposit)).approve(address(l.payingAgent), type(uint256).max);
-        IApprove(address(d.note)).mint(issuer, ISSUED_UNITS);
+        d.gateway.credit(agent, 10_000_000_00, "funding/agent");
         vm.stopBroadcast();
 
         _place(l, d, issuerPk, vm.envUint("INVESTOR_A_PK"), 10);
         _place(l, d, issuerPk, vm.envUint("INVESTOR_B_PK"), 5);
 
+        console2.log("note          :", address(l.note));
         console2.log("determinations:", address(l.determinations));
         console2.log("paying agent  :", address(l.payingAgent));
         console2.log("settlement    :", address(l.settlement));
-        _record(l, calculationAgent);
+        _record(l, vm.addr(vm.envUint("CALCULATION_AGENT_PK")));
     }
 
-    /// Placement: the inventory sells at par, the investor accepts, both legs settle together.
-    function _place(
-        Lifecycle.Issued memory l,
-        Instruments.Deployed memory d,
-        uint256 issuerPk,
-        uint256 investorPk,
-        uint64 units
-    ) private {
-        address issuer = vm.addr(issuerPk);
+    /// The Issuer's wallet's first two signers: mnemonic indices 13 and 14.
+    function _issuerSigners() private view returns (uint256[] memory keys) {
+        string memory m = block.chainid == 31337 ? "test test test test test test test test test test test junk" : vm.envString("WALLET_MNEMONIC");
+        keys = new uint256[](2);
+        keys[0] = vm.deriveKey(m, 13);
+        keys[1] = vm.deriveKey(m, 14);
+    }
+
+    /// Placement: the inventory offers to sell at par, the investor accepts, both legs settle together.
+    function _place(Issuance.Issued memory l, Scaffolding.Deployed memory d, uint256 issuerPk, uint256 investorPk, uint64 units)
+        private
+    {
         address investor = vm.addr(investorPk);
+        uint256 price = uint256(units) * 100_000;
         vm.startBroadcast(issuerPk);
-        IApprove(address(d.note)).approve(address(l.settlement), units);
-        uint256 id = l.settlement.propose(issuer, investor, units, uint256(units) * 100_000, uint48(block.timestamp + 1 days));
+        IApprove(address(l.note)).approve(address(l.settlement), units);
+        uint256 id = l.settlement.offer(LockedSettlement.Side.Sell, investor, units, price, uint48(block.timestamp + 1 days));
         vm.stopBroadcast();
         vm.startBroadcast(investorPk);
-        IApprove(address(d.deposit)).approve(address(l.settlement), uint256(units) * 100_000);
+        IApprove(address(d.deposit)).approve(address(l.settlement), price);
         l.settlement.accept(id);
         vm.stopBroadcast();
     }
 
-    function _terms() private view returns (IDeterminationAgent.Terms memory t) {
-        t.initialLevels = new uint256[](3);
-        t.initialLevels[0] = 451_200;
-        t.initialLevels[1] = 1_820_300;
-        t.initialLevels[2] = 25_000;
-        t.calculationAmountCents = 100_000;
-        t.couponBarrierBps = 7_000;
-        t.couponRateBps = 250;
-        t.barrierBps = 6_000;
-        // C5: Twin Win applicable. Illustrative figures until the term sheet gives them (ADR 0015).
-        t.twinWin = IDeterminationAgent.TwinWin(true, 10_000, 10_000, 15_000);
-        t.schedule = new IDeterminationAgent.Observation[](4);
-        for (uint256 k = 0; k < 4; ++k) {
-            uint48 date = uint48(block.timestamp + (k + 1) * QUARTER);
+    /// The terms the term sheet gives, as site/scripts/term-sheet.ts derived them from it.
+    function _terms(string memory ts) private pure returns (IDeterminationAgent.Terms memory t) {
+        t.initialLevels = vm.parseJsonUintArray(ts, ".terms.initialLevels");
+        t.calculationAmountCents = uint64(vm.parseJsonUint(ts, ".terms.calculationAmountCents"));
+        t.couponBarrierBps = uint32(vm.parseJsonUint(ts, ".terms.couponBarrierBps"));
+        t.couponRateBps = uint32(vm.parseJsonUint(ts, ".terms.couponRateBps"));
+        t.memory_ = vm.parseJsonBool(ts, ".terms.memory");
+        t.barrierBps = uint32(vm.parseJsonUint(ts, ".terms.barrierBps"));
+        t.twinWin = IDeterminationAgent.TwinWin(
+            vm.parseJsonBool(ts, ".terms.twinWin.applies"),
+            uint32(vm.parseJsonUint(ts, ".terms.twinWin.upBps")),
+            uint32(vm.parseJsonUint(ts, ".terms.twinWin.downBps")),
+            uint32(vm.parseJsonUint(ts, ".terms.twinWin.capBps"))
+        );
+        uint256 n = vm.parseJsonUint(ts, ".terms.scheduleLength");
+        t.schedule = new IDeterminationAgent.Observation[](n);
+        for (uint256 k = 0; k < n; ++k) {
+            string memory o = string.concat(".terms.schedule[", vm.toString(k), "]");
             t.schedule[k] = IDeterminationAgent.Observation(
-                date, date + 2 days, date + 5 days, true, k < 3, k == 3, k == 3, k < 3 ? 10_000 : 0
+                uint48(vm.parseJsonUint(ts, string.concat(o, ".date"))),
+                uint48(vm.parseJsonUint(ts, string.concat(o, ".recordTime"))),
+                uint48(vm.parseJsonUint(ts, string.concat(o, ".paymentDate"))),
+                vm.parseJsonBool(ts, string.concat(o, ".coupon")),
+                vm.parseJsonBool(ts, string.concat(o, ".mer")),
+                vm.parseJsonBool(ts, string.concat(o, ".barrier")),
+                vm.parseJsonBool(ts, string.concat(o, ".isFinal")),
+                uint32(vm.parseJsonUint(ts, string.concat(o, ".merTriggerBps")))
             );
         }
     }
 
-    function _deployed(string memory j) private pure returns (Instruments.Deployed memory d) {
-        d.registry = IdentityRegistry(vm.parseJsonAddress(j, ".instruments.registry"));
-        d.note = StructuredNote(vm.parseJsonAddress(j, ".instruments.note"));
-        d.deposit = TokenizedDeposit(vm.parseJsonAddress(j, ".instruments.deposit"));
-        d.gateway = DepositGateway(vm.parseJsonAddress(j, ".instruments.gateway"));
+    function _termSheet() private view returns (string memory) {
+        return string.concat("../", vm.envOr("TERM_SHEET_FILE", string("ops/term-sheet.json")));
     }
 
-    function _record(Lifecycle.Issued memory l, address calculationAgent) private {
+    function _record(Issuance.Issued memory l, address calculationAgent) private {
+        string memory n = "noteSuite";
+        vm.serializeUint(n, "series", l.series);
+        vm.serializeAddress(n, "identity", l.identity);
+        vm.serializeAddress(n, "identityRegistry", address(l.identityRegistry));
+        vm.serializeAddress(n, "compliance", l.compliance);
+        vm.serializeAddress(n, "trustedIssuers", l.trustedIssuers);
+        vm.writeJson(vm.serializeAddress(n, "claimTopics", l.claimTopics), _manifest(), ".noteSuite");
+        vm.writeJson(vm.toString(address(l.note)), _manifest(), ".instruments.note");
+
         string memory o = "lifecycle";
         vm.serializeAddress(o, "determinations", address(l.determinations));
         vm.serializeAddress(o, "recordDates", address(l.recordDates));
         vm.serializeAddress(o, "payingAgent", address(l.payingAgent));
         vm.writeJson(vm.serializeAddress(o, "settlement", address(l.settlement)), _manifest(), ".lifecycle");
         vm.writeJson(vm.toString(calculationAgent), _manifest(), ".parties.calculationAgent");
+
+        string memory t = "note";
+        vm.serializeAddress(t, "address", address(l.note));
+        vm.serializeString(t, "symbol", vm.parseJsonString(vm.readFile(_termSheet()), ".record.fields.symbol.value"));
+        vm.writeJson(vm.serializeUint(t, "decimals", 0), _manifest(), ".assets.note");
     }
 
     function _manifest() private view returns (string memory) {

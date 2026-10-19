@@ -18,11 +18,11 @@ const euros = (cents: string | bigint) => `€${(Number(cents) / 100).toLocaleSt
 const at = (s: number) => new Date(s * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 const what = (o: Offer) => (o.kind === "placement" ? "Placement by the Issuer" : o.kind === "buy-back" ? "Buy-back by the Issuer" : "Transfer");
 
-/** The notes offered to the client, its own offers and holdings, and what it was paid (ADRs 0075, 0078, 0081). */
+/** The notes offered to the client, its own offers and holdings, and what it was paid. */
 export default async function Notes() {
   const who = await currentRegistrant();
   if (!who) redirect("/");
-  const { wallet, held } = await accountOf(who);
+  const { wallet, held, noteEligible } = await accountOf(who);
   const account = wallet ?? held;
   const chain = chainParams(loadManifest().chainId);
   const [offers, holdings, payments, notes] = await Promise.all([
@@ -32,7 +32,7 @@ export default async function Notes() {
     getStore().listNotes(),
   ]);
   const tradable = notes.filter((n) => n.status === "issued" && lockedSettlement(n));
-  const approved = Boolean((account?.data as Record<string, any> | undefined)?.regS);
+  const approved = noteEligible;
   const ownWallet = Boolean(wallet);
 
   /** One offer, with what this client does about it. */
