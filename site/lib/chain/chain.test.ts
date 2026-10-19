@@ -289,3 +289,11 @@ test("the pool's supervisory withdrawal shows its reason whole", () => {
   assert.equal(row.meaning, "Tier 1: withdrew an account's pool access under supervisory authority");
   assert.equal(row.args[1], JSON.stringify(why));
 });
+
+test("every jurisdiction the site offers has its ISO 3166 numeric code; an unknown one is 0", async () => {
+  const { JURISDICTIONS, NUMERIC, countryCode } = await import("../jurisdictions.ts");
+  assert.ok(JURISDICTIONS.every(([c]) => Number.isInteger(NUMERIC[c]) && NUMERIC[c] > 0));
+  assert.deepEqual(["DE", "PL", "LU", "CH", "GB", "US"].map(countryCode), [276, 616, 442, 756, 826, 840]);
+  assert.equal(countryCode(""), 0);
+  assert.equal(countryCode("ZZ"), 0);
+});

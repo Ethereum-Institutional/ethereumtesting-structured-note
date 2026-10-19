@@ -7,12 +7,17 @@
 | `build.sh` | Builds both compilation units and fails if any deployable contract exceeds EIP-170. |
 | `anvil.sh` | Starts the local chain. The standard EIP-170 limit is enforced. |
 | `setup-permit2.sh` | Installs canonical Permit2 bytecode at its canonical address. |
-| `setup-credential-protocol.sh` | Installs the credential protocol's released registry code at its canonical addresses, refusing any file whose hash has changed. |
 | `dry-run-fork.sh` | Forks the test network, deploys the whole stack against its real contracts, and runs the venue tests. |
 | `new-network-keys.sh` | Generates a fresh key set for a public network, never the local node's published keys. |
 | `deploy-network.sh` | Deploys the whole stack to a live network with those keys, after checking every capacity is funded. |
 | `networks/` | Each public network's identifiers. Only the template is committed. |
 | `setup-multisig.sh` | Installs the multi-signature wallet's released code at its canonical addresses, refusing any file whose hash has changed. |
+| `sepolia.sh` | Short commands for the Ethereum Sepolia deployment: `check` (balances only), `deploy`, `verify`, `site-env`. |
+| `verify-contracts.py` | Verifies every deployed contract on Etherscan, linked libraries included; clones and deployment stubs are recognised as such. |
+| `vercel-env.sh`, `site_env.py` | Point the site's Vercel project at a deployment: the manifest, the RPC, the signing keys and a fresh `CRON_SECRET`, sent straight to Vercel. |
+| `store-secret.sh` | Stores a secret in a key file without it passing through a terminal. |
+| `surface.py` | Records a release candidate's contract surface, and checks a tree against it. |
+| `vm/` | The site and its database as containers, for running on the bank's own machine. |
 | `keys.env` | Local node default accounts, mapped to capacities. `source` it. |
 | `addresses.json` | Every deployed address. Written by the deploy scripts, read by the tests. Not committed. |
 
@@ -30,11 +35,13 @@ two disagree, the script is right and this table is to be corrected.
 | Activation | `script/02_ActivateVenue.s.sol` | Verification needs the adapter to hold a balance. Opens the pool at par, the onboarding agent admits the cast by pool-access claim, and the Deposit Agent provides liquidity |
 | Lens | `script/03_DeployLens.s.sol` | Reads pool state; needs the pool manager |
 | Custody | `script/04_DeployCustody.s.sol` | Client accounts approve the router and position manager, and are onboarded and admitted |
-| Issuance | `instruments/script/IssueNote.s.sol` | Issues the note through the note factory in one transaction, its terms dated from the chain's own clock; the bank allowlists its lifecycle and funds the Agent; places units by DvP |
-| Ceremony | `instruments/script/Ceremony.s.sol` | Creates the four wallets, deploys the controller, moves every role and hands the venue over, and ends with the deployer's renunciation, so it must come last |
+| Programme | `instruments/script/DeployProgramme.s.sol` | Creates the four institutions' wallets, then the sanctions module, the governance controller and the note factory, owned by the Issuer's wallet; the controller is bound to the factory, and T-REX's factory handed to it |
+| Term sheet | `site/scripts/term-sheet.ts` | The record the deployment's note is issued from, dated from the chain's own clock |
+| Issuance | `instruments/script/IssueNote.s.sol` | The Issuer's wallet issues the note through the factory in one transaction, which allowlists its lifecycle on the deposit and hands it to the controller; the bank funds the Agent; units are placed by locked offer |
+| Ceremony | `instruments/script/Ceremony.s.sol` | Hands the pool's registries and venue to the controller and ends with the deployer's renunciation of the deposit and gateway, so it must come last |
 
 On a public network nothing is installed and nothing is deployed in the base step: the pool
-manager, Permit2, the wallet, the payment token and the protocol's registries are already there,
+manager, Permit2, the wallet and the payment token are already there,
 and their addresses come from the network file (`ops/networks/`). `dry-run-fork.sh` runs
 the whole sequence against a fork of the test network.
 

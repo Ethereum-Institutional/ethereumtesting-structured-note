@@ -7,7 +7,7 @@
 name: structured-note
 services:
   site:
-    image: structured-note-site:0.2.0
+    image: structured-note-site:0.3.1
     build: { context: ../.., dockerfile: ops/vm/Dockerfile }
     env_file: site.env
     environment:

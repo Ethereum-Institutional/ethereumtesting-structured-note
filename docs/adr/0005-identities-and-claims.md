@@ -64,5 +64,8 @@ storage, so it is known to no registry.
 - A revoked or lapsed claim stops transfers, settlement and conversion at once.
 - The storage binds at most 300 registries. Redeemed notes are unbound from it by governance, and
   it can be handed on to a successor factory with every identity in it (record 0009).
-- The site registers every wallet with one country code (276). The pool's jurisdiction check
-  (record 0018) therefore reads that code until a route records the client's own.
+- A wallet is registered with its client's own jurisdiction, as the bank's record states it, by
+  its ISO 3166 numeric code (Poland 616, Luxembourg 442), which the pool's jurisdiction check
+  (record 0018) reads. Renewing the bank's claim brings the registered country into line with the
+  record. A brought identity, of which the bank holds no record, is registered as 0, "not known".
+  The deployment's own demonstration parties are registered in Germany (276).

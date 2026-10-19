@@ -12,7 +12,8 @@ export const custodyRef = (kycReference: string, admissionId: string) =>
   `SEG-${keccak256(toBytes(`${kycReference}/custody/${admissionId}`)).slice(2, 14).toUpperCase()}`;
 import { getStore, type Admission, type AdmissionRoute, type Client, type Registrant } from "../store.ts";
 import { hasRole, type Role } from "../operators.ts";
-import { claimsOf, consented, context, consent, createIdentity, eligibility, handOver, identityOf, isIdentity, recordHash, register, revoke, unregister, vouch } from "./onchain.ts";
+import { claimsOf, consented, context, consent, createIdentity, eligibility, handOver, identityOf, isIdentity, recordHash, register, revoke, syncCountry, unregister, vouch } from "./onchain.ts";
+import { countryCode } from "../jurisdictions.ts";
 import { accountFor, custodianAddress, openAccount, type Custodian } from "./custody.ts";
 import { ROUTE_LABEL as LABELS } from "../routes.ts";
 
@@ -361,9 +362,12 @@ export async function renewDeposit(staff: Registrant, id: string): Promise<void>
   if (a.status !== "onboarded" || !d.identity || !d.kycReference) throw new Error("This wallet is not onboarded.");
   const c = await activeClient(d.kycReference);
   const v = await onChain(a, () => vouch(d.identity!, "deposit", c.recordHash));
+  // The registered country follows the client's record too: a re-screen may have moved it, and
+  // wallets registered before the country was taken from the record are corrected here.
+  const moved = await onChain(a, () => syncCountry(d.wallet!, countryCode(String(c.claims.jurisdiction ?? ""))));
   const latest = await load(id);
   await save(latest, latest.status, { ...dataOf(latest), deposit: { ...v, recordHash: c.recordHash, at: now(), by: staff.email }, error: undefined });
-  await audit(staff.email, `renewed the bank's claim for ${d.wallet}`, a.id);
+  await audit(staff.email, `renewed the bank's claim for ${d.wallet}${moved ? `, its country now ${String(c.claims.jurisdiction)}` : ""}`, a.id);
 }
 
 /** The bank offboards a wallet: its claim revoked, and the wallet removed from every registry. */
@@ -517,7 +521,8 @@ export async function acceptExisting(staff: Registrant, id: string): Promise<voi
     await audit(staff.email, `refused ${d.identity}: not an identity`, a.id);
     return;
   }
-  await onChain(a, () => register(d.wallet!, d.identity!));
+  // A brought identity: the bank holds no record of where its holder is, so its country is "not known".
+  await onChain(a, () => register(d.wallet!, d.identity!, 0));
   const ok = (await eligibility(d.wallet)).note;
   if (!ok) {
     await unregister(d.wallet);
@@ -549,7 +554,8 @@ async function establish(a: Admission, actor: string): Promise<Admission> {
   const manager = which ? custodianAddress(which) : s.address("depositAgent");
   const managerCapacity = which === "bank" ? "custodian" : which === "third-party" ? "thirdPartyCustodian" : "depositAgent";
 
-  const identity = await onChain(a, () => createIdentity(wallet, manager, `${a.id}`));
+  // The wallet is registered with the client's own jurisdiction, as the bank's record states it.
+  const identity = await onChain(a, () => createIdentity(wallet, manager, `${a.id}`, countryCode(String(c.claims.jurisdiction ?? ""))));
   const withIdentity = await load(a.id);
   await save(withIdentity, withIdentity.status, { ...dataOf(withIdentity), identity });
   await onChain(a, async () => {

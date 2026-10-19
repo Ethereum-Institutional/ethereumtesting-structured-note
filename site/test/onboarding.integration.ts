@@ -46,7 +46,7 @@ const operator = person("reg_operator", "operator@example.org", "The Bank");
 const banker = person("reg_banker", "banker@bank.example", "The Bank");
 for (const r of [operator, banker]) await store.createRegistrant(r);
 
-const REGISTRY = parseAbi(["function isVerified(address) view returns (bool)", "function identity(address) view returns (address)"]);
+const REGISTRY = parseAbi(["function isVerified(address) view returns (bool)", "function identity(address) view returns (address)", "function investorCountry(address) view returns (uint16)"]);
 const IDENTITY = parseAbi(["function keyHasPurpose(bytes32 key, uint256 purpose) view returns (bool)"]);
 const keyOf = (a: Address) => keccak256(encodeAbiParameters([{ type: "address" }], [a]));
 const verified = (registry: Address, wallet: Address) => chain.readContract({ address: registry, abi: REGISTRY, functionName: "isVerified", args: [wallet] });
@@ -93,6 +93,8 @@ test("bank custody: confirmed by the bank, the custody platform opens the accoun
   assert.equal(await manages(d.identity!, m.parties.custodian as Address), true, "the custody platform manages the identity");
   assert.equal(await manages(d.identity!, m.parties.depositAgent as Address), false, "the bank does not");
   assert.equal(d.deposit?.recordHash, c.recordHash, "the bank's claim carries its record's hash");
+  const country = await chain.readContract({ address: m.identity!.depositRegistry, abi: REGISTRY, functionName: "investorCountry", args: [d.wallet!] });
+  assert.equal(country, 442, "registered in the client's own jurisdiction, Luxembourg (ISO 3166 numeric 442)");
 
   // The note: asked for, then approved by the onboarding agent.
   await assert.rejects(onboarding.requestNote(r as any, a.id, { ...ANSWERS, notUsPerson: false }), /Regulation S/);
@@ -151,8 +153,13 @@ test("each institution revokes its own claim at once, and the bank renews its ow
   assert.equal(await forDeposit(wallet), false, "the deposit refuses it at once");
   assert.equal(await forNote(wallet), true, "the note's claim is the onboarding agent's, untouched");
 
+  // A wallet registered in the wrong country, as before the country came from the client's record:
+  // renewing the bank's claim corrects it.
+  const onchain = await import("../lib/identity/onchain.ts");
+  await onchain.syncCountry(wallet, 276);
   await onboarding.renewDeposit(banker as any, id);
   assert.equal(await forDeposit(wallet), true, "a fresh claim restores it");
+  assert.equal(await chain.readContract({ address: m.identity!.depositRegistry, abi: REGISTRY, functionName: "investorCountry", args: [wallet] }), 442, "and its country is the client's again");
 
   await onboarding.revokeNote(operator as any, id, "Investor class withdrawn");
   assert.equal(await forNote(wallet), false);
@@ -218,7 +225,7 @@ test("an identity brought from elsewhere is registered for the note only if a tr
   f = (await store.admissionById(f.id))!;
   await store.updateAdmission({ ...f, data: { ...f.data, identity: eoa } }, f.status);
   const onchain = await import("../lib/identity/onchain.ts");
-  await onchain.register(eoa, eoa);
+  await onchain.register(eoa, eoa, 0);
   assert.deepEqual(await onchain.eligibility(eoa), { deposit: false, note: false, pool: false });
   await onboarding.acceptExisting(operator as any, f.id);
   f = (await store.admissionById(f.id))!;

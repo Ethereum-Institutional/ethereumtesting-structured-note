@@ -24,7 +24,6 @@ export type Topic = "deposit" | "note" | "pool";
 const MANAGEMENT = 1n;
 const CLAIM = 3n;
 const ECDSA = 1n;
-const COUNTRY = 276;
 /** How long a claim runs: the claim issuers allow at most a year. */
 export const CLAIM_DAYS = 180;
 /** How long a pool-access claim runs: the longest the pool accepts between screenings. */
@@ -48,6 +47,8 @@ const REGISTRY = parseAbi([
   "function identity(address wallet) view returns (address)",
   "function contains(address wallet) view returns (bool)",
   "function isVerified(address wallet) view returns (bool)",
+  "function investorCountry(address wallet) view returns (uint16)",
+  "function updateCountry(address wallet, uint16 country)",
 ]);
 const POOL_GATE = parseAbi([
   "function standing(address account) view returns (uint8)",
@@ -182,20 +183,20 @@ export async function manages(identity: Address, who: Address): Promise<boolean>
  * The bank creates a client's identity, managed by `manager`, and registers the wallet against it
  * in the shared storage. Returns the identity, or the one the wallet already has.
  */
-export async function createIdentity(wallet: Address, manager: Address, salt: string): Promise<Address> {
+export async function createIdentity(wallet: Address, manager: Address, salt: string, country: number): Promise<Address> {
   const { id, s } = context();
   const existing = await identityOf(wallet);
   if (existing) return existing;
   // A wallet offboarded earlier keeps its identity at the factory: it is registered again, not recreated.
   const known = await s.publicClient.readContract({ address: id.idFactory, abi: ID_FACTORY, functionName: "getIdentity", args: [wallet] });
   if (!/^0x0{40}$/i.test(known)) {
-    await register(wallet, known);
+    await register(wallet, known, country);
     return known;
   }
   const args = [wallet, salt, [keyOf(manager)]] as const;
   const { result: identity } = await s.publicClient.simulateContract({ account: s.address("depositAgent"), address: id.idFactory, abi: ID_FACTORY, functionName: "createIdentityWithManagementKeys", args });
   await s.send("depositAgent", { address: id.idFactory, abi: ID_FACTORY, functionName: "createIdentityWithManagementKeys", args });
-  await register(wallet, identity);
+  await register(wallet, identity, country);
   return identity;
 }
 
@@ -264,11 +265,24 @@ export async function handOver(identity: Address, wallet: Address): Promise<void
  * registry has agents of its own. Where the onboarding agent decided it, the decision is theirs and
  * the bank's key only records it.
  */
-export async function register(wallet: Address, identity: Address): Promise<void> {
+export async function register(wallet: Address, identity: Address, country: number): Promise<void> {
   const { id, s } = context();
   if (await identityOf(wallet)) return;
-  await s.send("depositAgent", { address: id.depositRegistry, abi: REGISTRY, functionName: "registerIdentity", args: [wallet, identity, COUNTRY] });
+  await s.send("depositAgent", { address: id.depositRegistry, abi: REGISTRY, functionName: "registerIdentity", args: [wallet, identity, country] });
   await until(() => identityOf(wallet), (v) => v !== null);
+}
+
+/**
+ * Brings the country the shared storage records for a wallet into line with `country`, the client's
+ * jurisdiction as the bank's record now states it. The bank, as the deposit registry's agent, changes it.
+ */
+export async function syncCountry(wallet: Address, country: number): Promise<boolean> {
+  const { id, s } = context();
+  const now = await s.publicClient.readContract({ address: id.depositRegistry, abi: REGISTRY, functionName: "investorCountry", args: [wallet] });
+  if (Number(now) === country) return false;
+  await s.send("depositAgent", { address: id.depositRegistry, abi: REGISTRY, functionName: "updateCountry", args: [wallet, country] });
+  await until(() => s.publicClient.readContract({ address: id.depositRegistry, abi: REGISTRY, functionName: "investorCountry", args: [wallet] }), (v) => Number(v) === country);
+  return true;
 }
 
 /** Removes a wallet from the shared storage: it is then known to no registry. */
