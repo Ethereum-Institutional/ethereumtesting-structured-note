@@ -7,6 +7,7 @@
  *
  * The PDF is shared by hand and not committed.
  */
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "@playwright/test";
@@ -19,6 +20,9 @@ const browser = await chromium.launch();
 const page = await browser.newPage();
 await page.goto(pathToFileURL(SOURCE).toString(), { waitUntil: "networkidle" });
 await page.emulateMedia({ media: "print" });
+// The release, as the document's masthead states it, so the footer never goes stale.
+const release = (await readFile(SOURCE, "utf8")).match(/<b>Release<\/b>\s*([0-9.]+)/)?.[1];
+if (!release) throw new Error("the overview's masthead states no release");
 await page.pdf({
   path: OUT,
   format: "A4",
@@ -28,7 +32,7 @@ await page.pdf({
   headerTemplate: "<span></span>",
   footerTemplate:
     '<div style="width:100%;font:8px sans-serif;color:#777;padding:0 14mm;display:flex;justify-content:space-between">' +
-    "<span>Structured Note Smart Contract Issuance, solution overview, release 0.2.0. Non-production proof of concept.</span>" +
+    `<span>Structured Note Smart Contract Issuance, solution overview, release ${release}. Non-production proof of concept.</span>` +
     '<span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>',
 });
 await browser.close();

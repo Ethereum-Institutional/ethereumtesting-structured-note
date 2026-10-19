@@ -35,7 +35,7 @@ export default async function NoteRequests() {
               <dt>The bank's claim</dt><dd>{bank ? <span className={`pill ${bank.pill}`}>{bank.label}</span> : "unreadable"}</dd>
               <dt>Not a U.S. person</dt><dd>{d.note!.answers.notUsPerson ? "Declared" : "Not declared"}</dd>
               <dt>Investor class declared</dt><dd>{d.note!.answers.investorClass || "none"}</dd>
-              <dt>Relies on the bank's KYB</dt><dd>{d.note!.answers.relyOnBankKyb ? "With the client's consent" : "No"}</dd>
+              <dt>The bank's KYB</dt><dd>Relied on, while the bank's claim stands</dd>
             </dl>
             <ActionForm action={decideNoteAction} hidden={{ id: a.id, decision: "approve" }} label="Approve for the notes" working="Adding the note claim…">
               <p className="muted">Adds the onboarding agent's claim to the client's identity, carrying the hash of this decision's record. Every note issued under the programme accepts the wallet at once.</p>

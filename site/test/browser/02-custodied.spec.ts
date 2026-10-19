@@ -49,7 +49,6 @@ test("bank custody: the client asks, the bank confirms, the custody platform ope
   await expect(account).toContainText("eligible, until", { timeout: 20_000 });
   await account.getByText("Ask for access to the notes…").click();
   await account.getByLabel(/not a U.S. person/).check();
-  await account.getByLabel(/rely on our bank's KYB/).check();
   await account.getByRole("button", { name: "Ask for access to the notes" }).click();
   await expect(account).toContainText("asked; the onboarding agent decides", { timeout: 20_000 });
 
@@ -57,7 +56,7 @@ test("bank custody: the client asks, the bank confirms, the custody platform ope
   const agent = await signedIn(browser, PEOPLE.operator);
   await agent.goto("/onboarding");
   const ask = agent.locator("section.panel").filter({ hasText: LEGAL_NAME });
-  await expect(ask).toContainText("With the client's consent");
+  await expect(ask).toContainText("Relied on, while the bank's claim stands");
   await expect(ask).not.toContainText("B 998 877");
   await ask.getByRole("button", { name: "Approve for the notes" }).click();
   await expect(agent.locator("section.panel").filter({ hasText: LEGAL_NAME })).toHaveCount(0, { timeout: 60_000 });

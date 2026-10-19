@@ -28,7 +28,6 @@ test("the note refuses a wallet until the onboarding agent vouches for it; the c
   const card = client.getByRole("region", { name: "Self-custody" });
   await card.getByText("Ask for access to the notes…").click();
   await card.getByLabel(/not a U.S. person/).check();
-  await card.getByLabel(/rely on our bank's KYB/).check();
   await card.getByRole("button", { name: "Ask for access to the notes" }).click();
   await staff.goto("/onboarding");
   const ask = staff.locator("section.panel").filter({ hasText: wallet });

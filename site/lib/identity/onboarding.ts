@@ -71,8 +71,6 @@ export type Answers = {
   notUsPerson: boolean;
   /** The investor class the client declares; the onboarding agent checks it against its own. */
   investorClass: string;
-  /** Consent to the onboarding agent relying on the bank's KYB claim, rather than repeating it. */
-  relyOnBankKyb: boolean;
 };
 
 export type Data = {
@@ -270,7 +268,6 @@ export async function requestNote(client: Registrant, id: string, answers: Answe
   if (a.registrantId !== client.id || a.status !== "onboarded") throw new Error("Onboard for the deposit first.");
   if (d.note && ["requested", "approved"].includes(d.note.status)) return;
   if (!answers.notUsPerson) throw new Error("The notes are sold only outside the United States (Regulation S).");
-  if (!answers.relyOnBankKyb) throw new Error("The onboarding agent relies on the bank's KYB; consent to it, or ask the onboarding agent to verify you itself.");
   await save(a, a.status, { ...d, note: { status: "requested", requestedAt: now(), answers } });
   await audit(client.email, "asked for access to the notes", a.id);
 }
@@ -427,7 +424,8 @@ export async function decideNote(staff: Registrant, id: string, outcome: "approv
     await audit(staff.email, `declined access to the notes${reason ? `: ${reason}` : ""}`, a.id);
     return;
   }
-  if (d.note.answers.relyOnBankKyb && !(await eligibility(d.wallet!)).deposit) throw new Error("The bank's claim no longer stands; the client must be onboarded by the bank again.");
+  // The onboarding agent relies on the bank's KYB: its claim must still stand.
+  if (!(await eligibility(d.wallet!)).deposit) throw new Error("The bank's claim no longer stands; the client must be onboarded by the bank again.");
   const salt = `0x${randomBytes(32).toString("hex")}` as Hex;
   const hash = recordHash(noteRecord(a, d.note, at, staff.email), salt);
   const v = await onChain(a, () => vouch(d.identity!, "note", hash));

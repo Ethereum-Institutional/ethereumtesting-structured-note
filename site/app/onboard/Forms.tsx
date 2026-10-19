@@ -21,9 +21,7 @@ export function NoteRequestForm({ id, action, investorClass }: { id: string; act
           <option value="professional">Professional</option>
         </select>
       </label>
-      <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-        <input type="checkbox" name="relyOnBankKyb" required /> The onboarding agent may rely on our bank's KYB rather than repeat it.
-      </label>
+      <p className="muted" style={{ margin: 0 }}>The onboarding agent relies on your bank's KYB, so you are not asked for it again.</p>
       <div className="actions"><PendingButton working="Asking…">Ask for access to the notes</PendingButton></div>
       {state.error && <p role="alert" className="notice err">{state.error}</p>}
       {state.ok && <p role="status" className="muted">{state.ok}</p>}

@@ -7,7 +7,7 @@ import { execThroughWallet } from "../chain/safe.ts";
 import { getStore, type DemoNote, type Registrant } from "../store.ts";
 import { hasRole } from "../operators.ts";
 import scenarios from "./scenarios.json" with { type: "json" };
-import { calendar as calendarOf, calendarProblem, stretch, type Interval } from "./calendar.ts";
+import { calendar as calendarOf, calendarProblem, offerProblem, stretch, type Interval } from "./calendar.ts";
 import { SCHEMA, termSheetFrom, toTerms, v, validate, value, isNA, type Item, type TermSheet } from "./termsheet.ts";
 import { keepTermSheet, termSheetByHash, termSheetOfNote, termSheetUri } from "./termsheets.ts";
 
@@ -150,7 +150,7 @@ const STEPS: Step[] = [
         if (calendar[0].recordTime <= Number(block.timestamp)) throw new Error(`The term sheet's first Record Time, ${new Date(calendar[0].recordTime * 1000).toISOString()}, has passed: issue it with later dates.`);
       } else {
         const shape = shapeOf(c.n);
-        calendar = calendarOf(Number(block.timestamp), shape.observations, shape.interval);
+        calendar = calendarOf(Number(block.timestamp), shape.observations, shape.interval, c.n.offer);
         const stretched = stretch(c.scenario!, shape.observations);
         const t = c.scenario!.terms;
         // The term sheet first: the record this series is issued from, kept and published by its hash.
@@ -230,12 +230,14 @@ export function isinProblem(isin: string): string | null {
   return (10 - (sum % 10)) % 10 === Number(isin[11]) ? null : "That ISIN's check digit does not match: check it against the term sheet.";
 }
 
-export async function startNote(staff: Registrant, input: { scenario: string; observations: number; interval: Interval; units: number; isin?: string }): Promise<DemoNote> {
+export async function startNote(staff: Registrant, input: { scenario: string; observations: number; interval: Interval; units: number; isin?: string; offer?: Interval }): Promise<DemoNote> {
   if (!hasRole(staff.email, "agent")) throw new Error("Not permitted.");
   const scenario = SCENARIOS.find((s) => s.name === input.scenario);
   if (!scenario) throw new Error("Choose a scenario.");
   const problem = calendarProblem(input.observations, input.interval);
   if (problem) throw new Error(problem);
+  const offerBad = input.offer ? offerProblem(input.offer) : null;
+  if (offerBad) throw new Error(offerBad);
   if (!Number.isInteger(input.units) || input.units < 1 || input.units > 100) throw new Error("Issue between 1 and 100 units.");
   const isin = (input.isin ?? "").trim().toUpperCase();
   const bad = isinProblem(isin);
@@ -258,6 +260,7 @@ export async function startNote(staff: Registrant, input: { scenario: string; ob
     scenario: scenario.name,
     observations: input.observations,
     interval: input.interval,
+    ...(input.offer ? { offer: input.offer } : {}),
     units: input.units,
     status: "issuing",
     step: 0,

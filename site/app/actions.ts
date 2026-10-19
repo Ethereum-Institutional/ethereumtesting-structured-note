@@ -174,7 +174,6 @@ export async function requestNoteAction(_prev: Result, f: FormData): Promise<Res
     await onboarding.requestNote(who, field(f, "id"), {
       notUsPerson: field(f, "notUsPerson") === "on",
       investorClass: field(f, "investorClass"),
-      relyOnBankKyb: field(f, "relyOnBankKyb") === "on",
     });
     return { ok: "Asked. The onboarding agent decides." };
   } catch (e) {
@@ -551,21 +550,22 @@ export async function custodyConvertAction(_prev: Result, f: FormData): Promise<
 // Notes
 // ---------------------------------------------------------------------------------------------
 
-export async function startNoteAction(f: FormData) {
-  const op = await currentStaff("agent");
-  if (!op) throw new Error("Not permitted.");
-  await recorded(async () => {
+/** Staff issue a demonstration note; a refusal (an ISIN, a calendar) is shown on the form. */
+export async function startNoteAction(_prev: Result, f: FormData): Promise<Result> {
+  return staffStep("agent", "/agent/notes", async (op) => {
     const { startNote } = await import("@/lib/notes/issue");
     const unit = field(f, "intervalUnit") as "minutes" | "hours" | "days" | "months";
-    await startNote(op, {
+    const n = await startNote(op, {
       scenario: field(f, "scenario"),
       observations: Number(field(f, "observations")),
       interval: { value: Number(field(f, "intervalValue")), unit },
+      offer: { value: Number(field(f, "offerValue")), unit: field(f, "offerUnit") as "minutes" | "hours" | "days" },
       units: Number(field(f, "units")),
       isin: field(f, "isin"),
     });
     await (await import("@/lib/jobs")).kick();
-  }, "/agent/notes");
+    return `Issuing ${n.name} (${n.symbol}): the page follows it.`;
+  });
 }
 
 /** Staff issue a note from a term sheet they upload or paste; the issuance then runs in the background. */

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { calendar, calendarProblem, lifeOf, stretch } from "./calendar.ts";
+import { calendar, offerProblem, calendarProblem, lifeOf, stretch } from "./calendar.ts";
 import scenarios from "./scenarios.json" with { type: "json" };
 
 const DAY = 86_400;
@@ -43,4 +43,14 @@ test("a scenario stretched to more dates keeps its early dates and its maturity;
   assert.deepEqual(stretch(mer, 4).expected, mer.expected);
   const one = stretch(mer, 1);
   assert.equal(one.schedule[0].isFinal, true, "a single date is the maturity");
+});
+
+test("an offer period comes before the first date, whatever the spacing of the dates after it", () => {
+  const start = 1_800_000_000;
+  const d = calendar(start, 3, { value: 2, unit: "minutes" }, { value: 10, unit: "minutes" });
+  assert.deepEqual(d.map((x) => x.date - start), [600, 720, 840], "the first at the end of the offer period, then every two minutes");
+  assert.deepEqual(d.map((x) => x.recordTime - x.date), [24, 24, 24], "each record time a fifth of the spacing after its date, the first too");
+  assert.equal(offerProblem({ value: 0, unit: "minutes" }), "The offer period is a whole number, at least 1.");
+  assert.equal(offerProblem({ value: 2, unit: "months" }), "Give the offer period in minutes, hours or days.");
+  assert.equal(offerProblem({ value: 10, unit: "minutes" }), null);
 });

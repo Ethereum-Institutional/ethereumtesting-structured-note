@@ -98,6 +98,8 @@ export type DemoNote = {
   spacingMinutes?: number;
   observations?: number;
   interval?: { value: number; unit: "minutes" | "hours" | "days" | "months" };
+  /** The offer period before the first observation, for placing units. */
+  offer?: { value: number; unit: "minutes" | "hours" | "days" | "months" };
   units: number;
   status: "issuing" | "issued" | "failed" | "closed";
   /** The next issuance step to run; issuance is a sequence of single transactions. Negative while one is in flight. */

@@ -9,18 +9,25 @@ test("staff issue a note; the page carries the issuance to the end, and the Ledg
   const value = await scenario.locator("option", { hasText: "early redemption" }).first().getAttribute("value");
   await scenario.selectOption(value!);
   // The calendar is configured, and previewed before issuing: quarterly mirrors a real note.
+  // Ten minutes to place units before the first date, however close together the dates come after it.
+  await form.getByLabel("Offer period", { exact: true }).fill("10");
   await form.getByLabel("Observations (coupon dates)").fill("4");
   await form.getByLabel("Time between observations").fill("3");
   await form.getByLabel("Unit", { exact: true }).selectOption("months");
-  await expect(form.getByRole("note")).toContainText("the note's whole life is about 1 year");
+  await expect(form.getByRole("note")).toContainText("the note's whole life is about 0.8 years");
+  await expect(form.getByRole("note")).toContainText("Offer period until");
   await expect(form.getByRole("note")).not.toContainText("stretched");
   await form.getByLabel("Time between observations").fill("5");
   await form.getByLabel("Unit", { exact: true }).selectOption("minutes");
-  await expect(form.getByRole("note")).toContainText("about 22 minutes");
+  await expect(form.getByRole("note")).toContainText("about 27 minutes");
   // Issued 30 minutes apart, so no date arrives in real time during the run: spec 10 moves the
   // chain's clock to each date instead.
   await form.getByLabel("Time between observations").fill("30");
   await form.getByLabel("Units").fill("10");
+  // A wrong ISIN is refused on the form, with the reason, and nothing is issued.
+  await form.getByLabel("ISIN (optional)").fill("XS0000001238");
+  await form.getByRole("button", { name: "Issue", exact: true }).click();
+  await expect(form.getByRole("alert")).toContainText("check digit");
   await form.getByLabel("ISIN (optional)").fill("XS0000001239");
   await form.getByRole("button", { name: "Issue", exact: true }).click();
 

@@ -77,7 +77,7 @@ async function signFor(key: Hex, typedData: Record<string, any>): Promise<Hex> {
 
 const SITE = "http://localhost:3020";
 
-const ANSWERS = { notUsPerson: true, investorClass: "institutional", relyOnBankKyb: true };
+const ANSWERS = { notUsPerson: true, investorClass: "institutional" };
 
 test("bank custody: confirmed by the bank, the custody platform opens the account, manages its identity, and the bank vouches", async () => {
   const { c, r } = await aClient(1);

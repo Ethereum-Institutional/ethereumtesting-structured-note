@@ -1,7 +1,7 @@
 /**
- * A note's calendar and its scenario, from what staff choose at issuance: the number of
- * observations (coupon dates), and the time between them. Pure, so the form previews exactly
- * what the server fixes on-chain.
+ * A note's calendar and its scenario, from what staff choose at issuance: the offer period before
+ * the first observation, the number of observations (coupon dates), and the time between them. Pure,
+ * so the form previews exactly what the server fixes on-chain.
  *
  * Each observation's record time comes a fifth of the way to the next, and its payment date two
  * fifths, but at most 2 and 5 days after it: a quarterly calendar then has the real note's 2 and 5
@@ -28,20 +28,37 @@ export function calendarProblem(observations: number, interval: Interval): strin
   return null;
 }
 
-/** The observation dates, `observations` of them, from `startSec`. */
-export function calendar(startSec: number, observations: number, interval: Interval): Dates[] {
-  const dates: number[] = [];
-  for (let k = 1; k <= observations; k++) {
+/** What is wrong with an offer period, or null. */
+export function offerProblem(offer: Interval): string | null {
+  if (!UNITS.includes(offer.unit) || offer.unit === "months") return "Give the offer period in minutes, hours or days.";
+  if (!Number.isInteger(offer.value) || offer.value < 1) return "The offer period is a whole number, at least 1.";
+  if (offer.value * SECONDS[offer.unit] > 365 * DAY) return "The offer period is at most a year.";
+  return null;
+}
+
+/** The end of an offer period that starts at `startSec`. */
+export const offerEnds = (startSec: number, offer: Interval) => startSec + offer.value * SECONDS[offer.unit as Exclude<Unit, "months">];
+
+/**
+ * The observation dates, `observations` of them, from `startSec`: the first at the end of the offer
+ * period where there is one, otherwise one interval in; each after it one interval later.
+ */
+export function calendar(startSec: number, observations: number, interval: Interval, offer?: Interval): Dates[] {
+  const first = offer ? offerEnds(startSec, offer) : null;
+  const step = (from: number, k: number) => {
     if (interval.unit === "months") {
-      const d = new Date(startSec * 1000);
+      const d = new Date(from * 1000);
       d.setUTCMonth(d.getUTCMonth() + k * interval.value);
-      dates.push(Math.floor(d.getTime() / 1000));
-    } else {
-      dates.push(startSec + k * interval.value * SECONDS[interval.unit]);
+      return Math.floor(d.getTime() / 1000);
     }
-  }
+    return from + k * interval.value * SECONDS[interval.unit];
+  };
+  const dates: number[] = [];
+  for (let k = 1; k <= observations; k++) dates.push(first === null ? step(startSec, k) : step(first, k - 1));
+  // Each date's record and payment times sit within the interval after it, whatever the offer period.
+  const spacing = step(startSec, 1) - startSec;
   return dates.map((date, i) => {
-    const gap = date - (i === 0 ? startSec : dates[i - 1]);
+    const gap = i === 0 ? (first === null ? date - startSec : spacing) : date - dates[i - 1];
     return { date, recordTime: date + Math.min(Math.floor(gap / 5), 2 * DAY), paymentDate: date + Math.min(Math.floor((2 * gap) / 5), 5 * DAY) };
   });
 }

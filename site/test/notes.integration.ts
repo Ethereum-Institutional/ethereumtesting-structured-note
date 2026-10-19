@@ -193,7 +193,7 @@ async function approveForNote(id: string, manager: "depositAgent" | "custodian")
   const a = (await store.admissionById(id))!;
   const identity = onboarding.dataOf(a).identity!;
   await identities.consent(identity, manager, LOCAL.parties.onboardingAgent);
-  await store.updateAdmission({ ...a, data: { ...a.data, note: { status: "requested", requestedAt: new Date().toISOString(), answers: { notUsPerson: true, investorClass: "institutional", relyOnBankKyb: true } } } }, a.status);
+  await store.updateAdmission({ ...a, data: { ...a.data, note: { status: "requested", requestedAt: new Date().toISOString(), answers: { notUsPerson: true, investorClass: "institutional" } } } }, a.status);
   await onboarding.decideNote(operator as any, id, "approve");
   await new Promise((r) => setTimeout(r, 1600)); // past the lagging RPC's window
 }
