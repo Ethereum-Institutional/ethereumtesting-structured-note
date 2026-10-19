@@ -37,7 +37,11 @@ so no value can be written two ways. Anyone given the record can check it agains
   symbol and ISIN not already used. The record is then the note's terms, name, symbol, size, ISIN
   and calendar, and the site never edits it.
 - **Built from a scenario,** for showing a lifecycle quickly: the site builds the record from the
-  scenario's terms and the chosen calendar, with the ISIN given.
+  scenario's terms and the chosen calendar, with the ISIN given. The calendar has an offer period
+  before the first observation (30 minutes unless staff choose otherwise), set apart from the
+  spacing of the dates after it, so units can be placed before the first record time however close
+  together the dates come. A refusal (an ISIN's check digit, an ISIN already used) is shown on the
+  form, which keeps what was entered.
 - **The deployment's own note:** `site/scripts/term-sheet.ts` builds its record, dated from the
   chain's clock, before issuance; it goes into the manifest.
 

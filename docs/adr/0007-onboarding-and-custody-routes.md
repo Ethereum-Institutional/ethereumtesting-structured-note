@@ -34,8 +34,10 @@ no account for it is onboarded on the chain.
    binds its own wallet with one signature.
 4. The bank creates the identity, records the client's consent, registers the wallet, and adds
    its deposit claim. The wallet may hold the deposit at once.
-5. The client asks for the notes, answering the selling-restriction questions once; the
-   onboarding agent sees the bank's claim stands and adds the note claim.
+5. The client asks for the notes, answering the selling-restriction questions once. The
+   onboarding agent relies on the bank's KYB, by the arrangement between the two institutions, so
+   the client is not asked to agree to it or for its documents again; while the bank's claim
+   stands, the agent adds the note claim.
 6. Where the client asks, the bank admits it to the conversion pool with its pool-access claim.
 
 **Custody accounts.** Each custodian has a `CustodyAccountFactory` that deploys one

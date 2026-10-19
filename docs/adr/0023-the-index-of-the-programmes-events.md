@@ -38,7 +38,10 @@ transaction and block time, under the current deployment.
 
 ## Consequences
 
-- What a page shows can lag the chain by three blocks, about 36 seconds, on a public network.
+- What a page shows can lag the chain by three blocks, about 36 seconds, on a public network. An
+  action that must read what it has just done (a placement reading the offer it made) reads the
+  contract itself where the index does not hold it yet. Tests can hold the local index back the
+  same way (`INDEX_SETTLE_BLOCKS`), so this is tested where it matters.
 - Current state (balances, a distribution's totals, a note's dates) is still read from the chain.
 - The Ledger still reads transactions from the chain, since it decodes calls, not events
   (record 0025).
